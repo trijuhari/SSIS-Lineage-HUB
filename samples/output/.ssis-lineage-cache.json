@@ -1,0 +1,24 @@
+{
+  "CachedPackages": {
+    "CreateSalesForecastInput.dtsx": {
+      "FileHash": "2d54e2ddaf3c03cf0d795988928ff282bba81839f54283745e55bbfbd1015d20",
+      "ScanTime": "2026-07-26T11:24:38.4153325Z",
+      "Packages": [
+        {
+          "Id": "CreateSalesForecastInput",
+          "Name": "CreateSalesForecastInput",
+          "Path": "/home/hirazone/Documents/SSIS-Project-Documentation/samples/samples/Tutorial-Sample-1/CreateSalesForecastInput.dtsx",
+          "ProjectPath": "/home/hirazone/Documents/SSIS-Project-Documentation/samples/samples/Tutorial-Sample-1",
+          "FileHash": "2d54e2ddaf3c03cf0d795988928ff282bba81839f54283745e55bbfbd1015d20",
+          "Variables": [],
+          "ConnectionManagers": []
+        }
+      ],
+      "Tasks": [],
+      "Components": [],
+      "ColumnMappings": [],
+      "ExecutionEdges": [],
+      "DataFlowEdges": []
+    }
+  }
+}

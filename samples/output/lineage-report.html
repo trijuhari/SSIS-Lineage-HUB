@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>SSIS Lineage Report</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #0f172a; color: #f8fafc; padding: 20px; }
+        h1, h2 { color: #38bdf8; }
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; background-color: #1e293b; border-radius: 8px; overflow: hidden; }
+        th, td { padding: 12px 16px; text-align: left; border-bottom: 1px solid #334155; }
+        th { background-color: #334155; color: #38bdf8; }
+        tr:hover { background-color: #475569; }
+        .badge { background-color: #0284c7; color: white; padding: 2px 6px; border-radius: 4px; font-size: 0.85em; }
+        .summary-grid { display: grid; grid-template-columns: repeat(5, minmax(120px, 1fr)); gap: 12px; margin: 20px 0; }
+        .summary-grid div { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 14px; }
+        .summary-grid strong { display: block; font-size: 28px; color: #f8fafc; }
+        .summary-grid span { color: #94a3b8; font-size: 13px; font-weight: 700; }
+        code { color: #bae6fd; white-space: pre-wrap; overflow-wrap: anywhere; }
+    </style>
+</head>
+<body>
+    <h1>SSIS Project Lineage Documentation</h1>
+    <p>Generated on: 2026-07-26 19:33:42</p>
+    <h2>Packages Included</h2>
+    <ul>
+        <li><strong>CreateSalesForecastInput</strong> (GUID: CreateSalesForecastInput)</li>
+    </ul>
+    <h2>Run Summary</h2>
+    <div class="summary-grid">
+        <div><strong>1</strong><span>Packages</span></div>
+        <div><strong>1</strong><span>Tasks</span></div>
+        <div><strong>3</strong><span>Components</span></div>
+        <div><strong>2</strong><span>Data Paths</span></div>
+        <div><strong>6</strong><span>Column Mappings</span></div>
+    </div>
+    <h2>Tasks</h2>
+    <table>
+        <thead><tr><th>Package</th><th>Task</th><th>Type</th><th>Narasi Bisnis</th></tr></thead>
+        <tbody>
+            <tr><td>CreateSalesForecastInput</td><td>Create Sales Forecast Input Spreadsheet</td><td><code>DTS.Pipeline.1</code></td><td>Aliran Data (Data Flow): Mengambil data dari `Kota` (`select
+  g.GeographyKey
+, g.SalesTerritoryKey  
+, g.City
+, g.StateProvinceName [State]
+, g.PostalCode
+from dbo.DimGeography g
+join dbo.DimSalesTerritory t 
+  on t.SalesTerritoryKey = g.SalesTerritoryKey
+where t.SalesTerritoryCountry = &#39;United States&#39; 
+order by g.StateProvinceName, g.City`), diproses melalui transformasi Third-Party: Derived Column, dan memuat hasilnya ke `Excel Destination`.</td></tr>
+        </tbody>
+    </table>
+    <h2>Data Flow Components</h2>
+    <table>
+        <thead><tr><th>Package</th><th>Task</th><th>Component</th><th>Type</th><th>Connection</th><th>SQL / Table</th><th>Narasi Bisnis</th></tr></thead>
+        <tbody>
+            <tr>
+                <td>CreateSalesForecastInput</td>
+                <td>Create Sales Forecast Input Spreadsheet</td>
+                <td>OLE DB Source</td>
+                <td><code>Third-Party: OLE DB Source</code></td>
+                <td><code>{F7E88C74-D039-4BB7-BBAF-672D8AF85932}</code></td>
+                <td><code>select
+  g.GeographyKey
+, g.SalesTerritoryKey  
+, g.City
+, g.StateProvinceName [State]
+, g.PostalCode
+from dbo.DimGeography g
+join dbo.DimSalesTerritory t 
+  on t.SalesTerritoryKey = g.SalesTerritoryKey
+where t.SalesTerritoryCountry = 'United States' 
+order by g.StateProvinceName, g.City</code></td>
+                <td>Mengambil data awal (Source) dari `Kota` (`select
+  g.GeographyKey
+, g.SalesTerritoryKey  
+, g.City
+, g.StateProvinceName [State]
+, g.PostalCode
+from dbo.DimGeography g
+join dbo.DimSalesTerritory t 
+  on t.SalesTerritoryKey = g.SalesTerritoryKey
+where t.SalesTerritoryCountry = &#39;United States&#39; 
+order by g.StateProvinceName, g.City`) untuk diproses dalam alur data.</td>
+            </tr>
+            <tr>
+                <td>CreateSalesForecastInput</td>
+                <td>Create Sales Forecast Input Spreadsheet</td>
+                <td>Derived Column</td>
+                <td><code>Third-Party: Derived Column</code></td>
+                <td><code></code></td>
+                <td><code></code></td>
+                <td>Membuat atau memperbarui kolom baru (Derived Column) (`Prakiraan Penjualan`) menggunakan ekspresi logika bisnis.</td>
+            </tr>
+            <tr>
+                <td>CreateSalesForecastInput</td>
+                <td>Create Sales Forecast Input Spreadsheet</td>
+                <td>Excel Destination</td>
+                <td><code>Third-Party: Excel Destination</code></td>
+                <td><code>{02EFA3C0-9DBE-4279-9E03-B752C6523DAE}</code></td>
+                <td><code>Excel Destination</code></td>
+                <td>Memuat hasil pemrosesan data (Destination) ke `Excel Destination`.</td>
+            </tr>
+        </tbody>
+    </table>
+    <h2>Data Flow Paths</h2>
+    <table>
+        <thead><tr><th>From Component</th><th>To Component</th><th>Path</th></tr></thead>
+        <tbody>
+            <tr><td><code>OLE DB Source</code></td><td><code>Derived Column</code></td><td><code>127</code></td></tr>
+            <tr><td><code>Derived Column</code></td><td><code>Excel Destination</code></td><td><code>142</code></td></tr>
+        </tbody>
+    </table>
+    <h2>Column Lineage Mappings</h2>
+    <table>
+        <thead>
+            <tr>
+                <th>Package</th>
+                <th>Task</th>
+                <th>Source Component</th>
+                <th>Source Column</th>
+                <th>Destination Component</th>
+                <th>Destination Column</th>
+                <th>Operation</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>CreateSalesForecastInput</td>
+                <td>Create Sales Forecast Input Spreadsheet</td>
+                <td>OLE DB Source</td>
+                <td><code>GeographyKey</code></td>
+                <td>Excel Destination</td>
+                <td><code>GeographyKey</code></td>
+                <td><span class="badge">XML_FALLBACK</span></td>
+            </tr>
+            <tr>
+                <td>CreateSalesForecastInput</td>
+                <td>Create Sales Forecast Input Spreadsheet</td>
+                <td>OLE DB Source</td>
+                <td><code>SalesTerritoryKey</code></td>
+                <td>Excel Destination</td>
+                <td><code>SalesTerritoryKey</code></td>
+                <td><span class="badge">XML_FALLBACK</span></td>
+            </tr>
+            <tr>
+                <td>CreateSalesForecastInput</td>
+                <td>Create Sales Forecast Input Spreadsheet</td>
+                <td>OLE DB Source</td>
+                <td><code>City</code></td>
+                <td>Excel Destination</td>
+                <td><code>City</code></td>
+                <td><span class="badge">XML_FALLBACK</span></td>
+            </tr>
+            <tr>
+                <td>CreateSalesForecastInput</td>
+                <td>Create Sales Forecast Input Spreadsheet</td>
+                <td>OLE DB Source</td>
+                <td><code>State</code></td>
+                <td>Excel Destination</td>
+                <td><code>State</code></td>
+                <td><span class="badge">XML_FALLBACK</span></td>
+            </tr>
+            <tr>
+                <td>CreateSalesForecastInput</td>
+                <td>Create Sales Forecast Input Spreadsheet</td>
+                <td>OLE DB Source</td>
+                <td><code>PostalCode</code></td>
+                <td>Excel Destination</td>
+                <td><code>PostalCode</code></td>
+                <td><span class="badge">XML_FALLBACK</span></td>
+            </tr>
+            <tr>
+                <td>CreateSalesForecastInput</td>
+                <td>Create Sales Forecast Input Spreadsheet</td>
+                <td>Derived Column</td>
+                <td><code>Forecast</code></td>
+                <td>Excel Destination</td>
+                <td><code>Forecast</code></td>
+                <td><span class="badge">XML_FALLBACK</span></td>
+            </tr>
+        </tbody>
+    </table>
+</body>
+</html>

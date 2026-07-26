@@ -1,0 +1,16 @@
+@using Microsoft.AspNetCore.Components.Routing
+
+<MudNavMenu Class="modern-nav-menu px-2">
+    <div class="px-4 py-2">
+        <MudText Typo="Typo.overline" Style="font-size: 0.75rem; font-weight: 700; color: var(--mud-palette-text-secondary); letter-spacing: 1px;">DISCOVERY</MudText>
+    </div>
+    <MudNavLink Href="lineage" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.AccountTree" Class="modern-nav-link mb-2">
+        Lineage Discovery
+    </MudNavLink>
+    <MudNavLink Href="lineage-trace" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Search" Class="modern-nav-link mb-2">
+        Lineage Search
+    </MudNavLink>
+    <MudNavLink Href="detailed-report" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Description" Class="modern-nav-link mb-2">
+        Detailed Report
+    </MudNavLink>
+</MudNavMenu>

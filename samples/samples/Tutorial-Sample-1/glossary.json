@@ -1,0 +1,10 @@
+{
+  "GEOGRAPHYKEY": "Kunci Geografis",
+  "SALESTERRITORYKEY": "Kunci Wilayah Penjualan",
+  "CITY": "Kota",
+  "STATE": "Provinsi / Negara Bagian",
+  "POSTALCODE": "Kode Pos",
+  "FORECAST": "Prakiraan Penjualan",
+  "DIMGEOGRAPHY": "Dimensi Geografi",
+  "DIMSALESTERRITORY": "Dimensi Wilayah Penjualan"
+}

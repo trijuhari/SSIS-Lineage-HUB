@@ -1,0 +1,241 @@
+packages:
+- id: CreateSalesForecastInput
+  name: CreateSalesForecastInput
+  path: /home/hirazone/Documents/SSIS-Project-Documentation/samples/samples/Tutorial-Sample-1/CreateSalesForecastInput.dtsx
+  projectPath: /home/hirazone/Documents/SSIS-Project-Documentation/samples/samples/Tutorial-Sample-1
+  fileHash: 2d54e2ddaf3c03cf0d795988928ff282bba81839f54283745e55bbfbd1015d20
+  variables: []
+  connectionManagers: []
+tasks:
+- id: '{AD1BE492-BB24-47DF-B4CB-40527E800BC5}'
+  name: Create Sales Forecast Input Spreadsheet
+  type: DTS.Pipeline.1
+  packageId: CreateSalesForecastInput
+  packageName: CreateSalesForecastInput
+  description: ''
+  businessNarrative: >-
+    Aliran Data (Data Flow): Mengambil data dari `Kota` (`select
+      g.GeographyKey
+    , g.SalesTerritoryKey  
+
+    , g.City
+
+    , g.StateProvinceName [State]
+
+    , g.PostalCode
+
+    from dbo.DimGeography g
+
+    join dbo.DimSalesTerritory t 
+      on t.SalesTerritoryKey = g.SalesTerritoryKey
+    where t.SalesTerritoryCountry = 'United States' 
+
+    order by g.StateProvinceName, g.City`), diproses melalui transformasi Third-Party: Derived Column, dan memuat hasilnya ke `Excel Destination`.
+components:
+- id: 1
+  name: OLE DB Source
+  type: 'Third-Party: OLE DB Source'
+  packageId: CreateSalesForecastInput
+  taskId: '{AD1BE492-BB24-47DF-B4CB-40527E800BC5}'
+  connectionManager: '{F7E88C74-D039-4BB7-BBAF-672D8AF85932}'
+  sqlQueryOrTable: >-
+    select
+      g.GeographyKey
+    , g.SalesTerritoryKey  
+
+    , g.City
+
+    , g.StateProvinceName [State]
+
+    , g.PostalCode
+
+    from dbo.DimGeography g
+
+    join dbo.DimSalesTerritory t 
+      on t.SalesTerritoryKey = g.SalesTerritoryKey
+    where t.SalesTerritoryCountry = 'United States' 
+
+    order by g.StateProvinceName, g.City
+  businessNarrative: >-
+    Mengambil data awal (Source) dari `Kota` (`select
+      g.GeographyKey
+    , g.SalesTerritoryKey  
+
+    , g.City
+
+    , g.StateProvinceName [State]
+
+    , g.PostalCode
+
+    from dbo.DimGeography g
+
+    join dbo.DimSalesTerritory t 
+      on t.SalesTerritoryKey = g.SalesTerritoryKey
+    where t.SalesTerritoryCountry = 'United States' 
+
+    order by g.StateProvinceName, g.City`) untuk diproses dalam alur data.
+  parameterBindings: []
+- id: 16
+  name: Derived Column
+  type: 'Third-Party: Derived Column'
+  packageId: CreateSalesForecastInput
+  taskId: '{AD1BE492-BB24-47DF-B4CB-40527E800BC5}'
+  connectionManager: ''
+  sqlQueryOrTable: ''
+  businessNarrative: Membuat atau memperbarui kolom baru (Derived Column) (`Prakiraan Penjualan`) menggunakan ekspresi logika bisnis.
+  parameterBindings: []
+- id: 22
+  name: Excel Destination
+  type: 'Third-Party: Excel Destination'
+  packageId: CreateSalesForecastInput
+  taskId: '{AD1BE492-BB24-47DF-B4CB-40527E800BC5}'
+  connectionManager: '{02EFA3C0-9DBE-4279-9E03-B752C6523DAE}'
+  sqlQueryOrTable: Excel Destination
+  businessNarrative: Memuat hasil pemrosesan data (Destination) ke `Excel Destination`.
+  parameterBindings: []
+columnMappings:
+- id: 400482cf-1f71-4c45-a0b3-29da0568ef34
+  packageId: CreateSalesForecastInput
+  taskId: '{AD1BE492-BB24-47DF-B4CB-40527E800BC5}'
+  sourceComponentId: 1
+  sourceComponentName: OLE DB Source
+  sourceServer: ''
+  sourceDatabase: ''
+  sourceSchema: ''
+  sourceTable: ''
+  sourceColumnName: GeographyKey
+  sourceExpression: ''
+  targetComponentId: 22
+  targetComponentName: Excel Destination
+  targetServer: ''
+  targetDatabase: ''
+  targetSchema: ''
+  targetTable: ''
+  targetColumnName: GeographyKey
+  operationType: XML_FALLBACK
+  procedureName: ''
+  joinDetails: ''
+  filterConditions: ''
+- id: 89215a1f-d2d6-43cc-b29e-0d043253435a
+  packageId: CreateSalesForecastInput
+  taskId: '{AD1BE492-BB24-47DF-B4CB-40527E800BC5}'
+  sourceComponentId: 1
+  sourceComponentName: OLE DB Source
+  sourceServer: ''
+  sourceDatabase: ''
+  sourceSchema: ''
+  sourceTable: ''
+  sourceColumnName: SalesTerritoryKey
+  sourceExpression: ''
+  targetComponentId: 22
+  targetComponentName: Excel Destination
+  targetServer: ''
+  targetDatabase: ''
+  targetSchema: ''
+  targetTable: ''
+  targetColumnName: SalesTerritoryKey
+  operationType: XML_FALLBACK
+  procedureName: ''
+  joinDetails: ''
+  filterConditions: ''
+- id: e5973f02-9595-4943-aee4-bc4e0a2967e7
+  packageId: CreateSalesForecastInput
+  taskId: '{AD1BE492-BB24-47DF-B4CB-40527E800BC5}'
+  sourceComponentId: 1
+  sourceComponentName: OLE DB Source
+  sourceServer: ''
+  sourceDatabase: ''
+  sourceSchema: ''
+  sourceTable: ''
+  sourceColumnName: City
+  sourceExpression: ''
+  targetComponentId: 22
+  targetComponentName: Excel Destination
+  targetServer: ''
+  targetDatabase: ''
+  targetSchema: ''
+  targetTable: ''
+  targetColumnName: City
+  operationType: XML_FALLBACK
+  procedureName: ''
+  joinDetails: ''
+  filterConditions: ''
+- id: 4cd5aa50-7226-4f43-9b6a-546910c13515
+  packageId: CreateSalesForecastInput
+  taskId: '{AD1BE492-BB24-47DF-B4CB-40527E800BC5}'
+  sourceComponentId: 1
+  sourceComponentName: OLE DB Source
+  sourceServer: ''
+  sourceDatabase: ''
+  sourceSchema: ''
+  sourceTable: ''
+  sourceColumnName: State
+  sourceExpression: ''
+  targetComponentId: 22
+  targetComponentName: Excel Destination
+  targetServer: ''
+  targetDatabase: ''
+  targetSchema: ''
+  targetTable: ''
+  targetColumnName: State
+  operationType: XML_FALLBACK
+  procedureName: ''
+  joinDetails: ''
+  filterConditions: ''
+- id: 7c058e0d-a917-4cbc-aecf-9252a5214da7
+  packageId: CreateSalesForecastInput
+  taskId: '{AD1BE492-BB24-47DF-B4CB-40527E800BC5}'
+  sourceComponentId: 1
+  sourceComponentName: OLE DB Source
+  sourceServer: ''
+  sourceDatabase: ''
+  sourceSchema: ''
+  sourceTable: ''
+  sourceColumnName: PostalCode
+  sourceExpression: ''
+  targetComponentId: 22
+  targetComponentName: Excel Destination
+  targetServer: ''
+  targetDatabase: ''
+  targetSchema: ''
+  targetTable: ''
+  targetColumnName: PostalCode
+  operationType: XML_FALLBACK
+  procedureName: ''
+  joinDetails: ''
+  filterConditions: ''
+- id: 1577ed61-1357-44ed-953b-e37a43045ddb
+  packageId: CreateSalesForecastInput
+  taskId: '{AD1BE492-BB24-47DF-B4CB-40527E800BC5}'
+  sourceComponentId: 16
+  sourceComponentName: Derived Column
+  sourceServer: ''
+  sourceDatabase: ''
+  sourceSchema: ''
+  sourceTable: ''
+  sourceColumnName: Forecast
+  sourceExpression: ''
+  targetComponentId: 22
+  targetComponentName: Excel Destination
+  targetServer: ''
+  targetDatabase: ''
+  targetSchema: ''
+  targetTable: ''
+  targetColumnName: Forecast
+  operationType: XML_FALLBACK
+  procedureName: ''
+  joinDetails: ''
+  filterConditions: ''
+executionEdges: []
+dataFlowEdges:
+- fromComponentId: 1
+  toComponentId: 16
+  pathRefId: 127
+- fromComponentId: 16
+  toComponentId: 22
+  pathRefId: 142
+warnings:
+- Third-party or custom component 'OLE DB Source' (XML fallback) — lineage metadata may be incomplete.
+- Third-party or custom component 'Derived Column' (XML fallback) — lineage metadata may be incomplete.
+- Third-party or custom component 'Excel Destination' (XML fallback) — lineage metadata may be incomplete.
+- 'SQL procedure lineage skipped: no connection string override and no .conmgr SQL connection found in the project.'

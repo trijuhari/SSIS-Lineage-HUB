@@ -1,0 +1,58 @@
+# Source-code releases. The app must be built on the user's machine against their
+# local Microsoft SSIS runtime assemblies (see setup-ssis-refs.ps1), so releases
+# ship source only — GitHub attaches the Source code (zip / tar.gz) automatically.
+#
+# A previously published self-contained exe did not launch on other machines
+# (single-file packaging strips the wwwroot static assets and Photino/WebView2
+# native libraries the desktop host needs), so binary artifacts were dropped in
+# favour of the documented install-from-source path in README.md.
+
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Version tag (e.g. v1.1.1)'
+        required: true
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Set version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "TAG=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "TAG=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.TAG }}
+          name: SSIS Lineage Utility ${{ steps.version.outputs.TAG }}
+          body: |
+            ## SSIS Lineage Utility ${{ steps.version.outputs.TAG }}
+
+            ### Install (from source)
+            1. Install the .NET 10 SDK: `winget install Microsoft.DotNet.SDK.10`
+            2. Download **Source code (zip)** below and extract (or `git clone` the repo at this tag)
+            3. Run `powershell -ExecutionPolicy Bypass -File setup-ssis-refs.ps1` once (copies your local SSIS runtime DLLs into `lib/ssis`)
+            4. Launch: `dotnet run --project src/SsisLineage.Desktop -c Release`
+
+            Requirements: Windows 10/11 x64 with SSIS runtime assemblies (SQL Server 2017–2022, the Visual Studio SSIS Projects extension, or SSMS 18–22).
+
+            See [CHANGELOG.md](https://github.com/okutue/SSIS-Project-Documentation/blob/main/CHANGELOG.md) for what's new.
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

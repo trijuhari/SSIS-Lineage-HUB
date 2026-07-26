@@ -1,0 +1,171 @@
+@page "/"
+@using System.IO
+@using SsisLineage.UI.Services
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+
+<PageTitle>SSIS Lineage Hub</PageTitle>
+
+<div class="d-flex align-center justify-space-between w-100 px-8 py-4 mb-4 animate-fade-in" style="max-width: 1200px; margin: 0 auto;">
+    <a href="/" class="d-flex align-center gap-2" style="text-decoration: none; color: inherit; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
+        <div class="d-flex align-center justify-center" style="background: linear-gradient(135deg, #38BDF8, #818CF8); border-radius: 8px; width: 32px; height: 32px;">
+            <MudIcon Icon="@Icons.Material.Filled.Hub" Size="Size.Small" Style="color: white;" />
+        </div>
+        <MudText Typo="Typo.h6" Style="font-weight: 800; letter-spacing: 0.5px;">
+            SSIS <span style="background: linear-gradient(90deg, #38BDF8, #818CF8); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Lineage</span>
+        </MudText>
+    </a>
+    <div class="d-flex align-center gap-3">
+        <MudButton Variant="Variant.Text" Color="Color.Inherit" Href="/lineage" Style="font-weight: 500;">Workspace</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Href="/lineage" Style="border-radius: 8px; font-weight: 600; padding: 6px 16px;">Get Started</MudButton>
+    </div>
+</div>
+
+<div class="landing-hero pa-8 d-flex flex-column align-center justify-center animate-fade-in" style="min-height: 80vh; max-width: 1200px; margin: 0 auto; color: var(--mud-palette-text-primary);">
+    
+    <!-- Header Chip -->
+    <div class="animate-fade-in" style="animation-delay: 0.1s;">
+        <MudChip T="string" Variant="Variant.Text" Color="Color.Primary" Size="Size.Large" Class="mb-4 font-weight-bold" Style="letter-spacing: 2px; font-size: 0.9rem;">
+            ENTERPRISE DTSX LINEAGE SCANNER
+        </MudChip>
+    </div>
+
+    <!-- Hero Title -->
+    <h1 class="text-center hero-title mb-4 animate-fade-in" style="animation-delay: 0.2s;">
+        SSIS Lineage Discovery Hub
+    </h1>
+
+    <!-- Hero Subtitle -->
+    <p class="text-center hero-subtitle mb-8 animate-fade-in" style="animation-delay: 0.3s; color: var(--mud-palette-text-secondary);">
+        Automated data lineage extraction, column-level mapping, and business logic documentation for SQL Server Integration Services (SSIS).
+    </p>
+
+    <!-- Call to Actions -->
+    <div class="d-flex gap-4 align-center justify-center flex-wrap mb-12 animate-fade-in" style="animation-delay: 0.4s;">
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" StartIcon="@Icons.Material.Filled.Launch" 
+                   Href="/lineage" Style="border-radius: 12px; padding: 12px 28px; font-weight: 600;">
+            Launch Workspace
+        </MudButton>
+        <MudButton Variant="Variant.Outlined" Color="Color.Secondary" Size="Size.Large" StartIcon="@Icons.Material.Filled.PlayCircle" 
+                   Href="/lineage?demo=true" Style="border-radius: 12px; padding: 12px 28px; font-weight: 600;">
+            Explore Live Demo
+        </MudButton>
+    </div>
+
+    <!-- Features Section / Project Info -->
+    <div class="w-100 mt-6 animate-fade-in" style="animation-delay: 0.5s;">
+        <div class="text-center mb-8">
+            <MudText Typo="Typo.h5" Style="font-weight: 700; letter-spacing: 0.5px;">Core capabilities & project overview</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1">Designed to parse complex ETL logic without Visual Studio dependencies.</MudText>
+        </div>
+
+        <MudGrid Spacing="6">
+            <MudItem xs="12" md="6" lg="3">
+                <MudPaper Class="pa-6 h-100 landing-card" Style="background: rgba(30, 41, 59, 0.4); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 16px;">
+                    <div class="d-flex align-center gap-3 mb-3">
+                        <MudAvatar Color="Color.Primary" Variant="Variant.Filled" Size="Size.Medium">
+                            <MudIcon Icon="@Icons.Material.Filled.AccountTree" Size="Size.Small" />
+                        </MudAvatar>
+                        <MudText Typo="Typo.subtitle1" Style="font-weight: 700;">Cross-Package Stitching</MudText>
+                    </div>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                        Reconciles connections and tables across separate DTSX files into a unified end-to-end lineage graph.
+                    </MudText>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" md="6" lg="3">
+                <MudPaper Class="pa-6 h-100 landing-card" Style="background: rgba(30, 41, 59, 0.4); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 16px;">
+                    <div class="d-flex align-center gap-3 mb-3">
+                        <MudAvatar Color="Color.Secondary" Variant="Variant.Filled" Size="Size.Medium">
+                            <MudIcon Icon="@Icons.Material.Filled.Translate" Size="Size.Small" />
+                        </MudAvatar>
+                        <MudText Typo="Typo.subtitle1" Style="font-weight: 700;">Indonesian Narratives</MudText>
+                    </div>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                        Automatically translates data transformations and control flows into clear Bahasa Indonesia narratives.
+                    </MudText>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" md="6" lg="3">
+                <MudPaper Class="pa-6 h-100 landing-card" Style="background: rgba(30, 41, 59, 0.4); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 16px;">
+                    <div class="d-flex align-center gap-3 mb-3">
+                        <MudAvatar Color="Color.Success" Variant="Variant.Filled" Size="Size.Medium">
+                            <MudIcon Icon="@Icons.Material.Filled.Code" Size="Size.Small" />
+                        </MudAvatar>
+                        <MudText Typo="Typo.subtitle1" Style="font-weight: 700;">Procedure Parsing</MudText>
+                    </div>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                        Optionally resolves stored procedures and views in target databases to extract deep column mappings.
+                    </MudText>
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" md="6" lg="3">
+                <MudPaper Class="pa-6 h-100 landing-card" Style="background: rgba(30, 41, 59, 0.4); border: 1px solid rgba(255, 255, 255, 0.05); border-radius: 16px;">
+                    <div class="d-flex align-center gap-3 mb-3">
+                        <MudAvatar Color="Color.Warning" Variant="Variant.Filled" Size="Size.Medium">
+                            <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" />
+                        </MudAvatar>
+                        <MudText Typo="Typo.subtitle1" Style="font-weight: 700;">Offline-First Scanner</MudText>
+                    </div>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                        Runs completely locally on your system. Your SSIS projects, server credentials, and schema details never leave your machine.
+                    </MudText>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    </div>
+
+    <!-- Project Specifications -->
+    <div class="w-100 mt-12 pa-8 animate-fade-in" style="animation-delay: 0.6s; background: rgba(30, 41, 59, 0.2); border: 1px solid rgba(255, 255, 255, 0.03); border-radius: 20px;">
+        <MudText Typo="Typo.h5" Style="font-weight: 700;" Class="mb-4">Project Architecture & Technical Specs</MudText>
+        <MudGrid>
+            <MudItem xs="12" sm="6">
+                <div class="d-flex flex-column gap-3">
+                    <div class="d-flex align-center gap-2">
+                        <MudIcon Icon="@Icons.Material.Filled.Settings" Color="Color.Primary" Size="Size.Small" />
+                        <MudText Typo="Typo.body2"><strong>Engine Framework:</strong> .NET 10.0 Core (cross-platform parser)</MudText>
+                    </div>
+                    <div class="d-flex align-center gap-2">
+                        <MudIcon Icon="@Icons.Material.Filled.Storage" Color="Color.Secondary" Size="Size.Small" />
+                        <MudText Typo="Typo.body2"><strong>SSIS Formats:</strong> v2008 through v2022 package catalogs (.dtsx / .dtproj)</MudText>
+                    </div>
+                </div>
+            </MudItem>
+            <MudItem xs="12" sm="6">
+                <div class="d-flex flex-column gap-3">
+                    <div class="d-flex align-center gap-2">
+                        <MudIcon Icon="@Icons.Material.Filled.InsertChart" Color="Color.Success" Size="Size.Small" />
+                        <MudText Typo="Typo.body2"><strong>Supported Exporters:</strong> JSON, YAML, Cypher, Markdown, Mermaid, OpenLineage</MudText>
+                    </div>
+                    <div class="d-flex align-center gap-2">
+                        <MudIcon Icon="@Icons.Material.Filled.DesktopMac" Color="Color.Warning" Size="Size.Small" />
+                        <MudText Typo="Typo.body2"><strong>Interactive Front-end:</strong> Blazor Server with MudBlazor & Cytoscape.js rendering</MudText>
+                    </div>
+                </div>
+            </MudItem>
+        </MudGrid>
+    </div>
+    
+</div>
+
+<style>
+    .hero-title {
+        font-size: 3.5rem;
+        font-weight: 900;
+        background: linear-gradient(135deg, #e0f2fe 0%, #38bdf8 50%, #818cf8 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        letter-spacing: -1px;
+        line-height: 1.1;
+    }
+    
+    .hero-subtitle {
+        font-size: 1.25rem;
+        max-width: 700px;
+        line-height: 1.6;
+        font-weight: 300;
+    }
+</style>

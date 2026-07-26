@@ -1,0 +1,82 @@
+@inherits LayoutComponentBase
+@inject NavigationManager NavigationManager
+@implements IDisposable
+
+<MudThemeProvider Theme="LineageTheme.Theme" IsDarkMode="_isDarkMode" />
+<MudPopoverProvider />
+<MudDialogProvider />
+<MudSnackbarProvider />
+
+<MudLayout>
+    @if (!IsLandingPage)
+    {
+        <MudAppBar Elevation="1">
+            <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@ToggleDrawer" />
+            <a href="/" class="d-flex align-center gap-2 mr-2" style="text-decoration: none; color: inherit; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
+                <div class="d-flex align-center justify-center" style="background: linear-gradient(135deg, #38BDF8, #818CF8); border-radius: 8px; width: 32px; height: 32px;">
+                    <MudIcon Icon="@Icons.Material.Filled.Hub" Size="Size.Small" Style="color: white;" />
+                </div>
+                <MudText Typo="Typo.h6" Style="font-weight: 800; letter-spacing: 0.5px;">
+                    SSIS <span style="background: linear-gradient(90deg, #38BDF8, #818CF8); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Lineage</span>
+                </MudText>
+            </a>
+            <MudSpacer />
+            <MudTooltip Text="@(_isDarkMode ? "Switch to light mode" : "Switch to dark mode")">
+                <MudIconButton Icon="@(_isDarkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)"
+                               Color="Color.Inherit" OnClick="@ToggleDarkMode" />
+            </MudTooltip>
+        </MudAppBar>
+
+        <MudDrawer @bind-Open="_drawerOpen" Elevation="0" Variant="DrawerVariant.Responsive" ClipMode="DrawerClipMode.Always" 
+                   Style="border-right: 1px solid rgba(255, 255, 255, 0.05); background: rgba(20, 30, 48, 0.95); backdrop-filter: blur(12px);">
+            <div class="px-6 py-4 mt-2">
+                <MudText Typo="Typo.subtitle2" Style="font-weight: 800; color: var(--mud-palette-primary); letter-spacing: 1px;">WORKSPACE</MudText>
+            </div>
+            <NavMenu />
+        </MudDrawer>
+    }
+
+    <MudMainContent>
+        <CascadingValue Value="_isDarkMode" Name="IsDarkMode">
+            @Body
+        </CascadingValue>
+    </MudMainContent>
+</MudLayout>
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">x</span>
+</div>
+
+@code {
+    private bool _isDarkMode = true;
+    private bool _drawerOpen = true;
+
+    private bool IsLandingPage
+    {
+        get
+        {
+            var relative = NavigationManager.ToBaseRelativePath(NavigationManager.Uri);
+            return string.IsNullOrEmpty(relative) || relative.StartsWith('?');
+        }
+    }
+
+    protected override void OnInitialized()
+    {
+        NavigationManager.LocationChanged += OnLocationChanged;
+    }
+
+    private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
+    {
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        NavigationManager.LocationChanged -= OnLocationChanged;
+    }
+
+    private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
+    private void ToggleDarkMode() => _isDarkMode = !_isDarkMode;
+}
