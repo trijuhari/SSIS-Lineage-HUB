@@ -1,0 +1,12 @@
+version: '3.8'
+
+services:
+  ssis-sqlserver:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: ssis-demo-sqlserver
+    environment:
+      - ACCEPT_EULA=Y
+      - SA_PASSWORD=YourPassword123!
+    ports:
+      - "1433:1433"
+    restart: unless-stopped

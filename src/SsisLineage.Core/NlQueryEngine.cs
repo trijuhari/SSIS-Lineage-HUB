@@ -1,0 +1,724 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Text.RegularExpressions;
+using SsisLineage.Core.Models;
+
+namespace SsisLineage.Core
+{
+    // ── Intent model ──────────────────────────────────────────────────────────
+
+    public enum NlQueryIntent
+    {
+        FindColumnSource,          // "dimana OsPokok berasal?" / "where does X come from?"
+        FindColumnTarget,          // "kemana X pergi?" / "where does X go?"
+        FindPackagesWritingToTable,// "package mana yang nulis ke X?"
+        FindPackagesReadingFromTable, // "package mana yang baca dari X?"
+        FindTableMappings,         // "mapping apa yang ada di tabel X?"
+        FindHighFanoutColumns,     // "kolom yang dipakai paling banyak?"
+        FindOrphanTables,          // "tabel yang tidak punya downstream?"
+        FindPackageForColumn,      // "package mana yang pakai kolom X?"
+        FindAllPackages,           // "list semua package"
+        Unknown
+    }
+
+    public sealed class ParsedNlQuery
+    {
+        public NlQueryIntent Intent { get; set; } = NlQueryIntent.Unknown;
+        public string Entity { get; set; } = "";      // table or column name extracted
+        public string EntityType { get; set; } = "";  // "column" | "table" | ""
+        public int Threshold { get; set; } = 2;       // for fanout queries
+        public string Original { get; set; } = "";
+        public string IntentLabel { get; set; } = "";
+    }
+
+    // ── Result model ──────────────────────────────────────────────────────────
+
+    public sealed class NlResultRow
+    {
+        public string Primary { get; set; } = "";
+        public string Secondary { get; set; } = "";
+        public string Category { get; set; } = "";
+        public int Count { get; set; }
+    }
+
+    public sealed class NlQueryResult
+    {
+        public string Summary { get; set; } = "";
+        public List<NlResultRow> Rows { get; set; } = new();
+        public List<string> FollowUps { get; set; } = new();
+        public bool HasResults => Rows.Count > 0;
+        public ParsedNlQuery Query { get; set; } = new();
+    }
+
+    // ── Parser ────────────────────────────────────────────────────────────────
+
+    public static class NlQueryParser
+    {
+        // Bilingual keyword patterns — order matters (most specific first)
+        private static readonly (NlQueryIntent Intent, string[] Keywords, string Label)[] _rules = new[]
+        {
+            // Column source / upstream
+            (NlQueryIntent.FindColumnSource,
+             new[]{ "berasal","asal","dari mana","source of","where does","where do","come from","upstream","narik dari","ambil dari","asal usul" },
+             "Column Source / Upstream"),
+
+            // Column target / downstream
+            (NlQueryIntent.FindColumnTarget,
+             new[]{ "kemana","pergi ke","target","downstream","goes to","go to","diteruskan","ke mana","tujuan" },
+             "Column Target / Downstream"),
+
+            // Packages writing to table
+            (NlQueryIntent.FindPackagesWritingToTable,
+             new[]{ "nulis ke","tulis ke","insert ke","write to","writes to","load ke","simpan ke","masuk ke" },
+             "Packages Writing to Table"),
+
+            // Packages reading from table
+            (NlQueryIntent.FindPackagesReadingFromTable,
+             new[]{ "baca dari","ambil dari","read from","reads from","select dari","source dari" },
+             "Packages Reading from Table"),
+
+            // High fanout
+            (NlQueryIntent.FindHighFanoutColumns,
+             new[]{ "paling banyak dipakai","most used","most referenced","banyak downstream","high fanout","sering dipakai","paling sering" },
+             "High-Fanout Columns"),
+
+            // Orphan tables
+            (NlQueryIntent.FindOrphanTables,
+             new[]{ "tidak punya downstream","no downstream","orphan","tidak terpakai","dead end","tidak ada target" },
+             "Orphan Tables (No Downstream)"),
+
+            // List all packages
+            (NlQueryIntent.FindAllPackages,
+             new[]{ "list package","semua package","all packages","daftar package","show packages" },
+             "All Packages"),
+
+            // Package using column
+            (NlQueryIntent.FindPackageForColumn,
+             new[]{ "package mana yang pakai","which package uses","package apa yang pakai","siapa yang pakai kolom" },
+             "Packages Using Column"),
+
+            // Table mappings (fallback)
+            (NlQueryIntent.FindTableMappings,
+             new[]{ "mapping","dipetakan","pemetaan","column map","lineage of","lineage dari","alur dari","alur" },
+             "Table/Column Mappings"),
+        };
+
+        public static ParsedNlQuery Parse(string query)
+        {
+            var q = (query ?? "").Trim();
+            var lower = q.ToLowerInvariant();
+
+            var result = new ParsedNlQuery { Original = q };
+
+            // Detect intent
+            foreach (var (intent, keywords, label) in _rules)
+            {
+                if (keywords.Any(k => lower.Contains(k)))
+                {
+                    result.Intent = intent;
+                    result.IntentLabel = label;
+                    break;
+                }
+            }
+
+            // Extract threshold number (e.g. "lebih dari 5 downstream")
+            var numMatch = Regex.Match(lower, @"\b(\d+)\b");
+            if (numMatch.Success && int.TryParse(numMatch.Value, out var n))
+                result.Threshold = Math.Max(1, n);
+
+            // Extract entity name — the "subject" after removing stop words
+            result.Entity = ExtractEntity(q, lower, result.Intent);
+            result.EntityType = InferEntityType(result.Entity, lower);
+
+            return result;
+        }
+
+        private static string ExtractEntity(string q, string lower, NlQueryIntent intent)
+        {
+            // Strip out intent-keyword phrases to isolate the entity name
+            var stripped = lower;
+            foreach (var (_, keywords, _) in _rules)
+                foreach (var k in keywords)
+                    stripped = stripped.Replace(k, " ");
+
+            // Strip common filler words (bilingual)
+            var fillers = new[]{ "dimana","dari","kemana","ke","yang","apa","siapa","mana",
+                                 "tabel","kolom","table","column","pakai","dipakai","the","a",
+                                 "an","of","in","to","from","does","do","where","is","are",
+                                 "have","has","that","this","?","'","\""};
+
+            var tokens = Regex.Split(stripped.Trim(), @"\s+")
+                .Where(t => t.Length > 0 && !fillers.Contains(t.ToLowerInvariant()))
+                .ToArray();
+
+            // Pick the longest remaining token as the entity candidate
+            return tokens.OrderByDescending(t => t.Length).FirstOrDefault() ?? "";
+        }
+
+        private static string InferEntityType(string entity, string lower)
+        {
+            if (string.IsNullOrEmpty(entity)) return "";
+            // Heuristic: entity with a dot is likely schema.table
+            if (entity.Contains('.')) return "table";
+            // If query mentions "kolom" / "column" explicitly → column
+            if (lower.Contains("kolom") || lower.Contains("column") || lower.Contains("field")) return "column";
+            return "table"; // default assumption
+        }
+    }
+
+    // ── Query Engine ──────────────────────────────────────────────────────────
+
+    public static class NlQueryEngine
+    {
+        /// <summary>Execute a parsed NL query against the live lineage graph.</summary>
+        public static NlQueryResult Execute(ParsedNlQuery parsed, LineageGraph graph)
+        {
+            if (graph == null || graph.ColumnMappings.Count == 0)
+            {
+                return new NlQueryResult
+                {
+                    Query = parsed,
+                    Summary = "Graph memory is empty. Please run a Lineage Scan first.",
+                    Rows = new List<NlResultRow>(),
+                    FollowUps = SuggestedQuestions(graph)
+                };
+            }
+
+            // 1. Try explicit intent routing
+            var result = parsed.Intent switch
+            {
+                NlQueryIntent.FindColumnSource           => FindColumnSource(parsed, graph),
+                NlQueryIntent.FindColumnTarget           => FindColumnTarget(parsed, graph),
+                NlQueryIntent.FindPackagesWritingToTable => FindPackagesWritingToTable(parsed, graph),
+                NlQueryIntent.FindPackagesReadingFromTable => FindPackagesReadingFromTable(parsed, graph),
+                NlQueryIntent.FindTableMappings          => FindTableMappings(parsed, graph),
+                NlQueryIntent.FindHighFanoutColumns      => FindHighFanoutColumns(parsed, graph),
+                NlQueryIntent.FindOrphanTables           => FindOrphanTables(parsed, graph),
+                NlQueryIntent.FindPackageForColumn       => FindPackageForColumn(parsed, graph),
+                NlQueryIntent.FindAllPackages            => FindAllPackages(parsed, graph),
+                _                                        => null
+            };
+
+            // 2. Dynamic Fallback: If no intent matched or zero rows, search graph dynamically for matched tokens!
+            if (result == null || !result.HasResults)
+            {
+                var dynamicSearch = DynamicGraphSearch(parsed, graph);
+                if (dynamicSearch.HasResults)
+                    return dynamicSearch;
+            }
+
+            if (result != null)
+            {
+                // Inject real dynamic follow-ups based on actual graph entities
+                result.FollowUps = GenerateDynamicFollowUps(parsed, graph);
+                return result;
+            }
+
+            return UnknownResult(parsed, graph);
+        }
+
+        // ── Dynamic Graph Search Fallback ────────────────────────────────────
+
+        private static NlQueryResult DynamicGraphSearch(ParsedNlQuery parsed, LineageGraph graph)
+        {
+            var query = parsed.Original.ToLowerInvariant();
+            var tokens = Regex.Split(query, @"\s+").Where(t => t.Length > 2).ToList();
+
+            // Search for any column mapping matching any token in source/target table or column
+            var matches = graph.ColumnMappings
+                .Where(m => tokens.Any(t =>
+                    (!string.IsNullOrEmpty(m.SourceTable) && m.SourceTable.Contains(t, StringComparison.OrdinalIgnoreCase)) ||
+                    (!string.IsNullOrEmpty(m.TargetTable) && m.TargetTable.Contains(t, StringComparison.OrdinalIgnoreCase)) ||
+                    (!string.IsNullOrEmpty(m.SourceColumnName) && m.SourceColumnName.Contains(t, StringComparison.OrdinalIgnoreCase)) ||
+                    (!string.IsNullOrEmpty(m.TargetColumnName) && m.TargetColumnName.Contains(t, StringComparison.OrdinalIgnoreCase)) ||
+                    (!string.IsNullOrEmpty(m.PackageId) && ResolvePackage(graph, m.PackageId).Contains(t, StringComparison.OrdinalIgnoreCase))
+                ))
+                .Select(m => new NlResultRow
+                {
+                    Primary   = FormatColumn(m.SourceSchema, m.SourceTable, m.SourceColumnName),
+                    Secondary = FormatColumn(m.TargetSchema, m.TargetTable, m.TargetColumnName) + $" ({ResolvePackage(graph, m.PackageId)})",
+                    Category  = m.OperationType ?? "Mapping",
+                    Count     = 1
+                })
+                .DistinctBy(r => r.Primary + "|" + r.Secondary)
+                .Take(50)
+                .ToList();
+
+            if (matches.Count > 0)
+            {
+                return new NlQueryResult
+                {
+                    Query   = parsed,
+                    Summary = $"Hasil pencarian dinamis graph: Ditemukan {matches.Count} alur data terkait \"{parsed.Original}\".",
+                    Rows    = matches,
+                    FollowUps = GenerateDynamicFollowUps(parsed, graph)
+                };
+            }
+
+            return UnknownResult(parsed, graph);
+        }
+
+        // ── Dynamic Follow-Up & Suggested Questions ──────────────────────────
+
+        public static List<string> SuggestedQuestions(LineageGraph? graph = null)
+        {
+            if (graph == null || graph.ColumnMappings.Count == 0)
+            {
+                return new List<string>
+                {
+                    "Dimana data OsPokok berasal?",
+                    "Package mana yang nulis ke FactSimpanan?",
+                    "Package mana yang baca dari MasterPinjaman?",
+                    "Kolom yang paling banyak dipakai?",
+                    "Tabel yang tidak punya downstream?",
+                    "List semua package"
+                };
+            }
+
+            var tables = graph.ColumnMappings
+                .Select(m => m.SourceTable)
+                .Concat(graph.ColumnMappings.Select(m => m.TargetTable))
+                .Where(t => !string.IsNullOrEmpty(t))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(3)
+                .ToList();
+
+            var cols = graph.ColumnMappings
+                .Select(m => m.SourceColumnName)
+                .Concat(graph.ColumnMappings.Select(m => m.TargetColumnName))
+                .Where(c => !string.IsNullOrEmpty(c) && c != "*")
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(3)
+                .ToList();
+
+            var list = new List<string>();
+            if (cols.Count > 0) list.Add($"Dimana data {cols[0]} berasal?");
+            if (tables.Count > 0) list.Add($"Package mana yang nulis ke {tables[0]}?");
+            if (tables.Count > 1) list.Add($"Package mana yang baca dari {tables[1]}?");
+            if (cols.Count > 1) list.Add($"Kemana kolom {cols[1]} diteruskan?");
+
+            list.Add("Kolom yang paling banyak dipakai?");
+            list.Add("Tabel yang tidak punya downstream?");
+            list.Add("List semua package");
+
+            return list;
+        }
+
+        private static List<string> GenerateDynamicFollowUps(ParsedNlQuery parsed, LineageGraph graph)
+        {
+            var suggestions = SuggestedQuestions(graph);
+            if (!string.IsNullOrEmpty(parsed.Entity))
+            {
+                suggestions.Insert(0, $"Kemana {parsed.Entity} diteruskan?");
+                suggestions.Insert(1, $"Package mana yang pakai {parsed.Entity}?");
+            }
+            return suggestions.Distinct().Take(5).ToList();
+        }
+
+        private static NlQueryResult UnknownResult(ParsedNlQuery parsed, LineageGraph graph) => new()
+        {
+            Query   = parsed,
+            Summary = $"Pencarian \"{parsed.Original}\" tidak menemukan entitas spesifik. Coba pertanyaan di bawah ini:",
+            Rows    = new List<NlResultRow>(),
+            FollowUps = SuggestedQuestions(graph)
+        };
+
+        // ── FindColumnSource ─────────────────────────────────────────────────
+
+        private static NlQueryResult FindColumnSource(ParsedNlQuery parsed, LineageGraph graph)
+        {
+            var entity = parsed.Entity;
+            var matches = graph.ColumnMappings
+                .Where(m => MatchesEntity(m.TargetColumnName, m.TargetTable, entity))
+                .Select(m => new NlResultRow
+                {
+                    Primary   = FormatColumn(m.SourceSchema, m.SourceTable, m.SourceColumnName),
+                    Secondary = $"{ResolvePackage(graph, m.PackageId)} / {ResolveTask(graph, m.TaskId)}",
+                    Category  = "Source",
+                    Count     = 1
+                })
+                .DistinctBy(r => r.Primary + r.Secondary)
+                .OrderBy(r => r.Primary)
+                .ToList();
+
+            return new NlQueryResult
+            {
+                Query   = parsed,
+                Summary = matches.Count > 0
+                    ? $"Found {matches.Count} upstream source(s) for \"{entity}\"."
+                    : $"No source found for \"{entity}\". Check spelling or try a table name.",
+                Rows    = matches,
+                FollowUps = new List<string>
+                {
+                    $"Kemana {entity} diteruskan?",
+                    $"Package mana yang nulis ke {entity}?",
+                    $"Mapping apa yang ada di {entity}?"
+                }
+            };
+        }
+
+        // ── FindColumnTarget ─────────────────────────────────────────────────
+
+        private static NlQueryResult FindColumnTarget(ParsedNlQuery parsed, LineageGraph graph)
+        {
+            var entity = parsed.Entity;
+            var matches = graph.ColumnMappings
+                .Where(m => MatchesEntity(m.SourceColumnName, m.SourceTable, entity))
+                .Select(m => new NlResultRow
+                {
+                    Primary   = FormatColumn(m.TargetSchema, m.TargetTable, m.TargetColumnName),
+                    Secondary = $"{ResolvePackage(graph, m.PackageId)} / {ResolveTask(graph, m.TaskId)}",
+                    Category  = "Target",
+                    Count     = 1
+                })
+                .DistinctBy(r => r.Primary + r.Secondary)
+                .OrderBy(r => r.Primary)
+                .ToList();
+
+            return new NlQueryResult
+            {
+                Query   = parsed,
+                Summary = matches.Count > 0
+                    ? $"Found {matches.Count} downstream target(s) for \"{entity}\"."
+                    : $"No downstream found for \"{entity}\".",
+                Rows    = matches,
+                FollowUps = new List<string>
+                {
+                    $"Dimana {entity} berasal?",
+                    $"Package mana yang pakai kolom {entity}?",
+                }
+            };
+        }
+
+        // ── FindPackagesWritingToTable ────────────────────────────────────────
+
+        private static NlQueryResult FindPackagesWritingToTable(ParsedNlQuery parsed, LineageGraph graph)
+        {
+            var entity = parsed.Entity;
+            var rows = graph.ColumnMappings
+                .Where(m => MatchesTable(m.TargetSchema, m.TargetTable, entity))
+                .GroupBy(m => m.PackageId)
+                .Select(g =>
+                {
+                    var pkg = ResolvePackage(graph, g.Key);
+                    var tasks = g.Select(m => ResolveTask(graph, m.TaskId))
+                                 .Distinct(StringComparer.OrdinalIgnoreCase)
+                                 .OrderBy(t => t);
+                    return new NlResultRow
+                    {
+                        Primary   = pkg,
+                        Secondary = string.Join(", ", tasks),
+                        Category  = "Package",
+                        Count     = g.Count()
+                    };
+                })
+                .OrderBy(r => r.Primary)
+                .ToList();
+
+            return new NlQueryResult
+            {
+                Query   = parsed,
+                Summary = rows.Count > 0
+                    ? $"{rows.Count} package(s) write to table \"{entity}\"."
+                    : $"No packages write to \"{entity}\".",
+                Rows    = rows,
+                FollowUps = new List<string>
+                {
+                    $"Package mana yang baca dari {entity}?",
+                    $"Mapping apa yang ada di {entity}?",
+                    $"Dimana data {entity} berasal?"
+                }
+            };
+        }
+
+        // ── FindPackagesReadingFromTable ──────────────────────────────────────
+
+        private static NlQueryResult FindPackagesReadingFromTable(ParsedNlQuery parsed, LineageGraph graph)
+        {
+            var entity = parsed.Entity;
+            var rows = graph.ColumnMappings
+                .Where(m => MatchesTable(m.SourceSchema, m.SourceTable, entity))
+                .GroupBy(m => m.PackageId)
+                .Select(g =>
+                {
+                    var pkg = ResolvePackage(graph, g.Key);
+                    var tasks = g.Select(m => ResolveTask(graph, m.TaskId))
+                                 .Distinct(StringComparer.OrdinalIgnoreCase)
+                                 .OrderBy(t => t);
+                    return new NlResultRow
+                    {
+                        Primary   = pkg,
+                        Secondary = string.Join(", ", tasks),
+                        Category  = "Package",
+                        Count     = g.Count()
+                    };
+                })
+                .OrderBy(r => r.Primary)
+                .ToList();
+
+            return new NlQueryResult
+            {
+                Query   = parsed,
+                Summary = rows.Count > 0
+                    ? $"{rows.Count} package(s) read from table \"{entity}\"."
+                    : $"No packages read from \"{entity}\".",
+                Rows    = rows,
+                FollowUps = new List<string>
+                {
+                    $"Package mana yang nulis ke {entity}?",
+                    $"Kemana data dari {entity} diteruskan?",
+                }
+            };
+        }
+
+        // ── FindTableMappings ─────────────────────────────────────────────────
+
+        private static NlQueryResult FindTableMappings(ParsedNlQuery parsed, LineageGraph graph)
+        {
+            var entity = parsed.Entity;
+            var rows = graph.ColumnMappings
+                .Where(m => MatchesTable(m.SourceSchema, m.SourceTable, entity)
+                         || MatchesTable(m.TargetSchema, m.TargetTable, entity)
+                         || MatchesEntity(m.SourceColumnName, m.SourceTable, entity)
+                         || MatchesEntity(m.TargetColumnName, m.TargetTable, entity))
+                .Select(m => new NlResultRow
+                {
+                    Primary   = FormatColumn(m.SourceSchema, m.SourceTable, m.SourceColumnName),
+                    Secondary = FormatColumn(m.TargetSchema, m.TargetTable, m.TargetColumnName),
+                    Category  = m.OperationType ?? "Map",
+                    Count     = 1
+                })
+                .DistinctBy(r => r.Primary + "|" + r.Secondary)
+                .OrderBy(r => r.Primary)
+                .Take(100)
+                .ToList();
+
+            return new NlQueryResult
+            {
+                Query   = parsed,
+                Summary = rows.Count > 0
+                    ? $"Found {rows.Count} column mapping(s) involving \"{entity}\"."
+                    : $"No mappings found for \"{entity}\".",
+                Rows    = rows,
+                FollowUps = new List<string>
+                {
+                    $"Package mana yang nulis ke {entity}?",
+                    $"Package mana yang baca dari {entity}?",
+                    $"Dimana {entity} berasal?"
+                }
+            };
+        }
+
+        // ── FindHighFanoutColumns ─────────────────────────────────────────────
+
+        private static NlQueryResult FindHighFanoutColumns(ParsedNlQuery parsed, LineageGraph graph)
+        {
+            var threshold = parsed.Threshold;
+            var rows = graph.ColumnMappings
+                .Where(m => !string.IsNullOrEmpty(m.SourceColumnName) && m.SourceColumnName != "*")
+                .GroupBy(m => FormatColumn(m.SourceSchema, m.SourceTable, m.SourceColumnName),
+                         StringComparer.OrdinalIgnoreCase)
+                .Select(g => new NlResultRow
+                {
+                    Primary   = g.Key,
+                    Secondary = $"Used in {g.Count()} mapping(s)",
+                    Category  = "Column",
+                    Count     = g.Count()
+                })
+                .Where(r => r.Count >= threshold)
+                .OrderByDescending(r => r.Count)
+                .Take(30)
+                .ToList();
+
+            return new NlQueryResult
+            {
+                Query   = parsed,
+                Summary = rows.Count > 0
+                    ? $"Top {rows.Count} columns with {threshold}+ downstream mappings."
+                    : $"No columns with {threshold}+ downstream mappings found.",
+                Rows    = rows,
+                FollowUps = new List<string>
+                {
+                    "Kolom apa yang tidak punya downstream?",
+                    "Tabel yang tidak punya downstream?",
+                }
+            };
+        }
+
+        // ── FindOrphanTables ──────────────────────────────────────────────────
+
+        private static NlQueryResult FindOrphanTables(ParsedNlQuery parsed, LineageGraph graph)
+        {
+            var sources = graph.ColumnMappings
+                .Where(m => !string.IsNullOrEmpty(m.SourceTable))
+                .Select(m => FormatTable(m.SourceSchema, m.SourceTable))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            var targets = graph.ColumnMappings
+                .Where(m => !string.IsNullOrEmpty(m.TargetTable))
+                .Select(m => FormatTable(m.TargetSchema, m.TargetTable))
+                .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            // Orphans = tables that appear ONLY as a target (no downstream as a source)
+            var orphans = targets.Except(sources, StringComparer.OrdinalIgnoreCase)
+                .OrderBy(t => t)
+                .ToList();
+
+            var rows = orphans.Select(t => new NlResultRow
+            {
+                Primary   = t,
+                Secondary = "No downstream targets found",
+                Category  = "Table",
+                Count     = 0
+            }).ToList();
+
+            return new NlQueryResult
+            {
+                Query   = parsed,
+                Summary = rows.Count > 0
+                    ? $"Found {rows.Count} table(s) with no downstream consumers — possible final targets or dead-ends."
+                    : "All tables have at least one downstream consumer.",
+                Rows    = rows,
+                FollowUps = new List<string>
+                {
+                    "Kolom yang paling banyak dipakai?",
+                    "List semua package",
+                }
+            };
+        }
+
+        // ── FindPackageForColumn ──────────────────────────────────────────────
+
+        private static NlQueryResult FindPackageForColumn(ParsedNlQuery parsed, LineageGraph graph)
+        {
+            var entity = parsed.Entity;
+            var rows = graph.ColumnMappings
+                .Where(m => MatchesEntity(m.SourceColumnName, "", entity)
+                         || MatchesEntity(m.TargetColumnName, "", entity))
+                .GroupBy(m => m.PackageId)
+                .Select(g => new NlResultRow
+                {
+                    Primary   = ResolvePackage(graph, g.Key),
+                    Secondary = string.Join(", ", g.Select(m => ResolveTask(graph, m.TaskId)).Distinct().OrderBy(t => t)),
+                    Category  = "Package",
+                    Count     = g.Count()
+                })
+                .OrderBy(r => r.Primary)
+                .ToList();
+
+            return new NlQueryResult
+            {
+                Query   = parsed,
+                Summary = rows.Count > 0
+                    ? $"{rows.Count} package(s) reference column \"{entity}\"."
+                    : $"No packages reference column \"{entity}\".",
+                Rows    = rows,
+                FollowUps = new List<string>
+                {
+                    $"Dimana {entity} berasal?",
+                    $"Kemana {entity} diteruskan?",
+                }
+            };
+        }
+
+        // ── FindAllPackages ───────────────────────────────────────────────────
+
+        private static NlQueryResult FindAllPackages(ParsedNlQuery parsed, LineageGraph graph)
+        {
+            var rows = graph.Packages
+                .Select(p =>
+                {
+                    var taskCount = graph.Tasks.Count(t => t.PackageId == p.Id);
+                    var mapCount  = graph.ColumnMappings.Count(m => m.PackageId == p.Id);
+                    return new NlResultRow
+                    {
+                        Primary   = p.Name,
+                        Secondary = $"{taskCount} task(s) · {mapCount} column mapping(s)",
+                        Category  = "Package",
+                        Count     = mapCount
+                    };
+                })
+                .OrderBy(r => r.Primary)
+                .ToList();
+
+            return new NlQueryResult
+            {
+                Query   = parsed,
+                Summary = $"Project has {rows.Count} SSIS package(s).",
+                Rows    = rows,
+                FollowUps = new List<string>
+                {
+                    "Kolom yang paling banyak dipakai?",
+                    "Tabel yang tidak punya downstream?",
+                }
+            };
+        }
+
+        // ── Unknown ───────────────────────────────────────────────────────────
+
+        private static NlQueryResult UnknownResult(ParsedNlQuery parsed) => new()
+        {
+            Query   = parsed,
+            Summary = "Couldn't understand the query. Try one of the suggested questions below.",
+            Rows    = new List<NlResultRow>(),
+            FollowUps = SuggestedQuestions()
+        };
+
+        // ── Suggested questions for cold start ───────────────────────────────
+
+        public static List<string> SuggestedQuestions() => new()
+        {
+            "Dimana data OsPokok berasal?",
+            "Package mana yang nulis ke FactSimpanan?",
+            "Package mana yang baca dari MasterPinjaman?",
+            "Kemana kolom NamaAnggota diteruskan?",
+            "Kolom yang paling banyak dipakai?",
+            "Tabel yang tidak punya downstream?",
+            "List semua package",
+            "Package mana yang pakai kolom IdAnggota?",
+        };
+
+        // ── Helpers ───────────────────────────────────────────────────────────
+
+        private static bool MatchesTable(string schema, string table, string target)
+        {
+            if (string.IsNullOrEmpty(target)) return false;
+            var tl = target.ToLowerInvariant();
+
+            if (!string.IsNullOrEmpty(table))
+            {
+                var qualified = string.IsNullOrEmpty(schema) ? table : $"{schema}.{table}";
+                if (qualified.Equals(tl, StringComparison.OrdinalIgnoreCase)) return true;
+                if (table.Equals(tl, StringComparison.OrdinalIgnoreCase)) return true;
+                if (table.Contains(tl, StringComparison.OrdinalIgnoreCase)) return true;
+            }
+            return false;
+        }
+
+        private static bool MatchesEntity(string column, string table, string target)
+        {
+            if (string.IsNullOrEmpty(target)) return false;
+            if (!string.IsNullOrEmpty(column) && column.Equals(target, StringComparison.OrdinalIgnoreCase)) return true;
+            if (!string.IsNullOrEmpty(table)  && table.Equals(target, StringComparison.OrdinalIgnoreCase))  return true;
+            if (!string.IsNullOrEmpty(column) && column.Contains(target, StringComparison.OrdinalIgnoreCase)) return true;
+            if (!string.IsNullOrEmpty(table)  && table.Contains(target, StringComparison.OrdinalIgnoreCase))  return true;
+            return false;
+        }
+
+        private static string FormatColumn(string schema, string table, string column)
+        {
+            var t = string.IsNullOrEmpty(schema) ? table : $"{schema}.{table}";
+            return string.IsNullOrEmpty(column) ? t : $"{t}.{column}";
+        }
+
+        private static string FormatTable(string schema, string table) =>
+            string.IsNullOrEmpty(schema) ? table : $"{schema}.{table}";
+
+        private static string ResolvePackage(LineageGraph g, string id) =>
+            g.Packages.Find(p => p.Id == id)?.Name ?? id;
+
+        private static string ResolveTask(LineageGraph g, string id) =>
+            g.Tasks.Find(t => t.Id == id)?.Name ?? id;
+    }
+}

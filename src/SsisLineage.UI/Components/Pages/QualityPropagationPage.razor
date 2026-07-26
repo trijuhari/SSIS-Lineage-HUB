@@ -1,0 +1,268 @@
+@page "/quality-propagation"
+@using SsisLineage.Core
+@using SsisLineage.Core.Models
+@using SsisLineage.UI.Services
+@inject LineageService LineageService
+@inject IJSRuntime JS
+
+<PageTitle>Data Quality Propagation Estimator — SSIS Lineage Hub</PageTitle>
+
+<MudStack Spacing="4" Class="pa-4">
+
+    <!-- ── Header ── -->
+    <div>
+        <MudText Typo="Typo.overline" Color="Color.Error" Style="letter-spacing:1px;">Data Governance & Quality</MudText>
+        <MudText Typo="Typo.h4" Style="font-weight:700;">Data Quality Propagation Estimator</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1">
+            Simulasikan dampak penyebaran isu kualitas data (NULLs, Duplikasi, Error Format) dari sumber awal ke seluruh downstream pipeline secara instan (100% offline).
+        </MudText>
+    </div>
+
+    @if (_graph == null || _graph.ColumnMappings.Count == 0)
+    {
+        <MudPaper Outlined="true" Elevation="0" Class="pa-8 d-flex flex-column align-center justify-center" Style="border-radius:16px;">
+            <MudIcon Icon="@Icons.Material.Filled.Warning" Size="Size.Large" Color="Color.Warning" />
+            <MudText Typo="Typo.subtitle1" Class="mt-2" Style="font-weight:700;">No lineage report loaded</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center" Class="mb-3">
+                Harap scan atau muat report lineage SSIS terlebih dahulu untuk mensimulasikan propagation kualitas data.
+            </MudText>
+            <MudButton Href="/lineage" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Hub">
+                Go to Workspace
+            </MudButton>
+        </MudPaper>
+    }
+    else
+    {
+        <!-- ── Configuration Card ── -->
+        <MudPaper Class="pa-5" Elevation="3" Style="border-radius:16px; border:1px solid rgba(239,68,68,0.2); background:rgba(239,68,68,0.02);">
+            <MudText Typo="Typo.subtitle1" Style="font-weight:700;" Class="mb-3">
+                🏷️ Tag Quality Issue on Source Entity
+            </MudText>
+
+            <MudGrid Spacing="2">
+                <MudItem xs="12" md="5">
+                    <MudAutocomplete T="string" @bind-Value="_tag.EntityName" Label="Target Entity (Table or Column)"
+                                     Placeholder="stg.RawCustomers atau stg.RawCustomers.CustomerId"
+                                     SearchFunc="SearchEntities" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                     Clearable="true" CoerceValue="true"
+                                     Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Biotech" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudTextField @bind-Value="_tag.IssueDescription" Label="Quality Issue Description"
+                                  Placeholder="15% NULLs, Duplicate Primary Keys, Invalid Date Format"
+                                  Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="6" md="3">
+                    <MudSelect @bind-Value="_tag.Severity" Label="Severity Level" Variant="Variant.Outlined" Margin="Margin.Dense">
+                        <MudSelectItem Value="QualitySeverity.Warning">🟡 Warning</MudSelectItem>
+                        <MudSelectItem Value="QualitySeverity.Error">🟠 Error</MudSelectItem>
+                        <MudSelectItem Value="QualitySeverity.Critical">🔴 Critical</MudSelectItem>
+                    </MudSelect>
+                </MudItem>
+            </MudGrid>
+
+            <div class="d-flex align-center justify-space-between mt-4">
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    Pilih sampel entitas yang tersedia di project Anda untuk langsung melihat jalur kontaminasi data.
+                </MudText>
+                <div class="d-flex align-center gap-2">
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Default" OnClick="PresetSample">
+                        Preset Sample Tag
+                    </MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Error" StartIcon="@Icons.Material.Filled.Biotech" OnClick="SimulatePropagation">
+                        Trace Contamination Path
+                    </MudButton>
+                </div>
+            </div>
+        </MudPaper>
+
+        <!-- ── Simulation Results ── -->
+        @if (_report != null)
+        {
+            <!-- Summary KPI Cards -->
+            <MudGrid Spacing="3">
+                <MudItem xs="12" sm="6" md="3">
+                    <MudPaper Class="pa-4 d-flex align-center justify-space-between" Elevation="2" Style="border-radius:14px; border-left: 5px solid var(--mud-palette-warning);">
+                        <div>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Direct Targets (1-Hop)</MudText>
+                            <MudText Typo="Typo.h4" Style="font-weight:700;">@_report.DirectImpactCount</MudText>
+                        </div>
+                        <MudIcon Icon="@Icons.Material.Filled.DoubleArrow" Color="Color.Warning" Size="Size.Large" />
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudPaper Class="pa-4 d-flex align-center justify-space-between" Elevation="2" Style="border-radius:14px; border-left: 5px solid var(--mud-palette-error);">
+                        <div>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Total Contaminated</MudText>
+                            <MudText Typo="Typo.h4" Style="font-weight:700;">@_report.TotalImpactCount</MudText>
+                        </div>
+                        <MudIcon Icon="@Icons.Material.Filled.ReportProblem" Color="Color.Error" Size="Size.Large" />
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudPaper Class="pa-4 d-flex align-center justify-space-between" Elevation="2" Style="border-radius:14px; border-left: 5px solid var(--mud-palette-info);">
+                        <div>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Max Propagation Hops</MudText>
+                            <MudText Typo="Typo.h4" Style="font-weight:700;">@_report.MaxHops</MudText>
+                        </div>
+                        <MudIcon Icon="@Icons.Material.Filled.Route" Color="Color.Info" Size="Size.Large" />
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="6" md="3">
+                    <MudPaper Class="pa-4 d-flex align-center justify-space-between" Elevation="2" Style="border-radius:14px; border-left: 5px solid var(--mud-palette-primary);">
+                        <div>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Pipeline Contamination Rate</MudText>
+                            <MudText Typo="Typo.h4" Style="font-weight:700;">@_report.ContaminationRate%</MudText>
+                        </div>
+                        <MudIcon Icon="@Icons.Material.Filled.PieChart" Color="Color.Primary" Size="Size.Large" />
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+
+            <!-- Results DataGrid & Export -->
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius:16px;">
+                <div class="d-flex align-center justify-space-between mb-3">
+                    <div>
+                        <MudText Typo="Typo.subtitle1" Style="font-weight:700;">
+                            ☣️ Contaminated Downstream Entities (@_report.ImpactedNodes.Count)
+                        </MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                            Urutan alur kontaminasi data dari `@_report.SourceTag.EntityName`
+                        </MudText>
+                    </div>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Download" OnClick="ExportMarkdown">
+                        Export Contamination Report (.md)
+                    </MudButton>
+                </div>
+
+                @if (_report.ImpactedNodes.Count == 0)
+                {
+                    <MudAlert Severity="Severity.Success" Class="my-2">
+                        Tidak ada entitas downstream yang terpengaruh oleh isu kualitas data pada `@_report.SourceTag.EntityName`. Data aman!
+                    </MudAlert>
+                }
+                else
+                {
+                    <MudDataGrid T="PropagationNode" Items="_report.ImpactedNodes" Dense="true" Hover="true" FixedHeader="true" Height="360px">
+                        <Columns>
+                            <PropertyColumn Property="x => x.HopsFromSource" Title="Hops" Sortable="true" />
+                            <PropertyColumn Property="x => x.EntityName" Title="Contaminated Entity" Sortable="true" />
+                            <PropertyColumn Property="x => x.EntityType" Title="Type" Sortable="true" />
+                            <TemplateColumn Title="Inherited Severity">
+                                <CellTemplate>
+                                    @{
+                                        var color = context.Item.InheritedSeverity switch
+                                        {
+                                            QualitySeverity.Critical => Color.Error,
+                                            QualitySeverity.Error    => Color.Warning,
+                                            _                        => Color.Info
+                                        };
+                                    }
+                                    <MudChip T="string" Size="Size.Small" Color="@color" Variant="Variant.Filled">
+                                        @context.Item.InheritedSeverity
+                                    </MudChip>
+                                </CellTemplate>
+                            </TemplateColumn>
+                            <PropertyColumn Property="x => x.ViaPackage" Title="Via Package" Sortable="true" />
+                            <PropertyColumn Property="x => x.ViaTask" Title="Task" Sortable="true" />
+                        </Columns>
+                    </MudDataGrid>
+                }
+            </MudPaper>
+        }
+    }
+
+</MudStack>
+
+@code {
+    private LineageGraph? _graph;
+    private QualityTag _tag = new()
+    {
+        EntityName = "stg.RawCustomers",
+        IssueDescription = "15% NULL Values & Duplicate CustomerId",
+        Severity = QualitySeverity.Critical
+    };
+    private QualityPropagationReport? _report;
+
+    protected override void OnInitialized()
+    {
+        var published = LineageService.GetPublishedReport();
+        if (published != null)
+        {
+            _graph = published.Graph;
+            // Pre-select first entity from graph if available
+            var firstEntity = _graph.ColumnMappings.FirstOrDefault()?.SourceTable;
+            if (!string.IsNullOrEmpty(firstEntity))
+                _tag.EntityName = firstEntity;
+            
+            SimulatePropagation();
+        }
+    }
+
+    private void PresetSample()
+    {
+        if (_graph == null) return;
+        var firstCol = _graph.ColumnMappings.FirstOrDefault(m => !string.IsNullOrEmpty(m.SourceColumnName));
+        if (firstCol != null)
+        {
+            var entity = string.IsNullOrEmpty(firstCol.SourceSchema) ? firstCol.SourceTable : $"{firstCol.SourceSchema}.{firstCol.SourceTable}";
+            if (!string.IsNullOrEmpty(firstCol.SourceColumnName)) entity += $".{firstCol.SourceColumnName}";
+            _tag.EntityName = entity;
+            _tag.IssueDescription = "Format nilai tidak valid / Nulls detected";
+            _tag.Severity = QualitySeverity.Critical;
+            SimulatePropagation();
+        }
+    }
+
+    private void SimulatePropagation()
+    {
+        if (_graph == null || string.IsNullOrWhiteSpace(_tag.EntityName)) return;
+        _report = QualityPropagationEstimator.Estimate(_tag, _graph);
+    }
+
+    private Task<IEnumerable<string>> SearchEntities(string? value, CancellationToken token)
+    {
+        if (_graph == null) return Task.FromResult(Enumerable.Empty<string>());
+
+        var tables = _graph.ColumnMappings
+            .Select(m => string.IsNullOrEmpty(m.SourceSchema) ? m.SourceTable : $"{m.SourceSchema}.{m.SourceTable}")
+            .Concat(_graph.ColumnMappings.Select(m => string.IsNullOrEmpty(m.TargetSchema) ? m.TargetTable : $"{m.TargetSchema}.{m.TargetTable}"))
+            .Where(t => !string.IsNullOrEmpty(t))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+
+        var cols = _graph.ColumnMappings
+            .Select(m =>
+            {
+                var t = string.IsNullOrEmpty(m.SourceSchema) ? m.SourceTable : $"{m.SourceSchema}.{m.SourceTable}";
+                return string.IsNullOrEmpty(m.SourceColumnName) ? t : $"{t}.{m.SourceColumnName}";
+            })
+            .Where(c => !string.IsNullOrEmpty(c))
+            .Distinct(StringComparer.OrdinalIgnoreCase);
+
+        var all = tables.Concat(cols);
+
+        if (!string.IsNullOrWhiteSpace(value))
+        {
+            all = all.Where(e => e.Contains(value, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return Task.FromResult(all.Take(30));
+    }
+
+    private async Task ExportMarkdown()
+    {
+        if (_report == null) return;
+        var markdown = QualityPropagationEstimator.GenerateMarkdown(_report);
+        var bytes = System.Text.Encoding.UTF8.GetBytes(markdown);
+        var base64 = Convert.ToBase64String(bytes);
+
+        await JS.InvokeVoidAsync("eval", $@"
+            const link = document.createElement('a');
+            link.download = 'Data_Quality_Contamination_Report_{DateTime.Now:yyyyMMdd}.md';
+            link.href = 'data:text/markdown;base64,{base64}';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        ");
+    }
+}

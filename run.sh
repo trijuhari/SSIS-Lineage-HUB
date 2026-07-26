@@ -14,7 +14,14 @@ echo -e "${BLUE}==============================================${NC}"
 echo -e "${BLUE}   SSIS Lineage Portal Startup Script        ${NC}"
 echo -e "${BLUE}==============================================${NC}"
 
-# Find dotnet command
+# ── 1. Start SQL Server Demo Database Container (if Docker available) ────────
+if [ -f "./setup-sqlserver-demo.sh" ]; then
+    echo -e "${YELLOW}Checking SQL Server Demo DB container...${NC}"
+    # Run setup-sqlserver-demo.sh non-destructively
+    ./setup-sqlserver-demo.sh || echo -e "${YELLOW}⚠️ Could not start SQL Server Docker automatically. You can start it manually with: sudo ./setup-sqlserver-demo.sh${NC}"
+fi
+
+# ── 2. Find dotnet command ───────────────────────────────────────────────────
 DOTNET_CMD="dotnet"
 if [ -f "/home/hirazone/.dotnet/dotnet" ]; then
     DOTNET_CMD="/home/hirazone/.dotnet/dotnet"
@@ -27,7 +34,7 @@ fi
 
 echo -e "Using .NET command: ${GREEN}${DOTNET_CMD}${NC}"
 
-# Release port 5057 & 7280 if they are already in use
+# ── 3. Release port 5057 & 7280 if they are already in use ───────────────────
 echo -e "${BLUE}Checking for active processes on ports 5057 or 7280...${NC}"
 if command -v fuser >/dev/null 2>&1; then
     fuser -k 5057/tcp 7280/tcp >/dev/null 2>&1 || true
@@ -39,6 +46,6 @@ elif command -v lsof >/dev/null 2>&1; then
     fi
 fi
 
-# Run the web application
+# ── 4. Run the web application ───────────────────────────────────────────────
 echo -e "${GREEN}Starting SSIS Lineage Web Portal on http://localhost:5057...${NC}"
 $DOTNET_CMD run --project src/SsisLineage.Web/SsisLineage.Web.csproj -f net10.0

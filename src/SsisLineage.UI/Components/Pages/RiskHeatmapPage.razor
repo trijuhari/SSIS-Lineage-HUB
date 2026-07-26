@@ -1,0 +1,239 @@
+@page "/risk-heatmap"
+@using SsisLineage.Core
+@using SsisLineage.Core.Models
+@using SsisLineage.UI.Services
+@inject LineageService LineageService
+@inject IJSRuntime JS
+
+<PageTitle>Lineage Risk Scorer & Heatmap — SSIS Lineage Hub</PageTitle>
+
+<MudStack Spacing="4" Class="pa-4">
+
+    <!-- ── Header ── -->
+    <div class="d-flex justify-space-between align-center flex-wrap gap-2">
+        <div>
+            <MudText Typo="Typo.overline" Color="Color.Error" Style="letter-spacing:1px;">Governance & Risk</MudText>
+            <MudText Typo="Typo.h4" Style="font-weight:700;">Lineage Risk Scorer & Heatmap</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1">
+                Analisis risiko per tabel (0–100) berdasarkan fan-out downstream, kedalaman transformasi, dan konsumsi antar-package.
+            </MudText>
+        </div>
+
+        @if (_report != null && _report.Scores.Count > 0)
+        {
+            <MudButton OnClick="ExportMarkdown" Variant="Variant.Outlined" Color="Color.Primary"
+                       StartIcon="@Icons.Material.Filled.Download">
+                Export Risk Report (.md)
+            </MudButton>
+        }
+    </div>
+
+    <!-- ── No report guard ── -->
+    @if (_graph == null)
+    {
+        <MudPaper Outlined="true" Elevation="0" Class="pa-8 d-flex flex-column align-center justify-center" Style="border-radius:16px;">
+            <MudIcon Icon="@Icons.Material.Filled.LocalFireDepartment" Size="Size.Large" Color="Color.Error" />
+            <MudText Typo="Typo.subtitle1" Class="mt-2" Style="font-weight:700;">No lineage report loaded</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center" Class="mb-3">
+                Generate atau load lineage report terlebih dahulu untuk menghitung skor risiko tabel.
+            </MudText>
+            <MudButton Href="/lineage" Variant="Variant.Filled" Color="Color.Error" StartIcon="@Icons.Material.Filled.Hub">
+                Go to Workspace
+            </MudButton>
+        </MudPaper>
+    }
+    else if (_report != null)
+    {
+        <!-- ── Summary KPI Cards ── -->
+        <MudGrid>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4 d-flex align-center justify-space-between" Elevation="2" Style="border-radius:16px; border-left:6px solid #ef4444;">
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Critical Risk (≥75)</MudText>
+                        <MudText Typo="Typo.h4" Style="font-weight:700; color:#ef4444;">@_report.CriticalCount</MudText>
+                    </div>
+                    <MudIcon Icon="@Icons.Material.Filled.Warning" Style="color:#ef4444;" Size="Size.Large" />
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4 d-flex align-center justify-space-between" Elevation="2" Style="border-radius:16px; border-left:6px solid #f59e0b;">
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">High Risk (50–74)</MudText>
+                        <MudText Typo="Typo.h4" Style="font-weight:700; color:#f59e0b;">@_report.HighCount</MudText>
+                    </div>
+                    <MudIcon Icon="@Icons.Material.Filled.ErrorOutline" Style="color:#f59e0b;" Size="Size.Large" />
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4 d-flex align-center justify-space-between" Elevation="2" Style="border-radius:16px; border-left:6px solid #eab308;">
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Medium Risk (25–49)</MudText>
+                        <MudText Typo="Typo.h4" Style="font-weight:700; color:#eab308;">@_report.MediumCount</MudText>
+                    </div>
+                    <MudIcon Icon="@Icons.Material.Filled.Info" Style="color:#eab308;" Size="Size.Large" />
+                </MudPaper>
+            </MudItem>
+
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-4 d-flex align-center justify-space-between" Elevation="2" Style="border-radius:16px; border-left:6px solid #10b981;">
+                    <div>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Low Risk (0–24)</MudText>
+                        <MudText Typo="Typo.h4" Style="font-weight:700; color:#10b981;">@_report.LowCount</MudText>
+                    </div>
+                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Style="color:#10b981;" Size="Size.Large" />
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        <!-- ── Filter & Search ── -->
+        <MudPaper Class="pa-4" Elevation="1" Style="border-radius:16px;">
+            <div class="d-flex align-center gap-4 flex-wrap">
+                <MudTextField @bind-Value="_search" Label="Cari Tabel..." Placeholder="dbo.MasterPinjaman"
+                              Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex:1; min-width:200px;"
+                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Clearable="true" />
+
+                <MudSelect T="RiskLevel?" @bind-Value="_levelFilter" Label="Filter Level Risk" Variant="Variant.Outlined"
+                           Margin="Margin.Dense" Style="min-width:180px;" Clearable="true">
+                    <MudSelectItem T="RiskLevel?" Value="@(RiskLevel.Critical)">🔴 Critical (≥75)</MudSelectItem>
+                    <MudSelectItem T="RiskLevel?" Value="@(RiskLevel.High)">🟠 High (50–74)</MudSelectItem>
+                    <MudSelectItem T="RiskLevel?" Value="@(RiskLevel.Medium)">🟡 Medium (25–49)</MudSelectItem>
+                    <MudSelectItem T="RiskLevel?" Value="@(RiskLevel.Low)">🟢 Low (0–24)</MudSelectItem>
+                </MudSelect>
+            </div>
+        </MudPaper>
+
+        <!-- ── Data Table ── -->
+        <MudPaper Elevation="2" Style="border-radius:16px; overflow:hidden;">
+            <MudDataGrid T="TableRiskScore" Items="FilteredScores" Dense="true" Hover="true" Striped="true"
+                         SortMode="SortMode.Multiple" FixedHeader="true" Height="480px">
+                <Columns>
+                    <PropertyColumn Property="x => x.TableName" Title="Table Name" Sortable="true" />
+                    
+                    <TemplateColumn Title="Risk Score" Sortable="true" SortBy="x => x.Score">
+                        <CellTemplate>
+                            <div class="d-flex align-center gap-2">
+                                <MudChip T="string" Size="Size.Small" Color="GetLevelColor(context.Item.Level)" Variant="Variant.Filled"
+                                         Style="font-weight:700; width:45px; text-align:center;">
+                                    @context.Item.Score
+                                </MudChip>
+                                <MudProgressLinear Color="GetLevelColor(context.Item.Level)" Value="context.Item.Score"
+                                                   Class="my-1" Style="width:80px; height:8px; border-radius:4px;" />
+                            </div>
+                        </CellTemplate>
+                    </TemplateColumn>
+
+                    <TemplateColumn Title="Risk Level" Sortable="true" SortBy="x => x.Level">
+                        <CellTemplate>
+                            <MudChip T="string" Size="Size.Small" Color="GetLevelColor(context.Item.Level)" Variant="Variant.Outlined">
+                                @context.Item.Level
+                            </MudChip>
+                        </CellTemplate>
+                    </TemplateColumn>
+
+                    <PropertyColumn Property="x => x.DownstreamTableCount" Title="Fan-Out (Tabel Downstream)" Sortable="true" />
+                    <PropertyColumn Property="x => x.Depth" Title="Depth (Hops)" Sortable="true" />
+                    <PropertyColumn Property="x => x.ReaderPackageCount" Title="Shared Readers (Pkgs)" Sortable="true" />
+                    <PropertyColumn Property="x => x.MappingCount" Title="Column Mappings" Sortable="true" />
+
+                    <TemplateColumn Title="Role">
+                        <CellTemplate>
+                            @if (context.Item.IsFinalTarget)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Secondary" Variant="Variant.Text">Final Target</MudChip>
+                            }
+                            else if (context.Item.IsShared)
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Text">Shared Source</MudChip>
+                            }
+                            else
+                            {
+                                <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Text">Intermediate</MudChip>
+                            }
+                        </CellTemplate>
+                    </TemplateColumn>
+                </Columns>
+            </MudDataGrid>
+        </MudPaper>
+    }
+
+</MudStack>
+
+@code {
+    private LineageGraph? _graph;
+    private RiskReport? _report;
+    private string _search = "";
+    private RiskLevel? _levelFilter;
+
+    protected override void OnInitialized()
+    {
+        try
+        {
+            var published = LineageService.GetPublishedReport();
+            if (published != null)
+            {
+                _graph = published.Graph;
+                _report = RiskScorer.Score(_graph);
+            }
+        }
+        catch
+        {
+            _report = new RiskReport { Scores = Array.Empty<TableRiskScore>() };
+        }
+    }
+
+    private IEnumerable<TableRiskScore> FilteredScores
+    {
+        get
+        {
+            if (_report == null || _report.Scores == null) return Enumerable.Empty<TableRiskScore>();
+
+            var query = _report.Scores.AsEnumerable();
+
+            if (_levelFilter.HasValue)
+            {
+                query = query.Where(s => s != null && s.Level == _levelFilter.Value);
+            }
+
+            if (!string.IsNullOrWhiteSpace(_search))
+            {
+                query = query.Where(s => s != null && s.TableName != null && s.TableName.Contains(_search, StringComparison.OrdinalIgnoreCase));
+            }
+
+            return query;
+        }
+    }
+
+    private Color GetLevelColor(RiskLevel level) => level switch
+    {
+        RiskLevel.Critical => Color.Error,
+        RiskLevel.High     => Color.Warning,
+        RiskLevel.Medium   => Color.Info,
+        _                  => Color.Success
+    };
+
+    private async Task ExportMarkdown()
+    {
+        try
+        {
+            if (_report == null) return;
+            var markdown = RiskScorer.GenerateMarkdown(_report);
+            var bytes = System.Text.Encoding.UTF8.GetBytes(markdown);
+            var base64 = Convert.ToBase64String(bytes);
+
+            await JS.InvokeVoidAsync("eval", $@"
+                const link = document.createElement('a');
+                link.download = 'Lineage_Risk_Report_{DateTime.Now:yyyyMMdd}.md';
+                link.href = 'data:text/markdown;base64,{base64}';
+                document.body.appendChild(link);
+                link.click();
+                document.body.removeChild(link);
+            ");
+        }
+        catch
+        {
+            // Ignore export failure
+        }
+    }
+}

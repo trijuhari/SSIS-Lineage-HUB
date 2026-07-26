@@ -1,0 +1,211 @@
+@page "/data-contracts"
+@using SsisLineage.Core
+@using SsisLineage.Core.Models
+@using SsisLineage.UI.Services
+@inject LineageService LineageService
+@inject IJSRuntime JS
+
+<PageTitle>Data Contract Validator — SSIS Lineage Hub</PageTitle>
+
+<MudStack Spacing="4" Class="pa-4">
+
+    <!-- ── Header ── -->
+    <div>
+        <MudText Typo="Typo.overline" Color="Color.Primary" Style="letter-spacing:1px;">DataOps & Governance</MudText>
+        <MudText Typo="Typo.h4" Style="font-weight:700;">Data Contract Validator</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1">
+            Generate skema Data Contract (YAML) dari SSIS pipeline dan validasi apakah ada kolom wajib terhapus atau skema berubah (100% offline).
+        </MudText>
+    </div>
+
+    @if (_graph == null || _graph.ColumnMappings.Count == 0)
+    {
+        <MudPaper Outlined="true" Elevation="0" Class="pa-8 d-flex flex-column align-center justify-center" Style="border-radius:16px;">
+            <MudIcon Icon="@Icons.Material.Filled.Description" Size="Size.Large" Color="Color.Primary" />
+            <MudText Typo="Typo.subtitle1" Class="mt-2" Style="font-weight:700;">No lineage report loaded</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center" Class="mb-3">
+                Harap scan atau muat report lineage SSIS terlebih dahulu untuk membuat & memvalidasi Data Contract.
+            </MudText>
+            <MudButton Href="/lineage" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Hub">
+                Go to Workspace
+            </MudButton>
+        </MudPaper>
+    }
+    else
+    {
+        <!-- ── Action Bar ── -->
+        <MudPaper Class="pa-4" Elevation="2" Style="border-radius:16px;">
+            <div class="d-flex align-center justify-space-between flex-wrap gap-2">
+                <div class="d-flex align-center gap-3">
+                    <MudText Typo="Typo.subtitle1" Style="font-weight:700;">📜 Active Contract Status:</MudText>
+                    @if (_validationResult != null)
+                    {
+                        @if (_validationResult.IsCompliant)
+                        {
+                            <MudChip T="string" Color="Color.Success" Variant="Variant.Filled" Icon="@Icons.Material.Filled.CheckCircle">
+                                COMPLIANT (0 Breaking Errors)
+                            </MudChip>
+                        }
+                        else
+                        {
+                            <MudChip T="string" Color="Color.Error" Variant="Variant.Filled" Icon="@Icons.Material.Filled.Error">
+                                VIOLATIONS DETECTED (@_validationResult.BreakingCount Breaking)
+                            </MudChip>
+                        }
+                    }
+                </div>
+                <div class="d-flex align-center gap-2">
+                    <MudButton Variant="Variant.Outlined" Color="Color.Primary" StartIcon="@Icons.Material.Filled.AutoFixHigh" OnClick="GenerateNewContract">
+                        Auto-Generate Contract
+                    </MudButton>
+                    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Verified" OnClick="RunValidation">
+                        Validate Contract
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined" Color="Color.Secondary" StartIcon="@Icons.Material.Filled.Download" OnClick="DownloadYaml">
+                        Download YAML
+                    </MudButton>
+                </div>
+            </div>
+        </MudPaper>
+
+        <!-- ── Compliance KPI Cards ── -->
+        @if (_validationResult != null)
+        {
+            <MudGrid Spacing="3">
+                <MudItem xs="12" sm="4">
+                    <MudPaper Class="pa-4 d-flex align-center justify-space-between" Elevation="2" Style="border-radius:14px; border-left: 5px solid var(--mud-palette-success);">
+                        <div>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">Contract Tables</MudText>
+                            <MudText Typo="Typo.h4" Style="font-weight:700;">@_validationResult.TotalTables</MudText>
+                        </div>
+                        <MudIcon Icon="@Icons.Material.Filled.TableChart" Color="Color.Success" Size="Size.Large" />
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudPaper Class="pa-4 d-flex align-center justify-space-between" Elevation="2" Style="border-radius:14px; border-left: 5px solid var(--mud-palette-error);">
+                        <div>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">🔴 Breaking Violations</MudText>
+                            <MudText Typo="Typo.h4" Style="font-weight:700;">@_validationResult.BreakingCount</MudText>
+                        </div>
+                        <MudIcon Icon="@Icons.Material.Filled.Cancel" Color="Color.Error" Size="Size.Large" />
+                    </MudPaper>
+                </MudItem>
+                <MudItem xs="12" sm="4">
+                    <MudPaper Class="pa-4 d-flex align-center justify-space-between" Elevation="2" Style="border-radius:14px; border-left: 5px solid var(--mud-palette-info);">
+                        <div>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary">🟡 Additive Schema Changes</MudText>
+                            <MudText Typo="Typo.h4" Style="font-weight:700;">@_validationResult.AdditiveCount</MudText>
+                        </div>
+                        <MudIcon Icon="@Icons.Material.Filled.AddCircle" Color="Color.Info" Size="Size.Large" />
+                    </MudPaper>
+                </MudItem>
+            </MudGrid>
+        }
+
+        <!-- ── Tabs Container ── -->
+        <MudTabs Elevation="2" Rounded="true" ApplyEffectsToPanels="true" PanelClass="pa-4">
+            <!-- Tab 1: Violations Grid -->
+            <MudTabPanel Text="Contract Violations" Icon="@Icons.Material.Filled.Rule">
+                @if (_validationResult != null && _validationResult.Violations.Count > 0)
+                {
+                    <MudDataGrid T="ContractViolation" Items="_validationResult.Violations" Dense="true" Hover="true" FixedHeader="true" Height="350px">
+                        <Columns>
+                            <TemplateColumn Title="Severity">
+                                <CellTemplate>
+                                    @{
+                                        var (color, label) = context.Item.Severity switch
+                                        {
+                                            ViolationSeverity.Breaking => (Color.Error, "🔴 Breaking"),
+                                            ViolationSeverity.Mismatch => (Color.Warning, "🟠 Mismatch"),
+                                            ViolationSeverity.Additive => (Color.Info, "🟡 Additive"),
+                                            _                          => (Color.Default, "⚪ Info")
+                                        };
+                                    }
+                                    <MudChip T="string" Size="Size.Small" Color="@color" Variant="Variant.Filled">
+                                        @label
+                                    </MudChip>
+                                </CellTemplate>
+                            </TemplateColumn>
+                            <PropertyColumn Property="x => x.TableName" Title="Target Table" Sortable="true" />
+                            <PropertyColumn Property="x => x.ColumnName" Title="Column" Sortable="true" />
+                            <PropertyColumn Property="x => x.Message" Title="Violation Description" Sortable="true" />
+                            <PropertyColumn Property="x => x.Expected" Title="Expected Contract" Sortable="true" />
+                            <PropertyColumn Property="x => x.Actual" Title="Actual SSIS Pipeline State" Sortable="true" />
+                        </Columns>
+                    </MudDataGrid>
+                }
+                else
+                {
+                    <MudAlert Severity="Severity.Success" Class="my-2">
+                        🎉 Semua data contract terpenuhi sempurna! Tidak ada breaking changes atau kolom wajib yang hilang.
+                    </MudAlert>
+                }
+            </MudTabPanel>
+
+            <!-- Tab 2: YAML Contract Viewer -->
+            <MudTabPanel Text="YAML Contract Schema" Icon="@Icons.Material.Filled.Code">
+                <div class="d-flex align-center justify-space-between mb-2">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Format: Open Data Contract Standard (YAML)</MudText>
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.ContentCopy" OnClick="CopyYaml">
+                        Copy YAML
+                    </MudButton>
+                </div>
+                <pre style="background: var(--mud-palette-background-grey); padding: 16px; border-radius: 8px; font-family: monospace; font-size: 0.85rem; max-height: 400px; overflow-y: auto; color: var(--mud-palette-text-primary);">@_yamlContent</pre>
+            </MudTabPanel>
+        </MudTabs>
+    }
+
+</MudStack>
+
+@code {
+    private LineageGraph? _graph;
+    private DataContractSpec? _contractSpec;
+    private ContractValidationResult? _validationResult;
+    private string _yamlContent = "";
+
+    protected override void OnInitialized()
+    {
+        var published = LineageService.GetPublishedReport();
+        if (published != null)
+        {
+            _graph = published.Graph;
+            GenerateNewContract();
+        }
+    }
+
+    private void GenerateNewContract()
+    {
+        if (_graph == null) return;
+        _contractSpec = DataContractValidator.GenerateContract(_graph, "SSIS Enterprise Data Pipeline");
+        _yamlContent = DataContractValidator.ToYaml(_contractSpec);
+        RunValidation();
+    }
+
+    private void RunValidation()
+    {
+        if (_graph == null || _contractSpec == null) return;
+        _validationResult = DataContractValidator.Validate(_contractSpec, _graph);
+    }
+
+    private async Task DownloadYaml()
+    {
+        if (string.IsNullOrEmpty(_yamlContent)) return;
+        var bytes = System.Text.Encoding.UTF8.GetBytes(_yamlContent);
+        var base64 = Convert.ToBase64String(bytes);
+
+        await JS.InvokeVoidAsync("eval", $@"
+            const link = document.createElement('a');
+            link.download = 'data_contract_{DateTime.Now:yyyyMMdd}.yaml';
+            link.href = 'data:text/yaml;base64,{base64}';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+        ");
+    }
+
+    private async Task CopyYaml()
+    {
+        if (string.IsNullOrEmpty(_yamlContent)) return;
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", _yamlContent);
+    }
+}

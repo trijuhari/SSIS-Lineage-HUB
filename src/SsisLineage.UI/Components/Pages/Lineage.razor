@@ -145,9 +145,9 @@ else
 
                 @if (_controlsExpanded)
                 {
-                    <div class="d-flex align-end gap-2 mb-2">
-                        <MudTextField @bind-Value="projectPath" Label="Project path" Placeholder="C:\Project\SSIS"
-                                      Variant="Variant.Outlined" Margin="Margin.None" Style="flex:1"
+                    <div class="d-flex align-center gap-2 mb-1">
+                        <MudTextField @bind-Value="projectPath" Label="Project path" Placeholder="/home/hirazone/Documents/ssis-lineage-hub/sample-ssis-project"
+                                      Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex:1"
                                       Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Folder" />
                         <MudTooltip Text="Browse and select your SSIS project folder" Placement="Placement.Top">
                             <MudIconButton OnClick="BrowseFolder"
@@ -158,31 +158,47 @@ else
                         </MudTooltip>
                     </div>
 
+                    <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Secondary" Class="mb-2 w-100"
+                               StartIcon="@Icons.Material.Filled.FolderZip"
+                               OnClick="UseSampleProject" Style="text-transform:none;">
+                        Use Built-in Sample Project
+                    </MudButton>
+
                     <MudAutocomplete T="string" @bind-Value="startPackage" Label="Start package"
                                      Placeholder="Master.dtsx" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2"
                                      SearchFunc="SearchPackages" CoerceValue="true" Clearable="true"
                                      MaxItems="null"
                                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Description" />
 
-                    <MudCheckBox @bind-Value="includeSqlProcedures" Color="Color.Primary" Dense="true"
-                                 Label="Also enrich data-flow SQL procedures (connect to SQL Server)" />
+                    <div class="pa-3 my-2" style="border: 1px dashed var(--mud-palette-lines-inputs); border-radius: 10px; background: rgba(96,165,250,0.03);">
+                        <MudCheckBox @bind-Value="includeSqlProcedures" Color="Color.Primary" Dense="true" Class="mb-2"
+                                     Label="Enrich lineage via SQL Server (Procedures/Views)" />
 
-                    @if (includeSqlProcedures)
-                    {
-                        <MudText Typo="Typo.subtitle2" Class="mt-3">SQL Server connection</MudText>
-                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mb-1">
-                            Connections are normally read from the project's .conmgr files automatically — these are only for overrides.
-                        </MudText>
+                        <MudTextField @bind-Value="sqlConnectionString" Label="SQL Server Connection String"
+                                      Placeholder="Server=localhost,1433;Database=SsisDemoDB;User Id=sa;Password=YourPassword123!;TrustServerCertificate=True"
+                                      HelperText="Connection string used for SQL procedure definition lookup & database enrichment."
+                                      Variant="Variant.Outlined" Margin="Margin.Dense" Lines="2" Class="mb-2" />
 
-                        <MudTextField @bind-Value="connectionManagerMapText" Label="Per-database connection overrides (optional)"
-                                      Placeholder="Staging=Server=.\SQLSERVER2025;Database=Staging;Integrated Security=true&#10;DW=Server=.\SQLSERVER2025;Database=DW;Integrated Security=true"
-                                      HelperText="Redirect a specific connection manager to your own connection — one per line, ConnectionManagerName=ConnectionString (name or GUID). Wins over the project's .conmgr."
-                                      Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-1" Lines="3" />
+                        <div class="d-flex align-center gap-2 mt-2">
+                            <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info"
+                                       StartIcon="@Icons.Material.Filled.Storage" Style="flex:1; white-space:nowrap; text-transform:none;"
+                                       OnClick="FillDemoConnectionString">
+                                Use Demo DB
+                            </MudButton>
+                            <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
+                                       StartIcon="@Icons.Material.Filled.NetworkCheck" Style="flex:1; white-space:nowrap; text-transform:none;"
+                                       OnClick="TestSqlConnection" Disabled="_isTestingConn">
+                                @(_isTestingConn ? "Testing..." : "Test Connection")
+                            </MudButton>
+                        </div>
 
-                        <MudTextField @bind-Value="sqlConnectionString" Label="Fallback connection for unknown managers (optional)"
-                                      Placeholder="Server=.\SQLSERVER2025;Database=Staging;Integrated Security=true"
-                                      HelperText="A single connection used only for components whose connection manager isn't found in .conmgr. Most projects can leave this empty."
-                                      Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-2" Lines="2" />
+                        @if (!string.IsNullOrEmpty(_connTestResult))
+                        {
+                            <MudAlert Severity="@(_connTestSuccess ? Severity.Success : Severity.Error)" Class="mt-2" Dense="true">
+                                @_connTestResult
+                            </MudAlert>
+                        }
+                    </div>
 
                         <MudText Typo="Typo.subtitle2" Class="mt-4">Name resolution (advanced)</MudText>
                         <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mb-1">
@@ -583,12 +599,61 @@ else
 
     private async Task BrowseFolder()
     {
-        var picked = await FolderPicker.PickFolderAsync(string.IsNullOrWhiteSpace(projectPath) ? null : projectPath);
-        if (!string.IsNullOrWhiteSpace(picked))
+        try
         {
-            projectPath = picked;
-            StateHasChanged();
+            var picked = await FolderPicker.PickFolderAsync(string.IsNullOrWhiteSpace(projectPath) ? null : projectPath);
+            if (!string.IsNullOrWhiteSpace(picked))
+            {
+                projectPath = picked;
+                StateHasChanged();
+            }
         }
+        catch
+        {
+            // Fail gracefully if picker is interrupted
+        }
+    }
+
+    private bool _isTestingConn;
+    private string _connTestResult = "";
+    private bool _connTestSuccess;
+
+    private void UseSampleProject()
+    {
+        var sampleDir = Path.Combine(Directory.GetCurrentDirectory(), "sample-ssis-project");
+        if (!Directory.Exists(sampleDir))
+        {
+            sampleDir = "/home/hirazone/Documents/ssis-lineage-hub/sample-ssis-project";
+        }
+        projectPath = sampleDir;
+    }
+
+    private void FillDemoConnectionString()
+    {
+        sqlConnectionString = "Server=localhost,1433;Database=SsisDemoDB;User Id=sa;Password=YourPassword123!;TrustServerCertificate=True";
+        includeSqlProcedures = true;
+        _connTestResult = "";
+    }
+
+    private async Task TestSqlConnection()
+    {
+        if (string.IsNullOrWhiteSpace(sqlConnectionString))
+        {
+            _connTestSuccess = false;
+            _connTestResult = "Harap isi Connection String terlebih dahulu.";
+            return;
+        }
+
+        _isTestingConn = true;
+        _connTestResult = "";
+        StateHasChanged();
+
+        await Task.Yield();
+
+        var res = SqlProcedureDefinitionLoader.TestConnection(sqlConnectionString);
+        _connTestSuccess = res.Success;
+        _connTestResult = res.Message;
+        _isTestingConn = false;
     }
 
     private Task<IEnumerable<string>> SearchPackages(string? value, CancellationToken token)

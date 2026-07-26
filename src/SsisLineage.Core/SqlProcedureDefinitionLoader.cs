@@ -15,6 +15,35 @@ namespace SsisLineage.Core
             _connectionString = connectionString;
         }
 
+        public static (bool Success, string Message) TestConnection(string connectionString)
+        {
+            if (string.IsNullOrWhiteSpace(connectionString))
+                return (false, "Connection string is empty.");
+
+            try
+            {
+                var effective = NormalizeToSqlClientConnectionString(connectionString);
+                using var conn = new SqlConnection(effective);
+                conn.Open();
+
+                using var cmd = conn.CreateCommand();
+                cmd.CommandText = "SELECT @@VERSION, DB_NAME()";
+                using var reader = cmd.ExecuteReader();
+                if (reader.Read())
+                {
+                    var version = reader.IsDBNull(0) ? "" : reader.GetString(0);
+                    var db = reader.IsDBNull(1) ? "" : reader.GetString(1);
+                    var firstLine = version.Split('\n')[0].Trim();
+                    return (true, $"Connected to '{db}' — {firstLine}");
+                }
+                return (true, "Connected successfully!");
+            }
+            catch (Exception ex)
+            {
+                return (false, ex.Message);
+            }
+        }
+
         public string? TryLoadDefinition(string procedureReference)
         {
             if (string.IsNullOrWhiteSpace(_connectionString)

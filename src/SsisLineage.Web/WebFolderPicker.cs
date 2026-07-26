@@ -23,60 +23,77 @@ internal sealed class WebFolderPicker(IJSRuntime js) : IFolderPicker
 
     public async Task<string?> PickFolderAsync(string? startingPath = null)
     {
-        // Ask the browser to open a folder picker and return the top-level folder name.
-        string? folderName;
         try
         {
-            folderName = await js.InvokeAsync<string?>("webFolderPicker.pick");
+            // Ask the browser to open a folder picker and return the top-level folder name.
+            string? folderName = await js.InvokeAsync<string?>("webFolderPicker.pick");
+
+            if (string.IsNullOrWhiteSpace(folderName))
+                return null;
+
+            // Try to resolve the absolute path on the server (same machine as browser).
+            var resolved = TryResolveAbsolutePath(folderName, startingPath);
+            return resolved ?? folderName;   // fallback: return just the name so user sees it
         }
         catch
         {
             return null;
         }
-
-        if (string.IsNullOrWhiteSpace(folderName))
-            return null;
-
-        // Try to resolve the absolute path on the server (same machine as browser).
-        var resolved = TryResolveAbsolutePath(folderName, startingPath);
-        return resolved ?? folderName;   // fallback: return just the name so user sees it
     }
 
     // ── Resolver ─────────────────────────────────────────────────────────────
 
     private static string? TryResolveAbsolutePath(string folderName, string? hint)
     {
-        // Build candidate search roots — ordered by likelihood.
-        var roots = new List<string>();
-
-        // 1. Parent of the previously-used path (most likely same neighbourhood)
-        if (!string.IsNullOrEmpty(hint))
+        try
         {
-            var parent = Path.GetDirectoryName(hint.TrimEnd('/', '\\'));
-            if (!string.IsNullOrEmpty(parent)) roots.Add(parent);
+            // Build candidate search roots — ordered by likelihood.
+            var roots = new List<string>();
+
+            // 1. Parent of the previously-used path (most likely same neighbourhood)
+            if (!string.IsNullOrWhiteSpace(hint))
+            {
+                try
+                {
+                    var parent = Path.GetDirectoryName(hint.TrimEnd('/', '\\'));
+                    if (!string.IsNullOrEmpty(parent)) roots.Add(parent);
+                }
+                catch { }
+            }
+
+            // 2. Common user directories
+            try
+            {
+                var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
+                if (!string.IsNullOrEmpty(home))
+                {
+                    roots.Add(Path.Combine(home, "Documents"));
+                    roots.Add(Path.Combine(home, "Desktop"));
+                    roots.Add(Path.Combine(home, "Downloads"));
+                    roots.Add(home);
+                }
+            }
+            catch { }
+
+            // 3. Absolute short-circuit — if folderName itself looks like a full path
+            if (Path.IsPathRooted(folderName) && Directory.Exists(folderName))
+                return folderName;
+
+            // Search each root up to 3 levels deep (fast, bounded)
+            foreach (var root in roots.Distinct())
+            {
+                if (!Directory.Exists(root)) continue;
+
+                var match = FindFolder(root, folderName, maxDepth: 3);
+                if (match != null) return match;
+            }
+
+            return null;
         }
-
-        // 2. Common user directories
-        var home = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
-        roots.Add(Path.Combine(home, "Documents"));
-        roots.Add(Path.Combine(home, "Desktop"));
-        roots.Add(Path.Combine(home, "Downloads"));
-        roots.Add(home);
-
-        // 3. Absolute short-circuit — if folderName itself looks like a full path
-        if (Path.IsPathRooted(folderName) && Directory.Exists(folderName))
-            return folderName;
-
-        // Search each root up to 3 levels deep (fast, bounded)
-        foreach (var root in roots.Distinct())
+        catch
         {
-            if (!Directory.Exists(root)) continue;
-
-            var match = FindFolder(root, folderName, maxDepth: 3);
-            if (match != null) return match;
+            return null;
         }
-
-        return null;
     }
 
     private static string? FindFolder(string root, string target, int maxDepth)
@@ -95,8 +112,7 @@ internal sealed class WebFolderPicker(IJSRuntime js) : IFolderPicker
                 if (found != null) return found;
             }
         }
-        catch (UnauthorizedAccessException) { /* skip protected dirs */ }
-        catch (IOException) { }
+        catch { /* skip unreadable or protected dirs */ }
 
         return null;
     }

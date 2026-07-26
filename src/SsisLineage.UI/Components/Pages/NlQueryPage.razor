@@ -1,0 +1,275 @@
+@page "/nl-query"
+@using SsisLineage.Core
+@using SsisLineage.Core.Models
+@using SsisLineage.UI.Services
+@inject LineageService LineageService
+@inject NavigationManager NavigationManager
+
+<PageTitle>NL Query Engine — SSIS Lineage Hub</PageTitle>
+
+<MudStack Spacing="4" Class="pa-4">
+
+    <!-- ── Header ── -->
+    <div>
+        <MudText Typo="Typo.overline" Color="Color.Info" Style="letter-spacing:1px;">Natural Language</MudText>
+        <MudText Typo="Typo.h4" Style="font-weight:700;">Query Engine</MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1">
+            Tanyakan apa saja tentang lineage data Anda — dalam Bahasa Indonesia atau English.
+            100% offline, berbasis graph traversal.
+        </MudText>
+    </div>
+
+    <!-- ── No report guard ── -->
+    @if (_graph == null)
+    {
+        <MudPaper Outlined="true" Elevation="0" Class="pa-8 d-flex flex-column align-center justify-center" Style="border-radius:16px;">
+            <MudIcon Icon="@Icons.Material.Filled.Psychology" Size="Size.Large" Color="Color.Info" />
+            <MudText Typo="Typo.subtitle1" Class="mt-2" Style="font-weight:700;">No lineage report loaded</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center" Class="mb-3">
+                Generate atau load lineage report dulu, lalu kembali ke sini untuk mulai query.
+            </MudText>
+            <MudButton Href="/lineage" Variant="Variant.Filled" Color="Color.Info" StartIcon="@Icons.Material.Filled.Hub">
+                Go to Workspace
+            </MudButton>
+        </MudPaper>
+    }
+    else
+    {
+        <!-- ── Search bar ── -->
+        <MudPaper Class="pa-5" Elevation="4"
+                  Style="border-radius:20px; border:1px solid rgba(96,165,250,0.2); background:rgba(96,165,250,0.04);">
+
+            <div class="d-flex align-end gap-3">
+                <MudTextField @bind-Value="_query"
+                              Label="Tanyakan sesuatu tentang lineage Anda…"
+                              Placeholder='contoh: "Dimana OsPokok berasal?" atau "Package mana yang nulis ke FactSimpanan?"'
+                              Variant="Variant.Outlined" Margin="Margin.None" Style="flex:1"
+                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Psychology"
+                              AdornmentColor="Color.Info"
+                              OnKeyDown="HandleKeyDown"
+                              Immediate="false" />
+                <MudButton OnClick="RunQuery"
+                           Variant="Variant.Filled" Color="Color.Info"
+                           StartIcon="@Icons.Material.Filled.Search"
+                           Style="height:56px; min-width:110px; border-radius:12px; font-weight:700;"
+                           Disabled="_isRunning">
+                    @(_isRunning ? "..." : "Ask")
+                </MudButton>
+            </div>
+
+            <!-- Intent badge (shown after parsing) -->
+            @if (_parsed != null && _parsed.Intent != NlQueryIntent.Unknown)
+            {
+                <div class="d-flex align-center gap-2 mt-3 flex-wrap">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Detected intent:</MudText>
+                    <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Filled"
+                             Icon="@Icons.Material.Filled.AutoAwesome">
+                        @_parsed.IntentLabel
+                    </MudChip>
+                    @if (!string.IsNullOrEmpty(_parsed.Entity))
+                    {
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Entity:</MudText>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">
+                            @_parsed.Entity
+                        </MudChip>
+                    }
+                </div>
+            }
+        </MudPaper>
+
+        <!-- ── Suggested questions ── -->
+        @if (_result == null && !_isRunning)
+        {
+            <div>
+                <MudText Typo="Typo.subtitle2" Color="Color.Secondary" Class="mb-2">
+                    💡 Pertanyaan yang sering diajukan:
+                </MudText>
+                <div class="d-flex flex-wrap gap-2">
+                    @foreach (var q in _suggestions)
+                    {
+                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info"
+                                 OnClick="@(() => AskSuggestion(q))"
+                                 Style="cursor:pointer;">
+                            @q
+                        </MudChip>
+                    }
+                </div>
+            </div>
+        }
+
+        <!-- ── Loading ── -->
+        @if (_isRunning)
+        {
+            <MudPaper Class="pa-6 d-flex flex-column align-center justify-center" Elevation="1"
+                      Style="border-radius:16px; min-height:200px;">
+                <MudProgressCircular Indeterminate="true" Color="Color.Info" Size="Size.Large" />
+                <MudText Typo="Typo.subtitle1" Class="mt-4" Color="Color.Secondary">Traversing lineage graph…</MudText>
+            </MudPaper>
+        }
+
+        <!-- ── Results ── -->
+        @if (_result != null && !_isRunning)
+        {
+            <MudStack Spacing="3">
+
+                <!-- Summary card -->
+                <MudPaper Class="pa-4" Elevation="2" Style="border-radius:16px; border:1px solid rgba(96,165,250,0.2);">
+                    <div class="d-flex align-center gap-3">
+                        <MudIcon Icon="@(_result.HasResults ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Info)"
+                                 Color="@(_result.HasResults ? Color.Success : Color.Warning)" Size="Size.Medium" />
+                        <div>
+                            <MudText Typo="Typo.subtitle1" Style="font-weight:700;">@_result.Summary</MudText>
+                            @if (_result.HasResults)
+                            {
+                                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                    @_result.Rows.Count result(s) · intent: @_result.Query.IntentLabel
+                                </MudText>
+                            }
+                        </div>
+                    </div>
+                </MudPaper>
+
+                <!-- Results grid -->
+                @if (_result.HasResults)
+                {
+                    <MudPaper Class="pa-4" Elevation="2" Style="border-radius:16px;">
+                        <MudDataGrid T="NlResultRow" Items="_result.Rows" Dense="true" Hover="true"
+                                     FixedHeader="true" Height="350px" SortMode="SortMode.Single">
+                            <Columns>
+                                <TemplateColumn Title="Category" InitialDirection="SortDirection.None">
+                                    <CellTemplate>
+                                        @{
+                                            var cat = context.Item.Category;
+                                            var color = cat switch
+                                            {
+                                                "Source"  => Color.Success,
+                                                "Target"  => Color.Warning,
+                                                "Package" => Color.Info,
+                                                "Column"  => Color.Primary,
+                                                _         => Color.Default
+                                            };
+                                        }
+                                        <MudChip T="string" Size="Size.Small" Color="@color" Variant="Variant.Filled"
+                                                 Style="height:20px; font-size:0.65rem;">@cat</MudChip>
+                                    </CellTemplate>
+                                </TemplateColumn>
+                                <PropertyColumn Property="x => x.Primary" Title="@PrimaryColumnTitle()" />
+                                <PropertyColumn Property="x => x.Secondary" Title="@SecondaryColumnTitle()" />
+                                @if (_result.Rows.Any(r => r.Count > 0))
+                                {
+                                    <TemplateColumn Title="Count">
+                                        <CellTemplate>
+                                            @if (context.Item.Count > 0)
+                                            {
+                                                <MudChip T="string" Size="Size.Small" Color="Color.Default"
+                                                         Variant="Variant.Outlined">@context.Item.Count</MudChip>
+                                            }
+                                        </CellTemplate>
+                                    </TemplateColumn>
+                                }
+                            </Columns>
+                        </MudDataGrid>
+                    </MudPaper>
+                }
+
+                <!-- Follow-up questions -->
+                @if (_result.FollowUps.Any())
+                {
+                    <div>
+                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary" Class="mb-2">
+                            🔄 Follow-up questions:
+                        </MudText>
+                        <div class="d-flex flex-wrap gap-2">
+                            @foreach (var fu in _result.FollowUps)
+                            {
+                                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary"
+                                         OnClick="@(() => AskSuggestion(fu))"
+                                         Style="cursor:pointer;">
+                                    @fu
+                                </MudChip>
+                            }
+                        </div>
+                    </div>
+                }
+
+            </MudStack>
+        }
+    }
+
+</MudStack>
+
+@code {
+    [CascadingParameter(Name = "IsDarkMode")] private bool IsDarkMode { get; set; }
+
+    private LineageGraph? _graph;
+    private string _query = "";
+    private bool _isRunning;
+    private ParsedNlQuery? _parsed;
+    private NlQueryResult? _result;
+
+    private List<string> _suggestions = new();
+
+    protected override void OnInitialized()
+    {
+        var report = LineageService.GetPublishedReport();
+        if (report != null)
+        {
+            _graph = report.Graph;
+            _suggestions = NlQueryEngine.SuggestedQuestions(_graph);
+        }
+        else
+        {
+            _suggestions = NlQueryEngine.SuggestedQuestions(null);
+        }
+    }
+
+    private async Task RunQuery()
+    {
+        if (_graph == null || string.IsNullOrWhiteSpace(_query)) return;
+
+        _isRunning = true;
+        _result = null;
+        StateHasChanged();
+
+        await Task.Delay(60); // yield to re-render with spinner
+
+        _parsed = NlQueryParser.Parse(_query);
+        _result = NlQueryEngine.Execute(_parsed, _graph);
+        _isRunning = false;
+    }
+
+    private async Task AskSuggestion(string q)
+    {
+        _query = q;
+        await RunQuery();
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter") await RunQuery();
+    }
+
+    private string PrimaryColumnTitle() => _result?.Query.Intent switch
+    {
+        NlQueryIntent.FindPackagesWritingToTable    => "Package",
+        NlQueryIntent.FindPackagesReadingFromTable  => "Package",
+        NlQueryIntent.FindAllPackages               => "Package",
+        NlQueryIntent.FindPackageForColumn          => "Package",
+        NlQueryIntent.FindOrphanTables              => "Table",
+        NlQueryIntent.FindHighFanoutColumns         => "Column",
+        _                                           => "Source / Target"
+    };
+
+    private string SecondaryColumnTitle() => _result?.Query.Intent switch
+    {
+        NlQueryIntent.FindPackagesWritingToTable    => "Tasks",
+        NlQueryIntent.FindPackagesReadingFromTable  => "Tasks",
+        NlQueryIntent.FindAllPackages               => "Stats",
+        NlQueryIntent.FindPackageForColumn          => "Tasks",
+        NlQueryIntent.FindOrphanTables              => "Status",
+        NlQueryIntent.FindHighFanoutColumns         => "Usage",
+        NlQueryIntent.FindColumnSource              => "Via Package / Task",
+        NlQueryIntent.FindColumnTarget              => "Via Package / Task",
+        _                                           => "Details"
+    };
+}
