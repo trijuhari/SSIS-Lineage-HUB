@@ -1,4 +1,5 @@
 using MudBlazor.Services;
+using SsisLineage.Web;
 using SsisLineage.Web.Components;
 using SsisLineage.UI.Services;
 
@@ -14,7 +15,7 @@ builder.Services.AddMudServices();
 // Add application services (shared UI library)
 builder.Services.AddSingleton<LineageReportStore>();
 builder.Services.AddSingleton<RecentProjectsService>();
-builder.Services.AddSingleton<IFolderPicker, NoopFolderPicker>();
+builder.Services.AddScoped<IFolderPicker, WebFolderPicker>();  // uses webkitdirectory + server-side path resolver
 builder.Services.AddScoped<LineageUserSession>();
 builder.Services.AddScoped<LineageService>();
 

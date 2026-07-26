@@ -29,9 +29,19 @@
                     <MudIconButton Icon="@Icons.Material.Filled.Home" Color="Color.Inherit" Href="/" />
                 </div>
                 
-                <MudTextField @bind-Value="projectPath" Label="Project Folder Path" Placeholder="/home/user/Documents/SSIS"
-                              Variant="Variant.Outlined" Margin="Margin.Normal" Class="mb-3"
-                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Folder" />
+                <div class="d-flex align-end gap-2 mb-3">
+                    <MudTextField @bind-Value="projectPath" Label="Project Folder Path" Placeholder="/home/user/Documents/SSIS"
+                                  Variant="Variant.Outlined" Margin="Margin.None" Style="flex:1"
+                                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Folder" />
+                    <MudTooltip Text="Browse and select your SSIS project folder" Placement="Placement.Top">
+                        <MudButton OnClick="BrowseFolder"
+                                   Variant="Variant.Outlined" Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.FolderOpen"
+                                   Style="height:56px; min-width:120px; border-radius:8px; white-space:nowrap;">
+                            Open Folder
+                        </MudButton>
+                    </MudTooltip>
+                </div>
                               
                 <MudAutocomplete T="string" @bind-Value="startPackage" Label="Start Package Name (or 'all' / '*')"
                                  Placeholder="Master.dtsx" Variant="Variant.Outlined" Margin="Margin.Normal" Class="mb-3"
@@ -135,20 +145,18 @@ else
 
                 @if (_controlsExpanded)
                 {
-                    <MudTextField @bind-Value="projectPath" Label="Project path" Placeholder="C:\Project\SSIS"
-                                  Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-1"
-                                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Folder" />
-                    @if (FolderPicker.IsSupported)
-                    {
-                        <MudButton OnClick="BrowseFolder" Variant="Variant.Text" Size="Size.Small"
-                                   StartIcon="@Icons.Material.Filled.FolderOpen" Class="mb-2">Browse…</MudButton>
-                    }
-                    else
-                    {
-                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mb-2">
-                            Type or paste the full folder path. (The browser app can't open a native folder picker — use the desktop app for Browse, or pick from recent projects.)
-                        </MudText>
-                    }
+                    <div class="d-flex align-end gap-2 mb-2">
+                        <MudTextField @bind-Value="projectPath" Label="Project path" Placeholder="C:\Project\SSIS"
+                                      Variant="Variant.Outlined" Margin="Margin.None" Style="flex:1"
+                                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Folder" />
+                        <MudTooltip Text="Browse and select your SSIS project folder" Placement="Placement.Top">
+                            <MudIconButton OnClick="BrowseFolder"
+                                           Icon="@Icons.Material.Filled.FolderOpen"
+                                           Variant="Variant.Outlined" Color="Color.Primary"
+                                           Size="Size.Medium"
+                                           Style="height:40px; width:40px; border-radius:8px;" />
+                        </MudTooltip>
+                    </div>
 
                     <MudAutocomplete T="string" @bind-Value="startPackage" Label="Start package"
                                      Placeholder="Master.dtsx" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2"

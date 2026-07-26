@@ -1,0 +1,528 @@
+@page "/what-if"
+@using System.Linq
+@using SsisLineage.Core
+@using SsisLineage.Core.Models
+@using SsisLineage.UI.Services
+@inject LineageService LineageService
+@inject IJSRuntime JS
+@inject NavigationManager NavigationManager
+
+<PageTitle>What-If Simulator — SSIS Lineage Hub</PageTitle>
+
+<MudStack Spacing="4" Class="pa-4">
+
+    <!-- ── Header ─────────────────────────────────────────────────────────── -->
+    <div class="d-flex justify-space-between align-center flex-wrap gap-4">
+        <div>
+            <MudText Typo="Typo.overline" Color="Color.Warning" Style="letter-spacing:1px;">Impact Analysis</MudText>
+            <MudText Typo="Typo.h4" Style="font-weight:700;">What-If Simulator</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1">
+                Simulate schema changes — rename/drop columns or tables — and instantly see which packages, mappings, and procedures break. 100% offline, no database touched.
+            </MudText>
+        </div>
+        @if (_result != null)
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Success"
+                       StartIcon="@Icons.Material.Filled.Download"
+                       OnClick="ExportMarkdown">Export Checklist (.md)</MudButton>
+        }
+    </div>
+
+    <!-- ── No report guard ────────────────────────────────────────────────── -->
+    @if (_graph == null)
+    {
+        <MudPaper Outlined="true" Elevation="0" Class="pa-8 d-flex flex-column align-center justify-center" Style="border-radius:16px;">
+            <MudIcon Icon="@Icons.Material.Filled.Science" Size="Size.Large" Color="Color.Warning" />
+            <MudText Typo="Typo.subtitle1" Class="mt-2" Style="font-weight:700;">No lineage report loaded</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center" Class="mb-3">
+                Generate or load a lineage report first, then return here to simulate schema changes.
+            </MudText>
+            <MudButton Href="/lineage" Variant="Variant.Filled" Color="Color.Warning" StartIcon="@Icons.Material.Filled.Hub">
+                Go to Workspace
+            </MudButton>
+        </MudPaper>
+    }
+    else
+    {
+        <MudGrid Spacing="4">
+
+            <!-- ── LEFT PANEL: Change Builder ─────────────────────────────── -->
+            <MudItem xs="12" md="5">
+                <MudPaper Class="pa-5" Elevation="3"
+                          Style="border-radius:16px; border:1px solid rgba(251,191,36,0.15); height:100%;">
+
+                    <MudText Typo="Typo.h6" Style="font-weight:700;" Class="mb-1">Proposed Changes</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mb-4">
+                        Add one or more schema changes to simulate in batch.
+                    </MudText>
+
+                    <!-- Change type selector -->
+                    <MudSelect @bind-Value="_newChangeType" Label="Change Type" Variant="Variant.Outlined"
+                               Margin="Margin.Dense" Class="mb-3"
+                               AdornmentIcon="@Icons.Material.Filled.SwapHoriz" Adornment="Adornment.Start">
+                        <MudSelectItem Value="SimulationChangeType.RenameColumn">Rename Column</MudSelectItem>
+                        <MudSelectItem Value="SimulationChangeType.DropColumn">Drop Column</MudSelectItem>
+                        <MudSelectItem Value="SimulationChangeType.RenameTable">Rename Table</MudSelectItem>
+                        <MudSelectItem Value="SimulationChangeType.DropTable">Drop Table</MudSelectItem>
+                        <MudSelectItem Value="SimulationChangeType.ChangeColumnType">Change Column Type</MudSelectItem>
+                    </MudSelect>
+
+                    <!-- Table autocomplete -->
+                    <MudAutocomplete T="string" @bind-Value="_newTable" Label="Table (e.g. dbo.MasterPinjaman)"
+                                     Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-3"
+                                     SearchFunc="SearchTables" CoerceValue="true" Clearable="true"
+                                     MaxItems="30" ResetValueOnEmptyText="false"
+                                     Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.TableChart"
+                                     Placeholder="Type to search tables..." />
+
+                    <!-- Column (hidden for table-level ops) -->
+                    @if (_newChangeType is SimulationChangeType.RenameColumn
+                                       or SimulationChangeType.DropColumn
+                                       or SimulationChangeType.ChangeColumnType)
+                    {
+                        <MudAutocomplete T="string" @bind-Value="_newColumn" Label="Column"
+                                         Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-3"
+                                         SearchFunc="SearchColumns" CoerceValue="true" Clearable="true"
+                                         MaxItems="30" ResetValueOnEmptyText="false"
+                                         Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.ViewColumn"
+                                         Placeholder="Type to search columns..." />
+                    }
+
+                    <!-- New name (rename operations) -->
+                    @if (_newChangeType is SimulationChangeType.RenameColumn or SimulationChangeType.RenameTable)
+                    {
+                        <MudTextField @bind-Value="_newName" Label="New Name" Variant="Variant.Outlined"
+                                      Margin="Margin.Dense" Class="mb-3"
+                                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.DriveFileRenameOutline"
+                                      Placeholder="Enter new name..." />
+                    }
+
+                    <!-- New type (type change operation) -->
+                    @if (_newChangeType == SimulationChangeType.ChangeColumnType)
+                    {
+                        <MudTextField @bind-Value="_newType" Label="New Type (e.g. NVARCHAR(255))"
+                                      Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-3"
+                                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Transform"
+                                      Placeholder="VARCHAR(100), INT, DATETIME2, ..." />
+                    }
+
+                    @if (!string.IsNullOrEmpty(_addError))
+                    {
+                        <MudAlert Severity="Severity.Warning" Dense="true" Class="mb-3">@_addError</MudAlert>
+                    }
+
+                    <MudButton OnClick="AddChange" Variant="Variant.Filled" Color="Color.Warning"
+                               FullWidth="true" StartIcon="@Icons.Material.Filled.Add" Style="border-radius:8px;">
+                        Add Change
+                    </MudButton>
+
+                    <!-- Queued changes list -->
+                    @if (_pendingChanges.Any())
+                    {
+                        <MudDivider Class="my-4" />
+                        <MudText Typo="Typo.subtitle2" Class="mb-2" Style="font-weight:700;">
+                            Queued (@_pendingChanges.Count)
+                        </MudText>
+                        @foreach (var (change, idx) in _pendingChanges.Select((c, i) => (c, i)))
+                        {
+                            <div class="d-flex justify-space-between align-center mb-2 px-3 py-2"
+                                 style="background:rgba(251,191,36,0.06); border-radius:8px; border:1px solid rgba(251,191,36,0.15);">
+                                <div>
+                                    <MudText Typo="Typo.body2" Style="font-weight:600;">@DescribeChange(change)</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">@ChangeTypeLabel(change.ChangeType)</MudText>
+                                </div>
+                                <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
+                                               Color="Color.Error" OnClick="@(() => RemoveChange(idx))" />
+                            </div>
+                        }
+
+                        <MudButton OnClick="RunSimulation" Variant="Variant.Filled" Color="Color.Error"
+                                   FullWidth="true" Class="mt-3" Style="border-radius:8px;"
+                                   StartIcon="@Icons.Material.Filled.PlayArrow"
+                                   Disabled="_isRunning">
+                            @(_isRunning ? "Simulating..." : $"Run Simulation ({_pendingChanges.Count} change(s))")
+                        </MudButton>
+                        <MudButton OnClick="ClearAll" Variant="Variant.Text" Color="Color.Default"
+                                   FullWidth="true" Class="mt-1" Style="border-radius:8px;">
+                            Clear All
+                        </MudButton>
+                    }
+
+                </MudPaper>
+            </MudItem>
+
+            <!-- ── RIGHT PANEL: Results ────────────────────────────────────── -->
+            <MudItem xs="12" md="7">
+                @if (_result == null && !_isRunning)
+                {
+                    <MudPaper Class="pa-8 d-flex flex-column align-center justify-center"
+                              Elevation="1" Style="border-radius:16px; min-height:320px; border:1px dashed rgba(255,255,255,0.08);">
+                        <MudIcon Icon="@Icons.Material.Filled.BubbleChart" Size="Size.Large"
+                                 Style="color:rgba(251,191,36,0.4);" />
+                        <MudText Typo="Typo.subtitle1" Class="mt-3" Color="Color.Secondary">
+                            Add changes on the left and click <strong>Run Simulation</strong>
+                        </MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">
+                            Results appear here instantly — no database connection required.
+                        </MudText>
+                    </MudPaper>
+                }
+                else if (_isRunning)
+                {
+                    <MudPaper Class="pa-8 d-flex flex-column align-center justify-center"
+                              Elevation="1" Style="border-radius:16px; min-height:320px;">
+                        <MudProgressCircular Indeterminate="true" Color="Color.Warning" Size="Size.Large" />
+                        <MudText Typo="Typo.subtitle1" Class="mt-4">Simulating impact...</MudText>
+                    </MudPaper>
+                }
+                else if (_result != null)
+                {
+                    <MudStack Spacing="3">
+
+                        <!-- Summary banner -->
+                        <MudPaper Class="pa-4" Elevation="2" Style="@BannerStyle">
+                            <div class="d-flex align-center gap-3 mb-3">
+                                <MudIcon Icon="@(_result.HasCritical ? Icons.Material.Filled.Warning : Icons.Material.Filled.CheckCircle)"
+                                         Color="@(_result.HasCritical ? Color.Error : Color.Success)" Size="Size.Medium" />
+                                <MudText Typo="Typo.h6" Style="font-weight:700;">
+                                    @(_result.HasCritical ? "Breaking Changes Detected" : "No Critical Breaks Found")
+                                </MudText>
+                            </div>
+                            <MudGrid Spacing="2">
+                                <MudItem xs="6" sm="3">
+                                    <div class="text-center pa-3" style="background:rgba(239,68,68,0.08); border-radius:10px;">
+                                        <MudText Typo="Typo.h5" Style="font-weight:800; color:#ef4444;">@_result.AffectedPackages</MudText>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">Packages</MudText>
+                                    </div>
+                                </MudItem>
+                                <MudItem xs="6" sm="3">
+                                    <div class="text-center pa-3" style="background:rgba(239,68,68,0.08); border-radius:10px;">
+                                        <MudText Typo="Typo.h5" Style="font-weight:800; color:#ef4444;">@_result.AffectedMappings</MudText>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">Broken Mappings</MudText>
+                                    </div>
+                                </MudItem>
+                                <MudItem xs="6" sm="3">
+                                    <div class="text-center pa-3" style="background:rgba(251,191,36,0.08); border-radius:10px;">
+                                        <MudText Typo="Typo.h5" Style="font-weight:800; color:#f59e0b;">@_result.AffectedProcedures</MudText>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">Procedures</MudText>
+                                    </div>
+                                </MudItem>
+                                <MudItem xs="6" sm="3">
+                                    <div class="text-center pa-3" style="background:rgba(251,191,36,0.08); border-radius:10px;">
+                                        <MudText Typo="Typo.h5" Style="font-weight:800; color:#f59e0b;">@_result.AffectedTasks</MudText>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">Tasks</MudText>
+                                    </div>
+                                </MudItem>
+                            </MudGrid>
+                        </MudPaper>
+
+                        <!-- Findings accordion -->
+                        @if (_result.Findings.Any())
+                        {
+                            <MudPaper Class="pa-4" Elevation="2" Style="border-radius:16px;">
+                                <MudText Typo="Typo.h6" Style="font-weight:700;" Class="mb-3">
+                                    Findings (@_result.Findings.Count)
+                                </MudText>
+                                <MudDataGrid T="ImpactFinding" Items="_result.Findings" Dense="true" Hover="true"
+                                             FixedHeader="true" Height="280px" SortMode="SortMode.None">
+                                    <Columns>
+                                        <TemplateColumn Title="Severity" StickyLeft="true">
+                                            <CellTemplate>
+                                                @if (context.Item.Severity == ImpactSeverity.Critical)
+                                                {
+                                                    <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Filled">Critical</MudChip>
+                                                }
+                                                else if (context.Item.Severity == ImpactSeverity.Warning)
+                                                {
+                                                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled">Warning</MudChip>
+                                                }
+                                                else
+                                                {
+                                                    <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">Info</MudChip>
+                                                }
+                                            </CellTemplate>
+                                        </TemplateColumn>
+                                        <PropertyColumn Property="x => x.Category" Title="Category" />
+                                        <PropertyColumn Property="x => x.Location" Title="Location" />
+                                        <PropertyColumn Property="x => x.Description" Title="Description" />
+                                    </Columns>
+                                </MudDataGrid>
+                            </MudPaper>
+                        }
+
+                        <!-- Migration checklist -->
+                        @if (_result.Checklist.Any())
+                        {
+                            <MudPaper Class="pa-4" Elevation="2" Style="border-radius:16px;">
+                                <MudText Typo="Typo.h6" Style="font-weight:700;" Class="mb-3">
+                                    Migration Checklist (@_result.Checklist.Count steps)
+                                </MudText>
+                                @foreach (var (item, i) in _result.Checklist.Select((x, i) => (x, i + 1)))
+                                {
+                                    <div class="d-flex align-start gap-3 mb-3 px-3 py-3"
+                                         style="@ChecklistItemStyle(item)">
+                                        <MudAvatar Size="Size.Small" Color="@(item.IsRequired ? Color.Error : Color.Warning)"
+                                                   Variant="Variant.Filled" Style="min-width:28px; width:28px; height:28px; font-size:0.75rem;">
+                                            @i
+                                        </MudAvatar>
+                                        <div style="min-width:0;">
+                                            <div class="d-flex align-center gap-2 flex-wrap">
+                                                <MudText Typo="Typo.body2" Style="font-weight:700;">@item.Action</MudText>
+                                                @if (item.IsRequired)
+                                                {
+                                                    <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined" Style="height:18px;">Required</MudChip>
+                                                }
+                                                else
+                                                {
+                                                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined" Style="height:18px;">Recommended</MudChip>
+                                                }
+                                            </div>
+                                            <MudText Typo="Typo.caption" Style="color:#60a5fa; font-family:monospace; word-break:break-all;">@item.Target</MudText>
+                                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">@item.Reason</MudText>
+                                        </div>
+                                    </div>
+                                }
+                            </MudPaper>
+                        }
+
+                        @if (!_result.Findings.Any())
+                        {
+                            <MudAlert Severity="Severity.Success" Variant="Variant.Filled" Style="border-radius:12px;">
+                                <strong>No impact detected!</strong> The proposed change(s) do not break any column mappings, tasks, or stored procedures in the current lineage graph.
+                            </MudAlert>
+                        }
+
+                    </MudStack>
+                }
+            </MudItem>
+        </MudGrid>
+    }
+
+</MudStack>
+
+@code {
+    [CascadingParameter(Name = "IsDarkMode")] private bool IsDarkMode { get; set; }
+
+    // ── State ──────────────────────────────────────────────────────────────────
+    private LineageGraph? _graph;
+
+    // Form fields
+    private SimulationChangeType _newChangeType = SimulationChangeType.RenameColumn;
+    private string _newTable  = "";
+    private string _newColumn = "";
+    private string _newName   = "";
+    private string _newType   = "";
+    private string _addError  = "";
+
+    // Queued changes & result
+    private readonly List<SchemaChange> _pendingChanges = new();
+    private SimulationResult? _result;
+    private bool _isRunning;
+
+    // Table/column autocomplete caches
+    private List<string> _allTables  = new();
+    private List<string> _allColumns = new();
+
+    // ── Init ───────────────────────────────────────────────────────────────────
+    protected override void OnInitialized()
+    {
+        var report = LineageService.GetPublishedReport();
+        if (report == null) return;
+        _graph = report.Graph;
+        BuildAutocompleteData();
+    }
+
+    private void BuildAutocompleteData()
+    {
+        if (_graph == null) return;
+
+        var tables = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var columns = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var m in _graph.ColumnMappings)
+        {
+            void AddTable(string schema, string table, string comp)
+            {
+                if (!string.IsNullOrEmpty(table))
+                    tables.Add(string.IsNullOrEmpty(schema) ? table : $"{schema}.{table}");
+                else if (!string.IsNullOrEmpty(comp))
+                    tables.Add(comp);
+            }
+
+            AddTable(m.SourceSchema, m.SourceTable, m.SourceComponentName);
+            AddTable(m.TargetSchema, m.TargetTable, m.TargetComponentName);
+
+            if (!string.IsNullOrEmpty(m.SourceColumnName)) columns.Add(m.SourceColumnName);
+            if (!string.IsNullOrEmpty(m.TargetColumnName)) columns.Add(m.TargetColumnName);
+        }
+
+        _allTables  = tables.OrderBy(t => t, StringComparer.OrdinalIgnoreCase).ToList();
+        _allColumns = columns.OrderBy(c => c, StringComparer.OrdinalIgnoreCase).ToList();
+    }
+
+    // ── Autocomplete ───────────────────────────────────────────────────────────
+    private Task<IEnumerable<string>> SearchTables(string? v, CancellationToken _)
+    {
+        if (string.IsNullOrWhiteSpace(v))
+            return Task.FromResult(_allTables.Take(20).AsEnumerable());
+        return Task.FromResult(
+            _allTables.Where(t => t.Contains(v, StringComparison.OrdinalIgnoreCase)).Take(20).AsEnumerable());
+    }
+
+    private Task<IEnumerable<string>> SearchColumns(string? v, CancellationToken _)
+    {
+        // If a table is already selected, filter columns that appear with that table
+        IEnumerable<string> candidates = _allColumns;
+        if (!string.IsNullOrEmpty(_newTable) && _graph != null)
+        {
+            var tbl = _newTable.ToLowerInvariant();
+            var colsForTable = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var m in _graph.ColumnMappings)
+            {
+                bool srcMatch = MatchesTableLocal(m.SourceSchema, m.SourceTable, m.SourceComponentName, tbl);
+                bool tgtMatch = MatchesTableLocal(m.TargetSchema, m.TargetTable, m.TargetComponentName, tbl);
+                if (srcMatch && !string.IsNullOrEmpty(m.SourceColumnName)) colsForTable.Add(m.SourceColumnName);
+                if (tgtMatch && !string.IsNullOrEmpty(m.TargetColumnName)) colsForTable.Add(m.TargetColumnName);
+            }
+            if (colsForTable.Any()) candidates = colsForTable.OrderBy(c => c, StringComparer.OrdinalIgnoreCase);
+        }
+
+        if (string.IsNullOrWhiteSpace(v))
+            return Task.FromResult(candidates.Take(20));
+        return Task.FromResult(
+            candidates.Where(c => c.Contains(v, StringComparison.OrdinalIgnoreCase)).Take(20));
+    }
+
+    private static bool MatchesTableLocal(string schema, string table, string comp, string target)
+    {
+        if (!string.IsNullOrEmpty(table))
+        {
+            var q = string.IsNullOrEmpty(schema) ? table : $"{schema}.{table}";
+            if (q.Equals(target, StringComparison.OrdinalIgnoreCase)) return true;
+            if (table.Equals(target.Split('.').Last(), StringComparison.OrdinalIgnoreCase)) return true;
+        }
+        if (!string.IsNullOrEmpty(comp))
+            return comp.Equals(target, StringComparison.OrdinalIgnoreCase) ||
+                   comp.Split('.').Last().Equals(target.Split('.').Last(), StringComparison.OrdinalIgnoreCase);
+        return false;
+    }
+
+    // ── Change management ──────────────────────────────────────────────────────
+    private void AddChange()
+    {
+        _addError = "";
+
+        if (string.IsNullOrWhiteSpace(_newTable))
+        {
+            _addError = "Please specify a table.";
+            return;
+        }
+
+        bool needsColumn = _newChangeType is SimulationChangeType.RenameColumn
+                                          or SimulationChangeType.DropColumn
+                                          or SimulationChangeType.ChangeColumnType;
+        if (needsColumn && string.IsNullOrWhiteSpace(_newColumn))
+        {
+            _addError = "Please specify a column for this change type.";
+            return;
+        }
+
+        bool needsNewName = _newChangeType is SimulationChangeType.RenameColumn
+                                           or SimulationChangeType.RenameTable;
+        if (needsNewName && string.IsNullOrWhiteSpace(_newName))
+        {
+            _addError = "Please enter the new name.";
+            return;
+        }
+
+        if (_newChangeType == SimulationChangeType.ChangeColumnType && string.IsNullOrWhiteSpace(_newType))
+        {
+            _addError = "Please specify the new column type.";
+            return;
+        }
+
+        _pendingChanges.Add(new SchemaChange
+        {
+            ChangeType = _newChangeType,
+            Table      = _newTable.Trim(),
+            Column     = _newColumn.Trim(),
+            NewName    = _newName.Trim(),
+            NewType    = _newType.Trim()
+        });
+
+        // Reset form fields
+        _newTable  = "";
+        _newColumn = "";
+        _newName   = "";
+        _newType   = "";
+        _result    = null;
+    }
+
+    private void RemoveChange(int idx)
+    {
+        if (idx >= 0 && idx < _pendingChanges.Count)
+        {
+            _pendingChanges.RemoveAt(idx);
+            _result = null;
+        }
+    }
+
+    private void ClearAll()
+    {
+        _pendingChanges.Clear();
+        _result = null;
+    }
+
+    // ── Simulation ─────────────────────────────────────────────────────────────
+    private async Task RunSimulation()
+    {
+        if (_graph == null || !_pendingChanges.Any()) return;
+        _isRunning = true;
+        StateHasChanged();
+
+        await Task.Delay(80); // let UI repaint with loading state
+        _result = ImpactSimulator.Simulate(_graph, _pendingChanges);
+        _isRunning = false;
+    }
+
+    // ── Export ─────────────────────────────────────────────────────────────────
+    private async Task ExportMarkdown()
+    {
+        if (_result == null) return;
+        var md = ImpactSimulator.GenerateMarkdown(_result);
+        var bytes  = System.Text.Encoding.UTF8.GetBytes(md);
+        var base64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("downloadFileFromBase64", "migration-checklist.md", base64);
+    }
+
+    // ── Style helpers (avoid RZ9986 — no ternary strings in component Style= attrs) ──
+    private string BannerStyle => _result?.HasCritical == true
+        ? "border-radius:16px; border:1px solid rgba(239,68,68,0.3);"
+        : "border-radius:16px; border:1px solid rgba(251,191,36,0.3);";
+
+    private static string ChecklistItemStyle(ChecklistItem item) =>
+        item.IsRequired
+            ? "background:rgba(255,255,255,0.02); border-radius:10px; border-left:3px solid #ef4444;"
+            : "background:rgba(255,255,255,0.02); border-radius:10px; border-left:3px solid #f59e0b;";
+
+    // ── Helpers ────────────────────────────────────────────────────────────────
+    private static string DescribeChange(SchemaChange c) => c.ChangeType switch
+    {
+        SimulationChangeType.RenameColumn  => $"{c.Table}.{c.Column} → {c.NewName}",
+        SimulationChangeType.DropColumn    => $"DROP {c.Table}.{c.Column}",
+        SimulationChangeType.RenameTable   => $"{c.Table} → {c.NewName}",
+        SimulationChangeType.DropTable     => $"DROP TABLE {c.Table}",
+        SimulationChangeType.ChangeColumnType => $"{c.Table}.{c.Column} :: {c.NewType}",
+        _ => c.ChangeType.ToString()
+    };
+
+    private static string ChangeTypeLabel(SimulationChangeType t) => t switch
+    {
+        SimulationChangeType.RenameColumn  => "Rename Column",
+        SimulationChangeType.DropColumn    => "Drop Column",
+        SimulationChangeType.RenameTable   => "Rename Table",
+        SimulationChangeType.DropTable     => "Drop Table",
+        SimulationChangeType.ChangeColumnType => "Change Column Type",
+        _ => t.ToString()
+    };
+}

@@ -4,13 +4,24 @@
     <div class="px-4 py-2">
         <MudText Typo="Typo.overline" Style="font-size: 0.75rem; font-weight: 700; color: var(--mud-palette-text-secondary); letter-spacing: 1px;">DISCOVERY</MudText>
     </div>
-    <MudNavLink Href="lineage" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.AccountTree" Class="modern-nav-link mb-2">
+    <MudNavLink Href="lineage" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.AccountTree" Class="modern-nav-link mb-1">
         Lineage Discovery
     </MudNavLink>
-    <MudNavLink Href="lineage-trace" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Search" Class="modern-nav-link mb-2">
+    <MudNavLink Href="lineage-trace" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Search" Class="modern-nav-link mb-1">
         Lineage Search
     </MudNavLink>
-    <MudNavLink Href="detailed-report" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Description" Class="modern-nav-link mb-2">
+    <MudNavLink Href="detailed-report" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Description" Class="modern-nav-link mb-3">
         Detailed Report
+    </MudNavLink>
+
+    <div class="px-4 py-2">
+        <MudText Typo="Typo.overline" Style="font-size: 0.75rem; font-weight: 700; color: var(--mud-palette-text-secondary); letter-spacing: 1px;">ANALYSIS</MudText>
+    </div>
+    <MudNavLink Href="what-if" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Science" Class="modern-nav-link mb-1">
+        <div class="d-flex align-center gap-2">
+            <span>What-If Simulator</span>
+            <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled"
+                     Style="height:16px; font-size:0.6rem; padding:0 5px; border-radius:4px;">NEW</MudChip>
+        </div>
     </MudNavLink>
 </MudNavMenu>
