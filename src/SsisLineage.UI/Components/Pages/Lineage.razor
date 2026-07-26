@@ -575,11 +575,34 @@ else
         {
             // Auto-collapse the controls panel when a report is already available on entry.
             _controlsExpanded = false;
-            // Restore the inputs that produced the report — the page fields reset on
-            // navigation, which both emptied the form and broke the entry-package
-            // highlight (the render call passes startPackage to mark the start node).
             if (string.IsNullOrEmpty(projectPath)) projectPath = reportData.ProjectPath;
             if (string.IsNullOrEmpty(startPackage)) startPackage = reportData.StartPackage;
+        }
+    }
+
+    private bool _isFirstRender = true;
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var savedConn = await JS.InvokeAsync<string>("localStorage.getItem", "ssis_conn_string");
+                if (!string.IsNullOrEmpty(savedConn) && string.IsNullOrEmpty(sqlConnectionString))
+                {
+                    sqlConnectionString = savedConn;
+                    includeSqlProcedures = true;
+                    StateHasChanged();
+                }
+
+                var savedPath = await JS.InvokeAsync<string>("localStorage.getItem", "ssis_project_path");
+                if (!string.IsNullOrEmpty(savedPath) && string.IsNullOrEmpty(projectPath))
+                {
+                    projectPath = savedPath;
+                    StateHasChanged();
+                }
+            }
+            catch { /* Ignore fallback */ }
         }
     }
 
@@ -618,7 +641,7 @@ else
     private string _connTestResult = "";
     private bool _connTestSuccess;
 
-    private void UseSampleProject()
+    private async Task UseSampleProject()
     {
         var sampleDir = Path.Combine(Directory.GetCurrentDirectory(), "sample-ssis-project");
         if (!Directory.Exists(sampleDir))
@@ -626,13 +649,15 @@ else
             sampleDir = "/home/hirazone/Documents/ssis-lineage-hub/sample-ssis-project";
         }
         projectPath = sampleDir;
+        try { await JS.InvokeVoidAsync("localStorage.setItem", "ssis_project_path", projectPath); } catch { }
     }
 
-    private void FillDemoConnectionString()
+    private async Task FillDemoConnectionString()
     {
         sqlConnectionString = "Server=localhost,1433;Database=SsisDemoDB;User Id=sa;Password=YourPassword123!;TrustServerCertificate=True";
         includeSqlProcedures = true;
         _connTestResult = "";
+        try { await JS.InvokeVoidAsync("localStorage.setItem", "ssis_conn_string", sqlConnectionString); } catch { }
     }
 
     private async Task TestSqlConnection()
