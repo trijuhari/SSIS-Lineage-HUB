@@ -405,7 +405,7 @@ window.cyLineage = (function () {
     }
 
     function cardTpl(d) {
-        const stateClass = d.state === 'hl' ? 'cy-hl' : d.state === 'dim' ? 'cy-dim' : '';
+        const stateClass = d.state === 'hl' ? 'cy-hl' : d.state === 'dim' ? 'cy-dim' : d.state === 'upstream' ? 'cy-upstream' : d.state === 'downstream' ? 'cy-downstream' : '';
         const startClass = d.isStart ? ' cy-start' : '';
         const entryBadge = d.isStart ? '<span class="cy-entry-badge">&#x25B6; Entry Point</span>' : '';
         const badge = d.outCount > 0 ? `<span class="cy-badge" title="${d.outCount} downstream">${d.outCount}</span>` : '';
@@ -422,28 +422,59 @@ window.cyLineage = (function () {
         </div>`;
     }
 
+    // ── Upstream (Cyan #06b6d4) & Downstream (Amber #f59e0b) Path Tracing ──
     function highlightObject(node) {
-        const nhood = node.closedNeighborhood();
-        const keep = new Set(nhood.nodes().map(n => n.id()));
-        cy.nodes().forEach(n => n.data('state', keep.has(n.id()) ? 'hl' : 'dim'));
-        cy.edges().forEach(e => { const inside = nhood.contains(e); e.toggleClass('hl', inside); e.toggleClass('faded', !inside); });
+        const predecessors = node.predecessors();
+        const successors = node.successors();
+        const predNodes = new Set(predecessors.nodes().map(n => n.id()));
+        const succNodes = new Set(successors.nodes().map(n => n.id()));
+
+        cy.nodes().forEach(n => {
+            if (n.id() === node.id()) n.data('state', 'hl');
+            else if (predNodes.has(n.id())) n.data('state', 'upstream');
+            else if (succNodes.has(n.id())) n.data('state', 'downstream');
+            else n.data('state', 'dim');
+        });
+
+        cy.edges().forEach(e => {
+            const isPred = predecessors.contains(e);
+            const isSucc = successors.contains(e);
+            e.toggleClass('hl', isPred || isSucc);
+            e.toggleClass('faded', !isPred && !isSucc);
+            if (isPred) e.style({ 'line-color': '#06b6d4', 'target-arrow-color': '#06b6d4', 'width': 3.5 });
+            else if (isSucc) e.style({ 'line-color': '#f59e0b', 'target-arrow-color': '#f59e0b', 'width': 3.5 });
+        });
     }
 
     function highlightColumnPath(node) {
-        const path = node.predecessors().union(node.successors()).union(node);
-        const keep = new Set(path.map(el => el.id()));
+        const predecessors = node.predecessors();
+        const successors = node.successors();
+        const predSet = new Set(predecessors.map(el => el.id()));
+        const succSet = new Set(successors.map(el => el.id()));
+        const targetId = node.id();
+
         cy.elements().forEach(el => {
-            // keep table containers visible; dim only rows/edges outside the path
             if (el.isNode() && el.data('ckind') === 'table') { el.removeClass('cdim'); return; }
-            const on = keep.has(el.id());
+            const id = el.id();
+            const isTarget = id === targetId;
+            const isPred = predSet.has(id);
+            const isSucc = succSet.has(id);
+            const on = isTarget || isPred || isSucc;
+
             el.toggleClass('cpath', on);
             el.toggleClass('cdim', !on);
+
+            if (el.isEdge() && on) {
+                if (isPred) el.style({ 'line-color': '#06b6d4', 'target-arrow-color': '#06b6d4', 'width': 3, 'opacity': 1 });
+                else if (isSucc) el.style({ 'line-color': '#f59e0b', 'target-arrow-color': '#f59e0b', 'width': 3, 'opacity': 1 });
+            }
         });
     }
 
     function clearHighlight() {
         if (!cy) return;
         cy.nodes().forEach(n => n.data('state', ''));
+        cy.edges().forEach(e => e.removeStyle('line-color target-arrow-color width opacity'));
         cy.elements().removeClass('faded').removeClass('hl').removeClass('cdim').removeClass('cpath');
     }
 
@@ -451,9 +482,145 @@ window.cyLineage = (function () {
         const legend = document.createElement('div');
         legend.className = 'cy-legend' + (isDark ? ' cy-dark' : '');
         legend.innerHTML = currentMode === 'column'
-            ? '<span class="lg lg-col">Click a column to trace its full lineage path</span>'
+            ? '<span class="lg lg-col"><b style="color:#06b6d4">● Upstream</b> &nbsp; <b style="color:#f59e0b">● Downstream</b> Lineage Path</span>'
             : '<span class="lg lg-exec">Execution</span><span class="lg lg-data">Data flow</span><span class="lg lg-invokes">Invokes</span><span class="lg lg-contains">Contains</span>';
         container.appendChild(legend);
+    }
+
+    // ── Minimap Navigator ──
+    function initMinimap(container) {
+        const mapDiv = document.createElement('div');
+        mapDiv.className = 'cy-minimap';
+
+        const canvas = document.createElement('canvas');
+        canvas.width = 180;
+        canvas.height = 120;
+        canvas.style.width = '100%';
+        canvas.style.height = '100%';
+        mapDiv.appendChild(canvas);
+
+        const viewportBox = document.createElement('div');
+        viewportBox.className = 'cy-minimap-viewport';
+        mapDiv.appendChild(viewportBox);
+        container.appendChild(mapDiv);
+
+        const ctx = canvas.getContext('2d');
+
+        function updateMinimap() {
+            if (!cy || !ctx) return;
+            const bb = cy.elements().boundingBox();
+            if (bb.w <= 0 || bb.h <= 0) return;
+
+            const mW = 180, mH = 120;
+            ctx.clearRect(0, 0, mW, mH);
+
+            const scaleX = mW / (bb.w + 100);
+            const scaleY = mH / (bb.h + 100);
+            const scale = Math.min(scaleX, scaleY);
+
+            ctx.fillStyle = isDark ? 'rgba(56, 189, 248, 0.4)' : 'rgba(37, 99, 235, 0.5)';
+            cy.nodes().forEach(n => {
+                const pos = n.position();
+                const mx = (pos.x - bb.x1 + 50) * scale;
+                const my = (pos.y - bb.y1 + 50) * scale;
+                ctx.fillRect(mx - 3, my - 3, 6, 6);
+            });
+
+            // Viewport Box
+            const ext = cy.extent();
+            const vx1 = Math.max(0, (ext.x1 - bb.x1 + 50) * scale);
+            const vy1 = Math.max(0, (ext.y1 - bb.y1 + 50) * scale);
+            const vx2 = Math.min(mW, (ext.x2 - bb.x1 + 50) * scale);
+            const vy2 = Math.min(mH, (ext.y2 - bb.y1 + 50) * scale);
+
+            viewportBox.style.left = vx1 + 'px';
+            viewportBox.style.top = vy1 + 'px';
+            viewportBox.style.width = Math.max(10, vx2 - vx1) + 'px';
+            viewportBox.style.height = Math.max(10, vy2 - vy1) + 'px';
+        }
+
+        cy.on('render pan zoom position', updateMinimap);
+        updateMinimap();
+    }
+
+    // ── Glassmorphism Hover Inspection Card ──
+    function initHoverCard(container) {
+        const hoverCard = document.createElement('div');
+        hoverCard.className = 'cy-hover-card';
+        hoverCard.style.display = 'none';
+        container.appendChild(hoverCard);
+
+        cy.on('mouseover', 'node', evt => {
+            const n = evt.target;
+            const d = n.data();
+            const inDeg = n.indegree();
+            const outDeg = n.outdegree();
+
+            let title = d.label || d.id;
+            let kind = d.kind || d.ckind || 'Node';
+            let subtitle = d.subtitle || d.tip || '';
+
+            hoverCard.innerHTML = `
+                <div class="cy-hover-card-badge">${esc(kind)}</div>
+                <div class="cy-hover-card-title">${esc(title)}</div>
+                ${subtitle ? `<div style="color:#94a3b8;margin-bottom:6px">${esc(subtitle)}</div>` : ''}
+                <div class="cy-hover-card-fact">
+                    <span>Incoming Connections</span>
+                    <span class="cy-hover-card-fact-val">${inDeg}</span>
+                </div>
+                <div class="cy-hover-card-fact">
+                    <span>Outgoing Paths</span>
+                    <span class="cy-hover-card-fact-val">${outDeg}</span>
+                </div>
+            `;
+            hoverCard.style.display = 'block';
+        });
+
+        cy.on('mousemove', evt => {
+            if (hoverCard.style.display === 'block' && evt.renderedPosition) {
+                const posX = evt.renderedPosition.x + 18;
+                const posY = evt.renderedPosition.y + 18;
+                hoverCard.style.left = Math.min(container.clientWidth - 320, posX) + 'px';
+                hoverCard.style.top = Math.min(container.clientHeight - 140, posY) + 'px';
+            }
+        });
+
+        cy.on('mouseout', 'node', () => { hoverCard.style.display = 'none'; });
+    }
+
+    function changeLayout(layoutName) {
+        if (!cy) return;
+        try {
+            if (mode === 'column') {
+                resetLayout();
+                return;
+            }
+            let name = layoutName || 'dagre';
+            let layoutOpts = { name: name, fit: true, padding: 40, animate: false };
+            if (name === 'dagre') {
+                layoutOpts.rankDir = 'LR';
+                layoutOpts.nodeSep = 28;
+                layoutOpts.rankSep = 120;
+            } else if (name === 'cose') {
+                layoutOpts.componentSpacing = 100;
+                layoutOpts.nodeOverlap = 20;
+                layoutOpts.nestingFactor = 5;
+            } else if (name === 'concentric') {
+                layoutOpts.minNodeSpacing = 50;
+            } else if (name === 'grid') {
+                layoutOpts.avoidOverlap = true;
+            } else if (name === 'breadthfirst') {
+                layoutOpts.directed = true;
+            }
+
+            const l = cy.makeLayout ? cy.makeLayout(layoutOpts) : cy.layout(layoutOpts);
+            if (l && typeof l.run === 'function') {
+                l.run();
+            }
+            setTimeout(() => { try { snapshotHome(); cy.fit(undefined, 48); } catch(e){} }, 300);
+        } catch (e) {
+            console.warn('Layout change handled safely:', e);
+        }
     }
 
     function render(elementId, graph, filter, ref, isDarkArg, graphMode) {
@@ -481,9 +648,7 @@ window.cyLineage = (function () {
 
         const isLarge = elements.length > 200;
         cy = cytoscape({
-            container, elements, style: stylesheet(isDark), wheelSensitivity: 0.2,  // isDark is module-level
-            // Performance hints for large graphs — hide edges while panning/zooming,
-            // use a texture snapshot during motion instead of re-rendering every frame.
+            container, elements, style: stylesheet(isDark), wheelSensitivity: 0.2,
             hideEdgesOnViewport: isLarge,
             textureOnViewport: isLarge,
             pixelRatio: isLarge ? 1 : (window.devicePixelRatio || 1),
@@ -494,7 +659,6 @@ window.cyLineage = (function () {
 
         if (mode === 'object' && typeof cy.nodeHtmlLabel === 'function') {
             cy.nodeHtmlLabel([{ query: 'node[kind]', halign: 'center', valign: 'center', halignBox: 'center', valignBox: 'center', tpl: cardTpl }]);
-            // Mark start-package node with a class so the canvas border style applies
             cy.nodes('[kind="package"]').forEach(n => { if (n.data('isStart')) n.addClass('start-pkg'); });
         }
 
@@ -517,27 +681,9 @@ window.cyLineage = (function () {
         });
         cy.on('tap', evt => { if (evt.target === cy) clearHighlight(); });
 
-        if (mode === 'column') {
-            const tip = document.createElement('div');
-            tip.className = 'cy-tip';
-            tip.style.display = 'none';
-            container.appendChild(tip);
-            cy.on('mouseover', 'node[ckind="hdr"], node[ckind="col"]', evt => {
-                const d = evt.target.data();
-                if (!d.tip) return;
-                tip.textContent = d.tip;
-                tip.style.display = 'block';
-            });
-            cy.on('mousemove', evt => {
-                if (tip.style.display === 'block' && evt.renderedPosition) {
-                    tip.style.left = (evt.renderedPosition.x + 14) + 'px';
-                    tip.style.top = (evt.renderedPosition.y + 14) + 'px';
-                }
-            });
-            cy.on('mouseout', 'node[ckind="hdr"], node[ckind="col"]', () => { tip.style.display = 'none'; });
-        }
-
-        addLegend(container, isDark, mode);  // isDark is module-level
+        initMinimap(container);
+        initHoverCard(container);
+        addLegend(container, isDark, mode);
         cy.ready(() => { snapshotHome(); cy.fit(undefined, 48); });
     }
 
@@ -693,5 +839,5 @@ window.cyLineage = (function () {
 
     function setColumnClickHandler(fn) { columnClickHandler = typeof fn === 'function' ? fn : null; }
 
-    return { render, fit, resetLayout, locate, clearHighlight, exportPng, toggleFullscreen, setColumnClickHandler };
+    return { render, fit, resetLayout, locate, clearHighlight, exportPng, toggleFullscreen, setColumnClickHandler, changeLayout };
 })();

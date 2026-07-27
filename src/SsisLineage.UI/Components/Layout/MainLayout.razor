@@ -1,11 +1,14 @@
 @inherits LayoutComponentBase
 @inject NavigationManager NavigationManager
+@inject IJSRuntime JS
 @implements IDisposable
 
 <MudThemeProvider Theme="LineageTheme.Theme" IsDarkMode="_isDarkMode" />
 <MudPopoverProvider />
 <MudDialogProvider />
 <MudSnackbarProvider />
+
+<CommandPalette @bind-IsOpen="_commandPaletteOpen" OnToggleDarkMode="ToggleDarkMode" />
 
 <MudLayout>
     @if (!IsLandingPage)
@@ -20,7 +23,21 @@
                     SSIS <span style="background: linear-gradient(90deg, #38BDF8, #818CF8); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">Lineage</span>
                 </MudText>
             </a>
+
+            <!-- Command Palette Trigger Button -->
+            <div class="ml-4 d-none d-sm-flex align-center" style="cursor: pointer;" @onclick="OpenCommandPalette">
+                <MudPaper Elevation="0" Class="px-3 py-1 d-flex align-center gap-2" Style="background: rgba(255, 255, 255, 0.07); border: 1px solid rgba(255, 255, 255, 0.12); border-radius: 8px;">
+                    <MudIcon Icon="@Icons.Material.Filled.Search" Size="Size.Small" Color="Color.Inherit" />
+                    <MudText Typo="Typo.body2" Style="font-size: 0.85rem; color: var(--mud-palette-text-secondary);">Search commands, entities...</MudText>
+                    <span style="font-size: 0.7rem; background: rgba(255, 255, 255, 0.12); border-radius: 4px; padding: 1px 5px; color: var(--mud-palette-text-secondary); border: 1px solid rgba(255, 255, 255, 0.15);">Ctrl+K</span>
+                </MudPaper>
+            </div>
+
             <MudSpacer />
+            <MudTooltip Text="Search commands & entities (Ctrl+K)" Class="d-flex d-sm-none">
+                <MudIconButton Icon="@Icons.Material.Filled.Search" Color="Color.Inherit" OnClick="OpenCommandPalette" />
+            </MudTooltip>
+
             <MudTooltip Text="@(_isDarkMode ? "Switch to light mode" : "Switch to dark mode")">
                 <MudIconButton Icon="@(_isDarkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)"
                                Color="Color.Inherit" OnClick="@ToggleDarkMode" />
@@ -52,6 +69,8 @@
 @code {
     private bool _isDarkMode = true;
     private bool _drawerOpen = true;
+    private bool _commandPaletteOpen = false;
+    private DotNetObjectReference<MainLayout>? _dotNetRef;
 
     private bool IsLandingPage
     {
@@ -67,6 +86,29 @@
         NavigationManager.LocationChanged += OnLocationChanged;
     }
 
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                _dotNetRef = DotNetObjectReference.Create(this);
+                await JS.InvokeVoidAsync("webFolderPicker.registerShortcut", _dotNetRef);
+            }
+            catch
+            {
+                // Fallback gracefully if JS not ready
+            }
+        }
+    }
+
+    [JSInvokable]
+    public void OpenCommandPalette()
+    {
+        _commandPaletteOpen = true;
+        StateHasChanged();
+    }
+
     private void OnLocationChanged(object? sender, LocationChangedEventArgs e)
     {
         StateHasChanged();
@@ -75,6 +117,7 @@
     public void Dispose()
     {
         NavigationManager.LocationChanged -= OnLocationChanged;
+        _dotNetRef?.Dispose();
     }
 
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;

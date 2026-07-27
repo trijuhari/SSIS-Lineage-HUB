@@ -1,0 +1,438 @@
+@using Microsoft.AspNetCore.Components.Web
+@using SsisLineage.UI.Services
+@inject NavigationManager NavigationManager
+@inject LineageService LineageService
+@inject IJSRuntime JS
+
+@if (IsOpen)
+{
+    <div class="cmd-palette-backdrop" @onclick="Close">
+        <div class="cmd-palette-modal" @onclick:stopPropagation="true">
+            <!-- Search Header -->
+            <div class="cmd-palette-header">
+                <MudIcon Icon="@Icons.Material.Filled.Search" Class="cmd-palette-search-icon" />
+                <input @ref="_searchInput"
+                       type="text"
+                       class="cmd-palette-input"
+                       placeholder="Type a command, page, table, package, or column..."
+                       value="@Query"
+                       @oninput="OnQueryInput"
+                       @onkeydown="OnKeyDown"
+                       autofocus />
+                <span class="cmd-palette-kbd">Esc</span>
+            </div>
+
+            <MudDivider />
+
+            <!-- Results Body -->
+            <div class="cmd-palette-body">
+                @if (FilteredItems.Count == 0)
+                {
+                    <div class="cmd-palette-empty">
+                        <MudIcon Icon="@Icons.Material.Filled.SearchOff" Size="Size.Large" Color="Color.Secondary" />
+                        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-2">No matching results found for "@Query"</MudText>
+                    </div>
+                }
+                else
+                {
+                    var selectedIndex = 0;
+                    @foreach (var group in GroupedItems)
+                    {
+                        <div class="cmd-palette-group-header">@group.Key</div>
+                        @foreach (var item in group)
+                        {
+                            var currentIndex = selectedIndex++;
+                            var isSelected = currentIndex == _selectedIndex;
+                            <div class="cmd-palette-item @(isSelected ? "selected" : "")"
+                                 @onclick="() => ExecuteItem(item)"
+                                 @onmouseover="() => _selectedIndex = currentIndex">
+                                <div class="cmd-palette-item-icon">
+                                    <MudIcon Icon="@item.Icon" Size="Size.Small" Color="@item.IconColor" />
+                                </div>
+                                <div class="cmd-palette-item-content">
+                                    <div class="cmd-palette-item-title">@item.Title</div>
+                                    @if (!string.IsNullOrEmpty(item.Subtitle))
+                                    {
+                                        <div class="cmd-palette-item-subtitle">@item.Subtitle</div>
+                                    }
+                                </div>
+                                @if (!string.IsNullOrEmpty(item.Category))
+                                {
+                                    <span class="cmd-palette-badge">@item.Category</span>
+                                }
+                            </div>
+                        }
+                    }
+                }
+            </div>
+
+            <!-- Footer Hints -->
+            <div class="cmd-palette-footer">
+                <div class="d-flex align-center gap-3">
+                    <span><kbd>↑</kbd> <kbd>↓</kbd> Navigate</span>
+                    <span><kbd>↵</kbd> Select</span>
+                    <span><kbd>Esc</kbd> Close</span>
+                </div>
+                <div>
+                    <span class="cmd-palette-footer-brand">SSIS Lineage Hub</span>
+                </div>
+            </div>
+        </div>
+    </div>
+}
+
+<style>
+    .cmd-palette-backdrop {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background: rgba(0, 0, 0, 0.65);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        z-index: 9999;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        padding-top: 10vh;
+        animation: cmdPaletteFadeIn 0.15s ease-out;
+    }
+
+    @@keyframes cmdPaletteFadeIn {
+        from { opacity: 0; transform: scale(0.98); }
+        to { opacity: 1; transform: scale(1); }
+    }
+
+    .cmd-palette-modal {
+        width: 100%;
+        max-width: 680px;
+        background: var(--mud-palette-surface, #1e293b);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        border-radius: 14px;
+        box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        overflow: hidden;
+        display: flex;
+        flex-direction: column;
+        color: var(--mud-palette-text-primary, #f8fafc);
+    }
+
+    .cmd-palette-header {
+        display: flex;
+        align-items: center;
+        padding: 14px 18px;
+        gap: 12px;
+        background: transparent;
+    }
+
+    .cmd-palette-search-icon {
+        color: var(--mud-palette-text-secondary, #94a3b8);
+    }
+
+    .cmd-palette-input {
+        flex: 1;
+        background: transparent;
+        border: none;
+        outline: none;
+        font-size: 1.05rem;
+        color: inherit;
+        font-weight: 500;
+    }
+
+    .cmd-palette-input::placeholder {
+        color: var(--mud-palette-text-disabled, #64748b);
+    }
+
+    .cmd-palette-kbd {
+        font-size: 0.75rem;
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 4px;
+        padding: 2px 6px;
+        color: var(--mud-palette-text-secondary, #94a3b8);
+    }
+
+    .cmd-palette-body {
+        max-height: 380px;
+        overflow-y: auto;
+        padding: 8px 0;
+    }
+
+    .cmd-palette-empty {
+        padding: 40px 20px;
+        text-align: center;
+    }
+
+    .cmd-palette-group-header {
+        padding: 8px 18px 4px 18px;
+        font-size: 0.7rem;
+        font-weight: 700;
+        letter-spacing: 1px;
+        text-transform: uppercase;
+        color: var(--mud-palette-primary, #38bdf8);
+    }
+
+    .cmd-palette-item {
+        display: flex;
+        align-items: center;
+        padding: 10px 18px;
+        gap: 12px;
+        cursor: pointer;
+        transition: background 0.1s ease;
+    }
+
+    .cmd-palette-item.selected {
+        background: rgba(56, 189, 248, 0.15);
+        border-left: 3px solid var(--mud-palette-primary, #38bdf8);
+    }
+
+    .cmd-palette-item-icon {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        border-radius: 6px;
+        background: rgba(255, 255, 255, 0.05);
+    }
+
+    .cmd-palette-item-content {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .cmd-palette-item-title {
+        font-size: 0.9rem;
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .cmd-palette-item-subtitle {
+        font-size: 0.78rem;
+        color: var(--mud-palette-text-secondary, #94a3b8);
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .cmd-palette-badge {
+        font-size: 0.68rem;
+        padding: 2px 8px;
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--mud-palette-text-secondary, #94a3b8);
+    }
+
+    .cmd-palette-footer {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 18px;
+        border-top: 1px solid rgba(255, 255, 255, 0.08);
+        font-size: 0.75rem;
+        color: var(--mud-palette-text-secondary, #94a3b8);
+        background: rgba(0, 0, 0, 0.15);
+    }
+
+    .cmd-palette-footer kbd {
+        background: rgba(255, 255, 255, 0.1);
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 3px;
+        padding: 1px 4px;
+        font-size: 0.7rem;
+    }
+
+    .cmd-palette-footer-brand {
+        font-weight: 700;
+        color: var(--mud-palette-primary, #38bdf8);
+    }
+</style>
+
+@code {
+    [Parameter] public bool IsOpen { get; set; }
+    [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
+    [Parameter] public EventCallback OnToggleDarkMode { get; set; }
+
+    private ElementReference _searchInput;
+    private string Query { get; set; } = "";
+    private int _selectedIndex = 0;
+
+    public class CommandItem
+    {
+        public string Title { get; set; } = "";
+        public string Subtitle { get; set; } = "";
+        public string Group { get; set; } = "";
+        public string Icon { get; set; } = Icons.Material.Filled.Search;
+        public Color IconColor { get; set; } = Color.Primary;
+        public string Category { get; set; } = "";
+        public Action? Action { get; set; }
+        public string Url { get; set; } = "";
+    }
+
+    private List<CommandItem> AllItems { get; set; } = new();
+    private List<CommandItem> FilteredItems { get; set; } = new();
+    private IEnumerable<IGrouping<string, CommandItem>> GroupedItems => FilteredItems.GroupBy(i => i.Group);
+
+    protected override void OnParametersSet()
+    {
+        if (IsOpen)
+        {
+            Query = "";
+            _selectedIndex = 0;
+            BuildCommandItems();
+            FilterItems();
+        }
+    }
+
+    private void BuildCommandItems()
+    {
+        AllItems = new List<CommandItem>
+        {
+            // Navigation Pages
+            new CommandItem { Title = "Lineage Discovery & Graph", Subtitle = "Scan packages & explore Cytoscape flowchart", Group = "Pages", Icon = Icons.Material.Filled.AccountTree, IconColor = Color.Primary, Url = "lineage" },
+            new CommandItem { Title = "Lineage Search & Trace", Subtitle = "Trace column lineage from source to target", Group = "Pages", Icon = Icons.Material.Filled.Search, IconColor = Color.Info, Url = "lineage-trace" },
+            new CommandItem { Title = "Detailed Lineage Report", Subtitle = "High-density data grid & export options", Group = "Pages", Icon = Icons.Material.Filled.Description, IconColor = Color.Success, Url = "detailed-report" },
+            new CommandItem { Title = "What-If Impact Simulator", Subtitle = "Simulate column drops & breaking downstream changes", Group = "Pages", Icon = Icons.Material.Filled.Science, IconColor = Color.Warning, Url = "what-if" },
+            new CommandItem { Title = "Natural Language Query Engine", Subtitle = "Ask questions in plain English or Bahasa Indonesia", Group = "Pages", Icon = Icons.Material.Filled.Psychology, IconColor = Color.Secondary, Url = "nl-query" },
+            new CommandItem { Title = "Risk Scorer & Heatmap", Subtitle = "Identify high-risk packages & fragile data paths", Group = "Pages", Icon = Icons.Material.Filled.LocalFireDepartment, IconColor = Color.Error, Url = "risk-heatmap" },
+            new CommandItem { Title = "Data Quality Propagation", Subtitle = "Track data quality decay across transformation steps", Group = "Pages", Icon = Icons.Material.Filled.ReportProblem, IconColor = Color.Error, Url = "quality-propagation" },
+            new CommandItem { Title = "Data Contracts Validation", Subtitle = "Validate ETL schemas against YAML contract specifications", Group = "Pages", Icon = Icons.Material.Filled.VerifiedUser, IconColor = Color.Primary, Url = "data-contracts" },
+
+            // Actions
+            new CommandItem { Title = "Toggle Dark / Light Theme", Subtitle = "Switch visual color mode", Group = "Quick Actions", Icon = Icons.Material.Filled.Brightness4, IconColor = Color.Warning, Action = () => OnToggleDarkMode.InvokeAsync() },
+            new CommandItem { Title = "Load Sample Demo Project", Subtitle = "Load pre-built SSIS demo package report", Group = "Quick Actions", Icon = Icons.Material.Filled.PlayCircle, IconColor = Color.Success, Url = "lineage?Demo=true" }
+        };
+
+        // Populate entities from published report if available
+        var report = LineageService.GetPublishedReport();
+        if (report != null)
+        {
+            // Packages
+            foreach (var pkg in report.Graph.Packages)
+            {
+                AllItems.Add(new CommandItem
+                {
+                    Title = $"Package: {pkg.Name}",
+                    Subtitle = $"Path: {pkg.Path}",
+                    Group = "SSIS Packages",
+                    Icon = Icons.Material.Filled.Inventory2,
+                    IconColor = Color.Primary,
+                    Category = "Package",
+                    Url = $"lineage"
+                });
+            }
+
+            // Tables / Columns from mappings
+            var uniqueTables = report.ColumnLineage
+                .Select(c => c.TargetTable)
+                .Where(t => !string.IsNullOrEmpty(t))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(25);
+
+            foreach (var table in uniqueTables)
+            {
+                AllItems.Add(new CommandItem
+                {
+                    Title = $"Table: {table}",
+                    Subtitle = "Target DB Entity in Lineage Graph",
+                    Group = "Database Tables",
+                    Icon = Icons.Material.Filled.TableChart,
+                    IconColor = Color.Info,
+                    Category = "Table",
+                    Url = $"lineage-trace?search={Uri.EscapeDataString(table)}"
+                });
+            }
+
+            var uniqueCols = report.ColumnLineage
+                .Select(c => c.TargetColumn)
+                .Where(c => !string.IsNullOrEmpty(c))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .Take(25);
+
+            foreach (var col in uniqueCols)
+            {
+                AllItems.Add(new CommandItem
+                {
+                    Title = $"Column: {col}",
+                    Subtitle = "Column Attribute in Lineage Mapping",
+                    Group = "Columns",
+                    Icon = Icons.Material.Filled.ViewColumn,
+                    IconColor = Color.Secondary,
+                    Category = "Column",
+                    Url = $"lineage-trace?search={Uri.EscapeDataString(col)}"
+                });
+            }
+        }
+    }
+
+    private void OnQueryInput(ChangeEventArgs e)
+    {
+        Query = e.Value?.ToString() ?? "";
+        _selectedIndex = 0;
+        FilterItems();
+    }
+
+    private void FilterItems()
+    {
+        if (string.IsNullOrWhiteSpace(Query))
+        {
+            FilteredItems = AllItems.Take(15).ToList();
+        }
+        else
+        {
+            var q = Query.Trim();
+            FilteredItems = AllItems
+                .Where(i => i.Title.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                            i.Subtitle.Contains(q, StringComparison.OrdinalIgnoreCase) ||
+                            i.Group.Contains(q, StringComparison.OrdinalIgnoreCase))
+                .Take(20)
+                .ToList();
+        }
+    }
+
+    private void OnKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Escape")
+        {
+            Close();
+        }
+        else if (e.Key == "ArrowDown")
+        {
+            if (FilteredItems.Count > 0)
+                _selectedIndex = (_selectedIndex + 1) % FilteredItems.Count;
+        }
+        else if (e.Key == "ArrowUp")
+        {
+            if (FilteredItems.Count > 0)
+                _selectedIndex = (_selectedIndex - 1 + FilteredItems.Count) % FilteredItems.Count;
+        }
+        else if (e.Key == "Enter")
+        {
+            if (_selectedIndex >= 0 && _selectedIndex < FilteredItems.Count)
+            {
+                ExecuteItem(FilteredItems[_selectedIndex]);
+            }
+        }
+    }
+
+    private void ExecuteItem(CommandItem item)
+    {
+        Close();
+        if (item.Action != null)
+        {
+            item.Action.Invoke();
+        }
+        else if (!string.IsNullOrEmpty(item.Url))
+        {
+            NavigationManager.NavigateTo(item.Url);
+        }
+    }
+
+    public void Close()
+    {
+        IsOpen = false;
+        IsOpenChanged.InvokeAsync(false);
+    }
+}

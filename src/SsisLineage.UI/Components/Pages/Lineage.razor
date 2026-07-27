@@ -373,6 +373,13 @@ else
                         </MudSelect>
                         <MudButton OnClick="ClearGraphFilters" Variant="Variant.Outlined" Size="Size.Small"
                                    StartIcon="@Icons.Material.Filled.FilterAltOff">Clear</MudButton>
+                        <MudSelect T="string" Value="@_selectedLayout" ValueChanged="ChangeGraphLayout"
+                                   Label="Layout" Dense="true" Margin="Margin.Dense" Variant="Variant.Outlined" Style="min-width:130px">
+                            <MudSelectItem T="string" Value="@("dagre")">Hierarchical</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("cose")">Force-Directed</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("concentric")">Concentric</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("grid")">Grid Matrix</MudSelectItem>
+                        </MudSelect>
                     }
                     <MudButton OnClick="ZoomToFit" Variant="Variant.Outlined" Size="Size.Small"
                                StartIcon="@Icons.Material.Filled.CenterFocusStrong">Fit</MudButton>
@@ -715,6 +722,21 @@ else
             new { packageId = graphFilterPackageId, taskId = graphFilterTaskId, startPackage }, _objRef, IsDarkMode, _graphMode);
     }
 
+    private string _selectedLayout = "dagre";
+
+    private async Task ChangeGraphLayout(string layout)
+    {
+        _selectedLayout = layout;
+        try
+        {
+            await JS.InvokeVoidAsync("cyLineage.changeLayout", layout);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"[Lineage] ChangeGraphLayout warning: {ex.Message}");
+        }
+    }
+
     private async Task ZoomToFit()
     {
         await JS.InvokeVoidAsync("cyLineage.fit");
@@ -796,6 +818,17 @@ else
             _recents = RecentProjects.Get();
             LineageService.PublishReport(reportData); // persist so "Back to Summary" keeps it
             _controlsExpanded = false; // collapse — user can expand again to re-run with different settings
+
+            // Auto-save form inputs to LocalStorage for workspace persistence
+            try
+            {
+                await JS.InvokeVoidAsync("localStorage.setItem", "ssis_project_path", projectPath ?? "");
+                await JS.InvokeVoidAsync("localStorage.setItem", "ssis_start_package", startPackage ?? "");
+                await JS.InvokeVoidAsync("localStorage.setItem", "ssis_conn_string", sqlConnectionString ?? "");
+                await JS.InvokeVoidAsync("localStorage.setItem", "ssis_linked_server_map", linkedServerMapText ?? "");
+                await JS.InvokeVoidAsync("localStorage.setItem", "ssis_sql_variables", sqlVariableValuesText ?? "");
+            }
+            catch { }
 
             var mappings = reportData.ColumnLineage?.Count ?? 0;
             Snackbar.Add($"Report generated — {mappings:N0} column mappings.", Severity.Success);
@@ -976,15 +1009,33 @@ else
                 {
                     sqlConnectionString = savedConn;
                     includeSqlProcedures = true;
-                    StateHasChanged();
                 }
 
                 var savedPath = await JS.InvokeAsync<string>("localStorage.getItem", "ssis_project_path");
                 if (!string.IsNullOrEmpty(savedPath) && string.IsNullOrEmpty(projectPath))
                 {
                     projectPath = savedPath;
-                    StateHasChanged();
                 }
+
+                var savedPkg = await JS.InvokeAsync<string>("localStorage.getItem", "ssis_start_package");
+                if (!string.IsNullOrEmpty(savedPkg) && string.IsNullOrEmpty(startPackage))
+                {
+                    startPackage = savedPkg;
+                }
+
+                var savedLinkedServerMap = await JS.InvokeAsync<string>("localStorage.getItem", "ssis_linked_server_map");
+                if (!string.IsNullOrEmpty(savedLinkedServerMap) && string.IsNullOrEmpty(linkedServerMapText))
+                {
+                    linkedServerMapText = savedLinkedServerMap;
+                }
+
+                var savedSqlVars = await JS.InvokeAsync<string>("localStorage.getItem", "ssis_sql_variables");
+                if (!string.IsNullOrEmpty(savedSqlVars) && string.IsNullOrEmpty(sqlVariableValuesText))
+                {
+                    sqlVariableValuesText = savedSqlVars;
+                }
+
+                StateHasChanged();
             }
             catch { /* Ignore fallback */ }
         }

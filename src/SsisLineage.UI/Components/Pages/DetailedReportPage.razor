@@ -8,23 +8,24 @@
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JS
 
-<PageTitle>Detailed Lineage Report</PageTitle>
+<PageTitle>Detailed Lineage Report — SSIS Lineage Hub</PageTitle>
 
 <MudStack Spacing="4" Class="pa-4">
+    <!-- Page Header -->
     <div class="d-flex justify-space-between align-center flex-wrap gap-4">
         <div>
-            <MudText Typo="Typo.overline" Color="Color.Primary">Detailed Report</MudText>
-            <MudText Typo="Typo.h4">Full Lineage Document</MudText>
+            <MudText Typo="Typo.overline" Color="Color.Primary" Style="letter-spacing: 1.5px; font-weight: 700;">ENTERPRISE REPORT</MudText>
+            <MudText Typo="Typo.h4" Style="font-weight: 800;">Detailed Lineage Document</MudText>
         </div>
-        <div class="d-flex gap-2 flex-wrap">
+        <div class="d-flex gap-2 flex-wrap align-center">
             @if (reportData != null)
             {
-                <MudTooltip Text="Export all tabs as a single Excel workbook" Placement="Placement.Bottom">
-                    <MudButton OnClick="ExportExcel" Variant="Variant.Outlined" Color="Color.Success"
-                               StartIcon="@Icons.Material.Filled.TableChart" Disabled="_exporting">
-                        @(_exporting ? "Exporting…" : "Export Excel")
-                    </MudButton>
-                </MudTooltip>
+                <MudMenu Label="Export Report" Variant="Variant.Filled" Color="Color.Primary" EndIcon="@Icons.Material.Filled.KeyboardArrowDown" StartIcon="@Icons.Material.Filled.Download">
+                    <MudMenuItem Icon="@Icons.Material.Filled.TableChart" OnClick="ExportExcel">Excel Workbook (.xlsx)</MudMenuItem>
+                    <MudMenuItem Icon="@Icons.Material.Filled.Description" OnClick="ExportCsv">CSV Mappings (.csv)</MudMenuItem>
+                    <MudMenuItem Icon="@Icons.Material.Filled.Code" OnClick="ExportJson">JSON Document (.json)</MudMenuItem>
+                    <MudMenuItem Icon="@Icons.Material.Filled.AccountTree" OnClick="ExportCypher">Cypher Script (.cypher)</MudMenuItem>
+                </MudMenu>
             }
             <MudButton OnClick="GoBack" Variant="Variant.Outlined" StartIcon="@Icons.Material.Filled.ArrowBack">
                 Back to Summary
@@ -45,16 +46,108 @@
     else
     {
         var g = reportData.Graph;
+
+        <!-- High-Density Stat Cards -->
+        <MudGrid Spacing="3">
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-3 d-flex align-center gap-3" Elevation="1" Style="border-left: 4px solid var(--mud-palette-primary);">
+                    <div class="d-flex align-center justify-center" style="width: 42px; height: 42px; border-radius: 8px; background: rgba(56, 189, 248, 0.12);">
+                        <MudIcon Icon="@Icons.Material.Filled.Inventory2" Color="Color.Primary" />
+                    </div>
+                    <div>
+                        <MudText Typo="Typo.h5" Style="font-weight: 700;">@g.Packages.Count</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">SSIS Packages</MudText>
+                    </div>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-3 d-flex align-center gap-3" Elevation="1" Style="border-left: 4px solid var(--mud-palette-info);">
+                    <div class="d-flex align-center justify-center" style="width: 42px; height: 42px; border-radius: 8px; background: rgba(59, 130, 246, 0.12);">
+                        <MudIcon Icon="@Icons.Material.Filled.Checklist" Color="Color.Info" />
+                    </div>
+                    <div>
+                        <MudText Typo="Typo.h5" Style="font-weight: 700;">@g.Tasks.Count</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Control Flow Tasks</MudText>
+                    </div>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-3 d-flex align-center gap-3" Elevation="1" Style="border-left: 4px solid var(--mud-palette-secondary);">
+                    <div class="d-flex align-center justify-center" style="width: 42px; height: 42px; border-radius: 8px; background: rgba(168, 85, 247, 0.12);">
+                        <MudIcon Icon="@Icons.Material.Filled.Widgets" Color="Color.Secondary" />
+                    </div>
+                    <div>
+                        <MudText Typo="Typo.h5" Style="font-weight: 700;">@g.Components.Count</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Data Flow Components</MudText>
+                    </div>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-3 d-flex align-center gap-3" Elevation="1" Style="border-left: 4px solid var(--mud-palette-success);">
+                    <div class="d-flex align-center justify-center" style="width: 42px; height: 42px; border-radius: 8px; background: rgba(34, 197, 94, 0.12);">
+                        <MudIcon Icon="@Icons.Material.Filled.TableRows" Color="Color.Success" />
+                    </div>
+                    <div>
+                        <MudText Typo="Typo.h5" Style="font-weight: 700;">@reportData.ColumnLineage.Count</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Column Lineage Mappings</MudText>
+                    </div>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        <!-- Detailed Tabs Grid -->
         <MudPaper Elevation="2" Class="pa-2">
             <MudTabs @bind-ActivePanelIndex="_activeTab" Elevation="0" Rounded="true" ApplyEffectsToContainer="true">
 
+                <MudTabPanel Text="@($"Column Mappings ({reportData.ColumnLineage.Count})")" Icon="@Icons.Material.Filled.TableRows">
+                    <MudDataGrid T="ColumnLineageRow" Items="reportData.ColumnLineage" Dense="true" Hover="true" Filterable="true" FilterCaseSensitivity="DataGridFilterCaseSensitivity.CaseInsensitive"
+                                 SortMode="SortMode.Multiple" FixedHeader="true" Height="620px" Striped="true" Virtualize="true">
+                        <Columns>
+                            <PropertyColumn Property="x => x.Level" Title="Step" />
+                            <PropertyColumn Property="x => x.SSISPackage" Title="Package" />
+                            <PropertyColumn Property="x => x.TaskName" Title="Task" />
+                            <TemplateColumn Title="Source Table & Column">
+                                <CellTemplate>
+                                    <div class="d-flex align-center gap-1">
+                                        <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="Color.Info" OnClick="() => TraceEntity(context.Item.SourceTables)">
+                                            @context.Item.SourceTables
+                                        </MudChip>
+                                        <span style="color: var(--mud-palette-text-disabled)">.</span>
+                                        <span style="font-weight:600">@context.Item.SourceColumns</span>
+                                    </div>
+                                </CellTemplate>
+                            </TemplateColumn>
+                            <TemplateColumn Title="Target Table & Column">
+                                <CellTemplate>
+                                    <div class="d-flex align-center gap-1">
+                                        <MudChip T="string" Size="Size.Small" Variant="Variant.Text" Color="Color.Success" OnClick="() => TraceEntity(context.Item.TargetTable)">
+                                            @context.Item.TargetTable
+                                        </MudChip>
+                                        <span style="color: var(--mud-palette-text-disabled)">.</span>
+                                        <span style="font-weight:600">@context.Item.TargetColumn</span>
+                                    </div>
+                                </CellTemplate>
+                            </TemplateColumn>
+                            <TemplateColumn Title="Operation">
+                                <CellTemplate>
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Filled" Color="@GetOperationColor(context.Item.OperationType)">
+                                        @context.Item.OperationType
+                                    </MudChip>
+                                </CellTemplate>
+                            </TemplateColumn>
+                            <PropertyColumn Property="x => x.SourceExpression" Title="Expression" />
+                            <PropertyColumn Property="x => x.FilterConditions" Title="Filter" />
+                        </Columns>
+                    </MudDataGrid>
+                </MudTabPanel>
+
                 <MudTabPanel Text="@($"Packages ({g.Packages.Count})")" Icon="@Icons.Material.Filled.Inventory2">
                     <MudDataGrid T="PackageNode" Items="g.Packages" Dense="true" Hover="true" Filterable="true" FilterCaseSensitivity="DataGridFilterCaseSensitivity.CaseInsensitive"
-                                 SortMode="SortMode.Multiple" FixedHeader="true" Height="600px" Striped="true">
+                                 SortMode="SortMode.Multiple" FixedHeader="true" Height="620px" Striped="true">
                         <Columns>
-                            <PropertyColumn Property="x => x.Name" Title="Package" />
-                            <PropertyColumn Property="x => x.Path" Title="Path" />
-                            <PropertyColumn Property="x => x.Variables.Count" Title="Variables" />
+                            <PropertyColumn Property="x => x.Name" Title="Package Name" />
+                            <PropertyColumn Property="x => x.Path" Title="Project Path" />
+                            <PropertyColumn Property="x => x.Variables.Count" Title="Variables Count" />
                             <TemplateColumn Title="Connection Managers">
                                 <CellTemplate>@string.Join(", ", context.Item.ConnectionManagers)</CellTemplate>
                             </TemplateColumn>
@@ -64,11 +157,11 @@
 
                 <MudTabPanel Text="@($"Tasks ({g.Tasks.Count})")" Icon="@Icons.Material.Filled.Checklist">
                     <MudDataGrid T="TaskNode" Items="g.Tasks" Dense="true" Hover="true" Filterable="true" FilterCaseSensitivity="DataGridFilterCaseSensitivity.CaseInsensitive"
-                                 SortMode="SortMode.Multiple" FixedHeader="true" Height="600px" Striped="true">
+                                 SortMode="SortMode.Multiple" FixedHeader="true" Height="620px" Striped="true">
                         <Columns>
-                            <PropertyColumn Property="x => x.Name" Title="Task" />
-                            <PropertyColumn Property="x => x.Type" Title="Type" />
-                            <PropertyColumn Property="x => x.PackageName" Title="Package" />
+                            <PropertyColumn Property="x => x.Name" Title="Task Name" />
+                            <PropertyColumn Property="x => x.Type" Title="Task Type" />
+                            <PropertyColumn Property="x => x.PackageName" Title="SSIS Package" />
                             <PropertyColumn Property="x => x.Description" Title="Description" />
                         </Columns>
                     </MudDataGrid>
@@ -76,68 +169,42 @@
 
                 <MudTabPanel Text="@($"Components ({g.Components.Count})")" Icon="@Icons.Material.Filled.Widgets">
                     <MudDataGrid T="ComponentNode" Items="g.Components" Dense="true" Hover="true" Filterable="true" FilterCaseSensitivity="DataGridFilterCaseSensitivity.CaseInsensitive"
-                                 SortMode="SortMode.Multiple" FixedHeader="true" Height="600px" Striped="true">
+                                 SortMode="SortMode.Multiple" FixedHeader="true" Height="620px" Striped="true">
                         <Columns>
-                            <PropertyColumn Property="x => x.Name" Title="Component" />
-                            <PropertyColumn Property="x => x.Type" Title="Type" />
-                            <TemplateColumn Title="Task">
+                            <PropertyColumn Property="x => x.Name" Title="Component Name" />
+                            <PropertyColumn Property="x => x.Type" Title="Component Type" />
+                            <TemplateColumn Title="Parent Task">
                                 <CellTemplate>@TaskName(context.Item.TaskId)</CellTemplate>
                             </TemplateColumn>
-                            <PropertyColumn Property="x => x.ConnectionManager" Title="Connection" />
-                            <PropertyColumn Property="x => x.SqlQueryOrTable" Title="SQL / Table" />
+                            <PropertyColumn Property="x => x.ConnectionManager" Title="Connection Manager" />
+                            <PropertyColumn Property="x => x.SqlQueryOrTable" Title="SQL Query / Target Table" />
                         </Columns>
                     </MudDataGrid>
                 </MudTabPanel>
 
                 <MudTabPanel Text="@($"Data Paths ({g.DataFlowEdges.Count})")" Icon="@Icons.Material.Filled.AltRoute">
                     <MudDataGrid T="DataFlowEdge" Items="g.DataFlowEdges" Dense="true" Hover="true" Filterable="true" FilterCaseSensitivity="DataGridFilterCaseSensitivity.CaseInsensitive"
-                                 SortMode="SortMode.Multiple" FixedHeader="true" Height="600px" Striped="true">
+                                 SortMode="SortMode.Multiple" FixedHeader="true" Height="620px" Striped="true">
                         <Columns>
-                            <TemplateColumn Title="From">
+                            <TemplateColumn Title="From Component">
                                 <CellTemplate>@ComponentName(context.Item.FromComponentId)</CellTemplate>
                             </TemplateColumn>
-                            <TemplateColumn Title="To">
+                            <TemplateColumn Title="To Component">
                                 <CellTemplate>@ComponentName(context.Item.ToComponentId)</CellTemplate>
                             </TemplateColumn>
-                            <PropertyColumn Property="x => x.PathRefId" Title="Path Ref" />
-                        </Columns>
-                    </MudDataGrid>
-                </MudTabPanel>
-
-                <MudTabPanel Text="@($"Column Mappings ({reportData.ColumnLineage.Count})")" Icon="@Icons.Material.Filled.TableRows">
-                    <MudDataGrid T="ColumnLineageRow" Items="reportData.ColumnLineage" Dense="true" Hover="true" Filterable="true" FilterCaseSensitivity="DataGridFilterCaseSensitivity.CaseInsensitive"
-                                 SortMode="SortMode.Multiple" FixedHeader="true" Height="600px" Striped="true" Virtualize="true">
-                        <Columns>
-                            <PropertyColumn Property="x => x.Level" Title="Step" />
-                            <PropertyColumn Property="x => x.SSISPackage" Title="Package" />
-                            <PropertyColumn Property="x => x.TaskName" Title="Task" />
-                            <PropertyColumn Property="x => x.ProcedureName" Title="Procedure" />
-                            <PropertyColumn Property="x => x.SourceServer" Title="Source Server" />
-                            <PropertyColumn Property="x => x.SourceDatabase" Title="Source DB" />
-                            <PropertyColumn Property="x => x.SourceSchema" Title="Source Schema" />
-                            <PropertyColumn Property="x => x.SourceTables" Title="Source Table" />
-                            <PropertyColumn Property="x => x.SourceColumns" Title="Source Column" />
-                            <PropertyColumn Property="x => x.SourceExpression" Title="Expression" />
-                            <PropertyColumn Property="x => x.TargetServer" Title="Target Server" />
-                            <PropertyColumn Property="x => x.TargetDatabase" Title="Target DB" />
-                            <PropertyColumn Property="x => x.TargetSchema" Title="Target Schema" />
-                            <PropertyColumn Property="x => x.TargetTable" Title="Target Table" />
-                            <PropertyColumn Property="x => x.TargetColumn" Title="Target Column" />
-                            <PropertyColumn Property="x => x.OperationType" Title="Operation" />
-                            <PropertyColumn Property="x => x.FilterConditions" Title="Filter Conditions" />
-                            <PropertyColumn Property="x => x.JoinCondition" Title="Join Condition" />
+                            <PropertyColumn Property="x => x.PathRefId" Title="Path Reference ID" />
                         </Columns>
                     </MudDataGrid>
                 </MudTabPanel>
 
                 <MudTabPanel Text="@($"Execution Flow ({g.ExecutionEdges.Count})")" Icon="@Icons.Material.Filled.Timeline">
                     <MudDataGrid T="ExecutionEdge" Items="g.ExecutionEdges" Dense="true" Hover="true" Filterable="true" FilterCaseSensitivity="DataGridFilterCaseSensitivity.CaseInsensitive"
-                                 SortMode="SortMode.Multiple" FixedHeader="true" Height="600px" Striped="true">
+                                 SortMode="SortMode.Multiple" FixedHeader="true" Height="620px" Striped="true">
                         <Columns>
-                            <TemplateColumn Title="From">
+                            <TemplateColumn Title="From Task">
                                 <CellTemplate>@TaskName(context.Item.FromTaskId)</CellTemplate>
                             </TemplateColumn>
-                            <TemplateColumn Title="To">
+                            <TemplateColumn Title="To Task">
                                 <CellTemplate>@(TaskName(context.Item.ToTaskId) is var n && n == context.Item.ToTaskId ? PackageName(context.Item.ToTaskId) : n)</CellTemplate>
                             </TemplateColumn>
                             <PropertyColumn Property="x => x.PrecedenceConstraintValue" Title="Constraint" />
@@ -155,17 +222,17 @@
     [CascadingParameter(Name = "IsDarkMode")] private bool IsDarkMode { get; set; }
 
     private LineageReportData? reportData;
-    private int _activeTab;
+    private int _activeTab = 0;
     private bool _exporting;
 
     private static readonly Dictionary<string, int> SectionTab = new(StringComparer.OrdinalIgnoreCase)
     {
-        ["packages"] = 0,
-        ["tasks"] = 1,
-        ["data-flow-components"] = 2,
-        ["components"] = 2,
-        ["data-flow-paths"] = 3,
-        ["column-mappings"] = 4,
+        ["column-mappings"] = 0,
+        ["packages"] = 1,
+        ["tasks"] = 2,
+        ["data-flow-components"] = 3,
+        ["components"] = 3,
+        ["data-flow-paths"] = 4,
         ["execution-flow"] = 5,
     };
 
@@ -211,6 +278,23 @@
     private string ComponentName(string id) =>
         reportData?.Graph.Components.FirstOrDefault(c => c.Id == id)?.Name ?? id;
 
+    private Color GetOperationColor(string? op)
+    {
+        if (string.IsNullOrEmpty(op)) return Color.Default;
+        var o = op.ToUpperInvariant();
+        if (o.Contains("DIRECT")) return Color.Info;
+        if (o.Contains("EXPRESSION") || o.Contains("DERIVED")) return Color.Secondary;
+        if (o.Contains("LOOKUP")) return Color.Warning;
+        if (o.Contains("AGGREGATE") || o.Contains("JOIN")) return Color.Success;
+        return Color.Primary;
+    }
+
+    private void TraceEntity(string? entity)
+    {
+        if (string.IsNullOrWhiteSpace(entity)) return;
+        NavigationManager.NavigateTo($"lineage-trace?search={Uri.EscapeDataString(entity)}");
+    }
+
     private async Task ExportExcel()
     {
         if (reportData == null) return;
@@ -226,6 +310,38 @@
         {
             _exporting = false;
         }
+    }
+
+    private async Task ExportCsv()
+    {
+        if (reportData == null) return;
+        var bytes = System.Text.Encoding.UTF8.GetBytes(reportData.CsvExport);
+        var base64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("downloadFileFromBase64", $"ssis-column-lineage-{DateTime.Now:yyyyMMdd-HHmmss}.csv", base64);
+    }
+
+    private async Task ExportJson()
+    {
+        if (reportData == null) return;
+        var json = System.Text.Json.JsonSerializer.Serialize(reportData, new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+        var bytes = System.Text.Encoding.UTF8.GetBytes(json);
+        var base64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("downloadFileFromBase64", $"ssis-lineage-{DateTime.Now:yyyyMMdd-HHmmss}.json", base64);
+    }
+
+    private async Task ExportCypher()
+    {
+        if (reportData == null) return;
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("// SSIS Lineage Hub — Neo4j Cypher Import Script");
+        foreach (var pkg in reportData.Graph.Packages)
+            sb.AppendLine($"CREATE (p:Package {{id: '{pkg.Id}', name: '{pkg.Name}'}});");
+        foreach (var map in reportData.ColumnLineage)
+            sb.AppendLine($"MATCH (s:Table {{name: '{map.SourceTables}'}}), (t:Table {{name: '{map.TargetTable}'}}) CREATE (s)-[:TRANSFORMS_TO {{op: '{map.OperationType}'}}]->(t);");
+
+        var bytes = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
+        var base64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("downloadFileFromBase64", $"ssis-lineage-{DateTime.Now:yyyyMMdd-HHmmss}.cypher", base64);
     }
 
     private void GoBack()
