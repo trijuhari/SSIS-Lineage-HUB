@@ -1,0 +1,272 @@
+@page "/ssis-migrator"
+@using SsisLineage.Core
+@using SsisLineage.Core.Models
+@using SsisLineage.UI.Services
+@inject LineageService LineageService
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+<PageTitle>SSIS Code Migrator — SSIS Lineage Hub</PageTitle>
+
+<div class="mb-4 d-flex align-center justify-space-between flex-wrap gap-4">
+    <div>
+        <MudText Typo="Typo.h5" Class="d-flex align-center gap-2 font-weight-bold">
+            <MudIcon Icon="@Icons.Material.Filled.Transform" Color="Color.Primary" Size="Size.Large" />
+            SSIS Code Migrator & Modernization Engine
+        </MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            Konversi otomatis paket SSIS (.dtsx) menjadi dbt SQL Models, Databricks PySpark, Azure Data Factory (ADF), atau SQL Stored Procedures.
+        </MudText>
+    </div>
+    <MudChip T="string" Color="Color.Success" Variant="Variant.Filled" Style="font-weight:700;">CLOUD MODERNIZATION</MudChip>
+</div>
+
+<!-- Configuration Cards -->
+<MudGrid Class="mb-6">
+    <MudItem xs="12" sm="6" md="3">
+        <div Class="pa-4 mud-paper mud-elevation-2"
+             style="@GetCardStyle(MigrationTarget.DbtSql)"
+             @onclick="() => SelectTarget(MigrationTarget.DbtSql)">
+            <div class="d-flex align-center justify-space-between mb-2">
+                <MudIcon Icon="@Icons.Material.Filled.Layers" Color="Color.Warning" Size="Size.Large" />
+                @if (_selectedTarget == MigrationTarget.DbtSql)
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Warning" Size="Size.Medium" />
+                }
+            </div>
+            <MudText Typo="Typo.h6" Class="font-weight-bold">dbt SQL Models</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Generate modular schema.yml & CTE dbt models for Snowflake/BigQuery/Databricks.</MudText>
+        </div>
+    </MudItem>
+
+    <MudItem xs="12" sm="6" md="3">
+        <div Class="pa-4 mud-paper mud-elevation-2"
+             style="@GetCardStyle(MigrationTarget.PySpark)"
+             @onclick="() => SelectTarget(MigrationTarget.PySpark)">
+            <div class="d-flex align-center justify-space-between mb-2">
+                <MudIcon Icon="@Icons.Material.Filled.Code" Color="Color.Info" Size="Size.Large" />
+                @if (_selectedTarget == MigrationTarget.PySpark)
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Info" Size="Size.Medium" />
+                }
+            </div>
+            <MudText Typo="Typo.h6" Class="font-weight-bold">Databricks PySpark</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Generate Python PySpark DataFrame scripts with Delta Lake writers.</MudText>
+        </div>
+    </MudItem>
+
+    <MudItem xs="12" sm="6" md="3">
+        <div Class="pa-4 mud-paper mud-elevation-2"
+             style="@GetCardStyle(MigrationTarget.AzureDataFactory)"
+             @onclick="() => SelectTarget(MigrationTarget.AzureDataFactory)">
+            <div class="d-flex align-center justify-space-between mb-2">
+                <MudIcon Icon="@Icons.Material.Filled.CloudUpload" Color="Color.Primary" Size="Size.Large" />
+                @if (_selectedTarget == MigrationTarget.AzureDataFactory)
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Primary" Size="Size.Medium" />
+                }
+            </div>
+            <MudText Typo="Typo.h6" Class="font-weight-bold">Azure Data Factory</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Generate ADF Pipeline JSON definitions ready for ARM / Bicep deployment.</MudText>
+        </div>
+    </MudItem>
+
+    <MudItem xs="12" sm="6" md="3">
+        <div Class="pa-4 mud-paper mud-elevation-2"
+             style="@GetCardStyle(MigrationTarget.ConsolidatedSql)"
+             @onclick="() => SelectTarget(MigrationTarget.ConsolidatedSql)">
+            <div class="d-flex align-center justify-space-between mb-2">
+                <MudIcon Icon="@Icons.Material.Filled.Storage" Color="Color.Success" Size="Size.Large" />
+                @if (_selectedTarget == MigrationTarget.ConsolidatedSql)
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Medium" />
+                }
+            </div>
+            <MudText Typo="Typo.h6" Class="font-weight-bold">SQL Stored Procs</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Consolidate SSIS Data Flow into clean ANSI SQL Stored Procedures.</MudText>
+        </div>
+    </MudItem>
+</MudGrid>
+
+<!-- Action Bar -->
+<MudPaper Class="pa-4 mb-6 d-flex align-center justify-space-between flex-wrap gap-4" Elevation="2">
+    <div class="d-flex align-center gap-4">
+        <MudSelect T="string" @bind-Value="_selectedPackageId" Label="Select SSIS Package" Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width: 280px;">
+            <MudSelectItem T="string" Value="@("ALL")">📦 Convert All Packages in Project</MudSelectItem>
+            @if (_packages != null)
+            {
+                @foreach (var p in _packages)
+                {
+                    <MudSelectItem T="string" Value="@p.Id">📄 @p.Name</MudSelectItem>
+                }
+            }
+        </MudSelect>
+
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.AutoFixHigh"
+                   OnClick="RunMigration" Size="Size.Large">
+            Generate Migration Code
+        </MudButton>
+    </div>
+
+    @if (_result != null && _result.Files.Any())
+    {
+        <div class="d-flex align-center gap-2">
+            <MudChip T="string" Color="Color.Dark" Variant="Variant.Outlined">@_result.Files.Count Files Generated</MudChip>
+        </div>
+    }
+</MudPaper>
+
+<!-- Result Workspace -->
+@if (_result != null && _result.Files.Any())
+{
+    <MudGrid>
+        <!-- File Explorer List -->
+        <MudItem xs="12" md="4" lg="3">
+            <MudPaper Class="pa-2" Elevation="3" Style="height: 520px; overflow-y: auto;">
+                <MudText Typo="Typo.subtitle2" Class="pa-2 font-weight-bold color-primary">
+                    📁 Generated Target Files
+                </MudText>
+                <MudList T="GeneratedFile" SelectionMode="SelectionMode.SingleSelection" SelectedValue="_activeFile">
+                    @foreach (var file in _result.Files)
+                    {
+                        <MudListItem Value="@file" OnClick="() => OnFileSelected(file)">
+                            <div class="d-flex align-center justify-space-between w-100">
+                                <div class="d-flex align-center gap-2">
+                                    <MudIcon Icon="@GetFileIcon(file.Language)" Size="Size.Small" Color="@GetFileIconColor(file.Language)" />
+                                    <MudText Typo="Typo.body2" Class="@(file == _activeFile ? "font-weight-bold text-primary" : "")">@file.FileName</MudText>
+                                </div>
+                            </div>
+                        </MudListItem>
+                    }
+                </MudList>
+            </MudPaper>
+        </MudItem>
+
+        <!-- Code Preview Pane -->
+        <MudItem xs="12" md="8" lg="9">
+            <MudPaper Class="pa-4" Elevation="3" Style="height: 520px; display: flex; flex-direction: column;">
+                @if (_activeFile != null)
+                {
+                    <div class="d-flex align-center justify-space-between mb-3">
+                        <div class="d-flex align-center gap-2">
+                            <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled">@_activeFile.TargetFramework</MudChip>
+                            <MudText Typo="Typo.h6" Class="font-weight-bold">@_activeFile.FileName</MudText>
+                        </div>
+                        <MudButton Variant="Variant.Outlined" Color="Color.Inherit" Size="Size.Small"
+                                   StartIcon="@(_copied ? Icons.Material.Filled.Check : Icons.Material.Filled.ContentCopy)"
+                                   OnClick="CopyActiveFileCode">
+                            @(_copied ? "Copied!" : "Copy Code")
+                        </MudButton>
+                    </div>
+
+                    <div style="flex: 1; overflow: auto; background: #0b1329; border-radius: 8px; padding: 12px;">
+                        @if (_activeFile.Language == "sql")
+                        {
+                            <SqlQueryViewer Sql="@_activeFile.Content" Title="@_activeFile.FileName" />
+                        }
+                        else
+                        {
+                            <pre class="sql-code-editor"><code>@_activeFile.Content</code></pre>
+                        }
+                    </div>
+                }
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+else if (_reportData == null)
+{
+    <MudAlert Severity="Severity.Info" Class="my-6">
+        Silakan muat proyek SSIS terlebih dahulu pada halaman Lineage Discovery.
+    </MudAlert>
+}
+
+@code {
+    private LineageReportData? _reportData;
+    private List<PackageNode>? _packages;
+    private MigrationTarget _selectedTarget = MigrationTarget.DbtSql;
+    private string _selectedPackageId = "ALL";
+    private MigrationResult? _result;
+    private GeneratedFile? _activeFile;
+    private bool _copied;
+
+    protected override void OnInitialized()
+    {
+        _reportData = LineageService.GetPublishedReport();
+        if (_reportData?.Graph != null)
+        {
+            _packages = _reportData.Graph.Packages;
+            RunMigration();
+        }
+    }
+
+    private void SelectTarget(MigrationTarget target)
+    {
+        _selectedTarget = target;
+        RunMigration();
+    }
+
+    private void RunMigration()
+    {
+        if (_reportData?.Graph == null) return;
+        _result = SsisMigrationConverter.ConvertProject(_reportData.Graph, _selectedTarget, _selectedPackageId);
+        _activeFile = _result.Files.FirstOrDefault();
+    }
+
+    private void OnFileSelected(GeneratedFile file)
+    {
+        _activeFile = file;
+        StateHasChanged();
+    }
+
+    private async Task CopyActiveFileCode()
+    {
+        if (_activeFile == null) return;
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _activeFile.Content);
+            _copied = true;
+            StateHasChanged();
+            await Task.Delay(2000);
+            _copied = false;
+            StateHasChanged();
+        }
+        catch
+        {
+            Snackbar.Add("Failed to copy code", Severity.Warning);
+        }
+    }
+
+    private string GetCardStyle(MigrationTarget t)
+    {
+        var baseStyle = "cursor: pointer; transition: all 0.2s; border-radius: 8px; background: var(--mud-palette-surface);";
+        if (_selectedTarget == t)
+        {
+            var borderColor = t switch
+            {
+                MigrationTarget.DbtSql => "#f59e0b",
+                MigrationTarget.PySpark => "#3b82f6",
+                MigrationTarget.AzureDataFactory => "#06b6d4",
+                _ => "#10b981"
+            };
+            return $"{baseStyle} border: 2px solid {borderColor}; box-shadow: 0 4px 14px rgba(0,0,0,0.3);";
+        }
+        return $"{baseStyle} border: 1px solid rgba(255,255,255,0.08);";
+    }
+
+    private string GetFileIcon(string lang) => lang switch
+    {
+        "python" => Icons.Material.Filled.Code,
+        "json" => Icons.Material.Filled.DataObject,
+        "yaml" => Icons.Material.Filled.Description,
+        _ => Icons.Material.Filled.Storage
+    };
+
+    private Color GetFileIconColor(string lang) => lang switch
+    {
+        "python" => Color.Info,
+        "json" => Color.Primary,
+        "yaml" => Color.Warning,
+        _ => Color.Success
+    };
+}

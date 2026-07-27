@@ -158,11 +158,18 @@ else
                         </MudTooltip>
                     </div>
 
-                    <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Secondary" Class="mb-2 w-100"
-                               StartIcon="@Icons.Material.Filled.FolderZip"
-                               OnClick="UseSampleProject" Style="text-transform:none;">
-                        Use Built-in Sample Project
-                    </MudButton>
+                    <div class="d-flex align-center gap-2 mb-2">
+                        <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" Class="flex-1"
+                                   StartIcon="@Icons.Material.Filled.AutoAwesome"
+                                   OnClick="UseAdventureWorksProject" Style="text-transform:none; font-weight: 600;">
+                            ⚡ Load AdventureWorks ETL (Complex)
+                        </MudButton>
+                        <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Secondary" Class="flex-1"
+                                   StartIcon="@Icons.Material.Filled.FolderZip"
+                                   OnClick="UseSampleProject" Style="text-transform:none;">
+                            Standard Sample
+                        </MudButton>
+                    </div>
 
                     <MudAutocomplete T="string" @bind-Value="startPackage" Label="Start package"
                                      Placeholder="Master.dtsx" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2"
@@ -633,6 +640,19 @@ else
     private bool _isTestingConn;
     private string _connTestResult = "";
     private bool _connTestSuccess;
+
+    private async Task UseAdventureWorksProject()
+    {
+        var adventureWorksDir = Path.Combine(Directory.GetCurrentDirectory(), "samples", "AdventureWorksETL");
+        if (!Directory.Exists(adventureWorksDir))
+        {
+            adventureWorksDir = "/home/hirazone/Documents/ssis-lineage-hub/samples/AdventureWorksETL";
+        }
+        projectPath = adventureWorksDir;
+        startPackage = "Master_AdventureWorks_ETL.dtsx";
+        try { await JS.InvokeVoidAsync("localStorage.setItem", "ssis_project_path", projectPath); } catch { }
+        try { await JS.InvokeVoidAsync("localStorage.setItem", "ssis_start_package", startPackage); } catch { }
+    }
 
     private async Task UseSampleProject()
     {
