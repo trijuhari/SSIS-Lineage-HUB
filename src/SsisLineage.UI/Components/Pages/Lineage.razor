@@ -580,31 +580,7 @@ else
         }
     }
 
-    private bool _isFirstRender = true;
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender)
-        {
-            try
-            {
-                var savedConn = await JS.InvokeAsync<string>("localStorage.getItem", "ssis_conn_string");
-                if (!string.IsNullOrEmpty(savedConn) && string.IsNullOrEmpty(sqlConnectionString))
-                {
-                    sqlConnectionString = savedConn;
-                    includeSqlProcedures = true;
-                    StateHasChanged();
-                }
 
-                var savedPath = await JS.InvokeAsync<string>("localStorage.getItem", "ssis_project_path");
-                if (!string.IsNullOrEmpty(savedPath) && string.IsNullOrEmpty(projectPath))
-                {
-                    projectPath = savedPath;
-                    StateHasChanged();
-                }
-            }
-            catch { /* Ignore fallback */ }
-        }
-    }
 
     protected override async Task OnParametersSetAsync()
     {
@@ -991,6 +967,28 @@ else
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
+        if (firstRender)
+        {
+            try
+            {
+                var savedConn = await JS.InvokeAsync<string>("localStorage.getItem", "ssis_conn_string");
+                if (!string.IsNullOrEmpty(savedConn) && string.IsNullOrEmpty(sqlConnectionString))
+                {
+                    sqlConnectionString = savedConn;
+                    includeSqlProcedures = true;
+                    StateHasChanged();
+                }
+
+                var savedPath = await JS.InvokeAsync<string>("localStorage.getItem", "ssis_project_path");
+                if (!string.IsNullOrEmpty(savedPath) && string.IsNullOrEmpty(projectPath))
+                {
+                    projectPath = savedPath;
+                    StateHasChanged();
+                }
+            }
+            catch { /* Ignore fallback */ }
+        }
+
         try
         {
             // Only re-render the graph when the report data or dark mode actually changed,
