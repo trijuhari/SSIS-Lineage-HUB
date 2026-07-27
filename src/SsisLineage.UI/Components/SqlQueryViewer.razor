@@ -1,0 +1,54 @@
+@using SsisLineage.UI.Services
+@inject IJSRuntime JS
+@inject ISnackbar Snackbar
+
+<div class="sql-code-card">
+    <div class="sql-code-card-header">
+        <div class="d-flex align-center gap-2">
+            <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Filled" Style="font-weight:700; height:20px; font-size: 0.7rem;">SQL</MudChip>
+            @if (!string.IsNullOrEmpty(Title))
+            {
+                <span class="sql-card-title">@Title</span>
+            }
+        </div>
+        <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Inherit"
+                   StartIcon="@(_copied ? Icons.Material.Filled.Check : Icons.Material.Filled.ContentCopy)"
+                   OnClick="CopySqlToClipboard" Class="sql-card-copy-btn">
+            @(_copied ? "Copied" : "Copy")
+        </MudButton>
+    </div>
+    <div class="sql-code-card-body">
+        <pre class="sql-code-editor"><code>@_codeHtml</code></pre>
+    </div>
+</div>
+
+@code {
+    [Parameter] public string Sql { get; set; } = "";
+    [Parameter] public string? Title { get; set; }
+
+    private bool _copied;
+    private MarkupString _codeHtml;
+
+    protected override void OnParametersSet()
+    {
+        _codeHtml = SqlFormatter.HighlightSqlToHtml(Sql);
+    }
+
+    private async Task CopySqlToClipboard()
+    {
+        if (string.IsNullOrWhiteSpace(Sql)) return;
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", SqlFormatter.FormatSql(Sql));
+            _copied = true;
+            StateHasChanged();
+            await Task.Delay(2000);
+            _copied = false;
+            StateHasChanged();
+        }
+        catch
+        {
+            Snackbar.Add("Failed to copy SQL", Severity.Warning);
+        }
+    }
+}

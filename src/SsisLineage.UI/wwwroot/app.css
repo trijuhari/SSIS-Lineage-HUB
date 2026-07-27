@@ -390,5 +390,64 @@
     box-shadow: 0 0 0 3px #f59e0b, 0 0 20px rgba(245, 158, 11, 0.6) !important;
 }
 
+/* ── Modern SQL Code Card & Editor ── */
+.sql-code-card {
+    background: #0b1329 !important;
+    border: 1px solid rgba(255, 255, 255, 0.12);
+    border-radius: 8px;
+    overflow: hidden;
+    margin: 8px 0;
+    box-shadow: 0 4px 18px rgba(0, 0, 0, 0.35);
+}
+
+.sql-code-card-header {
+    background: #1e293b;
+    padding: 6px 12px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.sql-card-title {
+    color: #cbd5e1;
+    font-size: 0.8rem;
+    font-weight: 500;
+}
+
+.sql-card-copy-btn {
+    text-transform: none !important;
+    font-size: 0.75rem !important;
+    border-color: rgba(255, 255, 255, 0.15) !important;
+    color: #cbd5e1 !important;
+}
+
+.sql-card-copy-btn:hover {
+    background: rgba(255, 255, 255, 0.1) !important;
+    color: #ffffff !important;
+}
+
+.sql-code-card-body {
+    padding: 12px 14px;
+    max-height: 380px;
+    overflow: auto;
+    background: #0b1329;
+}
+
+.sql-code-editor {
+    margin: 0 !important;
+    padding: 0 !important;
+    background: transparent !important;
+    font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', 'Courier New', monospace !important;
+    font-size: 0.88rem !important;
+    line-height: 1.6 !important;
+    color: #e2e8f0 !important;
+    white-space: pre !important;
+    overflow-x: auto !important;
+}
+
+
+
+
 
 

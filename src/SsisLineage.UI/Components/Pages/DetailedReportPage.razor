@@ -177,7 +177,18 @@
                                 <CellTemplate>@TaskName(context.Item.TaskId)</CellTemplate>
                             </TemplateColumn>
                             <PropertyColumn Property="x => x.ConnectionManager" Title="Connection Manager" />
-                            <PropertyColumn Property="x => x.SqlQueryOrTable" Title="SQL Query / Target Table" />
+                            <TemplateColumn Title="SQL Query / Target Table">
+                                <CellTemplate>
+                                    @if (!string.IsNullOrEmpty(context.Item.SqlQueryOrTable) && (context.Item.SqlQueryOrTable.Contains("SELECT", StringComparison.OrdinalIgnoreCase) || context.Item.SqlQueryOrTable.Contains("INSERT", StringComparison.OrdinalIgnoreCase) || context.Item.SqlQueryOrTable.Contains("UPDATE", StringComparison.OrdinalIgnoreCase) || context.Item.SqlQueryOrTable.Contains("EXEC", StringComparison.OrdinalIgnoreCase)))
+                                    {
+                                        <SqlQueryViewer Sql="@context.Item.SqlQueryOrTable" Title="@context.Item.Name" />
+                                    }
+                                    else
+                                    {
+                                        <span style="font-family: monospace; color: var(--mud-palette-text-primary);">@context.Item.SqlQueryOrTable</span>
+                                    }
+                                </CellTemplate>
+                            </TemplateColumn>
                         </Columns>
                     </MudDataGrid>
                 </MudTabPanel>

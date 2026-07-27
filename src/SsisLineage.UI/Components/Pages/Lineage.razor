@@ -460,10 +460,20 @@ else
                 <div class="detail-facts">
                     @foreach (var f in _detail.Facts)
                     {
-                        <div class="fact">
-                            <div class="fact-label">@f.Label</div>
-                            <div class="fact-value">@(string.IsNullOrEmpty(f.Value) ? "—" : f.Value)</div>
-                        </div>
+                        @if (!string.IsNullOrEmpty(f.Value) && (f.Label.Contains("SQL", StringComparison.OrdinalIgnoreCase) || f.Value.Contains("SELECT", StringComparison.OrdinalIgnoreCase) || f.Value.Contains("INSERT", StringComparison.OrdinalIgnoreCase) || f.Value.Contains("UPDATE", StringComparison.OrdinalIgnoreCase) || f.Value.Contains("EXEC", StringComparison.OrdinalIgnoreCase) || f.Value.Contains("WITH", StringComparison.OrdinalIgnoreCase)))
+                        {
+                            <div class="fact" style="grid-column: 1 / -1;">
+                                <div class="fact-label">@f.Label</div>
+                                <SqlQueryViewer Sql="@f.Value" Title="@_detail.Title" />
+                            </div>
+                        }
+                        else
+                        {
+                            <div class="fact">
+                                <div class="fact-label">@f.Label</div>
+                                <div class="fact-value">@(string.IsNullOrEmpty(f.Value) ? "—" : f.Value)</div>
+                            </div>
+                        }
                     }
                 </div>
             }
