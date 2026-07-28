@@ -10,12 +10,22 @@ Features a modernized **Landing Page Dashboard** and a streamlined, responsive w
 
 ---
 
+## 📸 Screenshots & Interface Preview
+
+### 1. Landing Page Portal & Intelligence Hub
+![Landing Page Portal](docs/images/landing-page.png)
+
+### 2. Interactive Data Flow Visualization & Workspace
+![Interactive Lineage Visualization & Workspace](docs/images/lineage-visualization.png)
+
+---
+
 ## 🌟 Key Features
 
 *   **Decoupled Landing Page**: Serves as a clean entry portal featuring quick-launch actions, live project overview statistics, and sample tutorial datasets.
 *   **Interactive Lineage Visualization**: Zoomable Cytoscape-powered graphs mapping packages, control flow tasks, components, and column-level origins.
 *   **Modern Workspace Sidebar**: Integrated with MudBlazor expansion panels to collapse database connection overrides and advanced settings, keeping workspaces clean and compact.
-*   **Indonesian Business Narratives**: Auto-generates natural language summaries in Bahasa Indonesia for packages and columns.
+*   **Business Narratives**: Auto-generates natural language summaries for packages and columns.
 *   **100% Offline Parsing**: Zero cloud calls, telemetry, or external API requirements. All package XML parsing and SQL AST resolution are done locally.
 *   **Multi-Format Export**: One-click exports for CSV, Excel, JSON, YAML, Neo4j Cypher, Mermaid, and OpenLineage.
 

@@ -816,6 +816,8 @@ else
         }
         projectPath = adventureWorksDir;
         startPackage = "Master_AdventureWorks_ETL.dtsx";
+        sqlConnectionString = "Server=localhost,1433;Database=SsisDemoDB;User Id=sa;Password=YourPassword123!;TrustServerCertificate=True";
+        includeSqlProcedures = true;
         try { await JS.InvokeVoidAsync("localStorage.setItem", "ssis_project_path", projectPath); } catch { }
         try { await JS.InvokeVoidAsync("localStorage.setItem", "ssis_start_package", startPackage); } catch { }
     }
