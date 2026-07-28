@@ -210,14 +210,37 @@ window.cyLineage = (function () {
         const focus = safe(filter && (filter.focus || filter.Focus)).toLowerCase();
         const focusScope = safe(filter && (filter.focusScope || filter.FocusScope)).toLowerCase();
 
-        const maps = normalize(graph.columnMappings || graph.ColumnMappings);
+        let maps = normalize(graph.columnMappings || graph.ColumnMappings);
+        const pkgFilter = (filter && (filter.packageId || filter.PackageId)) || '';
+        if (pkgFilter) {
+            maps = maps.filter(m => safe(m.packageId) === pkgFilter);
+        }
+
         const comps = normalize(graph.components || graph.Components);
         const compMap = new Map();
-        comps.forEach(c => compMap.set(safe(c.id), { name: safe(c.name), type: safe(c.type) }));
+        comps.forEach(c => compMap.set(safe(c.id), { 
+            name: safe(c.name), 
+            type: safe(c.type), 
+            sqlQueryOrTable: safe(c.sqlQueryOrTable || c.SqlQueryOrTable) 
+        }));
 
         const tables = new Map(); // key -> { cols:Set, label, tip, kind }
         const edges = [];
         const edgeSeen = new Set();
+
+        const parseSqlTable = sql => {
+            if (!sql) return '';
+            let s = safe(sql).trim();
+            if (!s) return '';
+            if (!s.toUpperCase().startsWith('SELECT') && !s.toUpperCase().startsWith('WITH')) {
+                return s.replace(/\[/g, '').replace(/\]/g, '');
+            }
+            const m = s.match(/\bFROM\s+\[?([a-zA-Z0-9_]+)\]?(?:\.\[?([a-zA-Z0-9_]+)\]?)?/i);
+            if (m) {
+                return m[2] ? `${m[1]}.${m[2]}` : m[1];
+            }
+            return '';
+        };
 
         // Resolve a mapping side to a STABLE node identity. Data-flow components
         // (OLE DB Source/Destination) are keyed by their component id so the
@@ -225,16 +248,40 @@ window.cyLineage = (function () {
         // into one node; plain SQL assets are keyed by schema.table.
         const assetOf = (op, compId, schema, table, compName) => {
             compId = safe(compId); schema = safe(schema); table = safe(table); compName = safe(compName);
-            const tbl = table ? (schema ? `${schema}.${table}` : table) : '';
+            const c = compMap.get(compId) || {};
+            const sqlTable = parseSqlTable(c.sqlQueryOrTable);
+            const tbl = table ? (schema ? `${schema}.${table}` : table) : sqlTable;
+
             const isXml = op === 'XML_FALLBACK';
-            const isComp = compId && compMap.has(compId) && (isXml || !tbl);
-            if (isComp) {
-                const c = compMap.get(compId) || {};
-                return { key: 'c:' + compId, kind: 'comp', tableLabel: tbl, comp: c.name || compName || compId };
+            const isComp = compId && (compMap.has(compId) || isXml);
+
+            let cName = c.name;
+            if (!cName || cName === 'Source Component' || cName === 'Target Component') {
+                if (compName && compName !== 'Source Component' && compName !== 'Target Component') {
+                    cName = compName;
+                }
             }
-            if (tbl) return { key: 't:' + tbl, kind: 'table', tableLabel: tbl, comp: '' };
-            const k = compName || compId || '?';
-            return { key: 'x:' + k, kind: 'other', tableLabel: k, comp: '' };
+            if (!cName || cName === 'Source Component' || cName === 'Target Component') {
+                if (compId) {
+                    const raw = compId.includes('::') ? compId.split('::').pop() : compId;
+                    const extracted = raw.includes('\\') ? raw.split('\\').pop() : raw;
+                    if (extracted && extracted !== 'Source Component' && extracted !== 'Target Component') {
+                        cName = extracted;
+                    }
+                }
+            }
+            if (!cName || cName === 'Source Component' || cName === 'Target Component') {
+                cName = tbl || 'Source Asset';
+            }
+
+            const displayHeader = tbl || cName;
+
+            if (isComp) {
+                return { key: 'c:' + compId, kind: 'comp', tableLabel: displayHeader, comp: cName };
+            }
+            if (tbl) return { key: 't:' + tbl, kind: 'table', tableLabel: displayHeader, comp: cName };
+
+            return { key: 'x:' + (compId || displayHeader), kind: 'other', tableLabel: displayHeader, comp: cName };
         };
 
         // For a component node the header shows its resolved SQL table/proc, and
@@ -242,13 +289,9 @@ window.cyLineage = (function () {
         const ensure = a => {
             let t = tables.get(a.key);
             if (!t) { t = { cols: new Set(), label: '', tip: '', kind: a.kind }; tables.set(a.key, t); }
-            if (a.kind === 'comp') {
-                if (a.tableLabel) t.label = a.tableLabel;
-                else if (!t.label) t.label = a.comp;
-                if (a.comp) t.tip = a.comp;
-            } else if (!t.label) {
-                t.label = a.tableLabel;
-            }
+            if (a.tableLabel) t.label = a.tableLabel;
+            else if (!t.label || t.label === '?') t.label = a.comp || 'Component';
+            if (a.comp) t.tip = a.comp;
             return t;
         };
 
@@ -481,9 +524,15 @@ window.cyLineage = (function () {
     function addLegend(container, isDark, currentMode) {
         const legend = document.createElement('div');
         legend.className = 'cy-legend' + (isDark ? ' cy-dark' : '');
+        legend.style.cursor = 'pointer';
+        legend.title = 'Klik untuk membuka Petunjuk Legenda & Warna Diagram';
         legend.innerHTML = currentMode === 'column'
-            ? '<span class="lg lg-col"><b style="color:#06b6d4">● Upstream</b> &nbsp; <b style="color:#f59e0b">● Downstream</b> Lineage Path</span>'
-            : '<span class="lg lg-exec">Execution</span><span class="lg lg-data">Data flow</span><span class="lg lg-invokes">Invokes</span><span class="lg lg-contains">Contains</span>';
+            ? '<span class="lg lg-col"><b style="color:#06b6d4">● Upstream</b> &nbsp; <b style="color:#f59e0b">● Downstream</b> Lineage Path</span> <span style="font-size:11px; opacity:0.8; margin-left:8px; font-weight:600; background:rgba(6,182,212,0.15); padding:2px 6px; border-radius:4px;">ℹ️ Detail Legenda</span>'
+            : '<span class="lg lg-exec">Execution</span><span class="lg lg-data">Data flow</span><span class="lg lg-invokes">Invokes</span><span class="lg lg-contains">Contains</span> <span style="font-size:11px; opacity:0.9; margin-left:8px; font-weight:600; background:rgba(99,102,241,0.2); padding:2px 6px; border-radius:4px;">ℹ️ Buka Petunjuk</span>';
+        legend.onclick = function() {
+            const btn = document.getElementById('open-legend-guide-btn');
+            if (btn) btn.click();
+        };
         container.appendChild(legend);
     }
 

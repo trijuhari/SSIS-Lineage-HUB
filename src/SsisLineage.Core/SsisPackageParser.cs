@@ -328,9 +328,10 @@ namespace SsisLineage.Core
                     try
                     {
                         var rawType = comp.ComponentClassID;
+                        var compId = $"{taskHost.ID}_{comp.ID}";
                         var compNode = new ComponentNode
                         {
-                            Id = comp.ID.ToString(),
+                            Id = compId,
                             Name = comp.Name,
                             Type = ThirdPartyComponentDetector.NormalizeComponentType(rawType, comp.Name),
                             PackageId = packageNode.Id,
@@ -378,7 +379,7 @@ namespace SsisLineage.Core
                         }
 
                         _graph.Components.Add(compNode);
-                        componentIdMap[comp.ID] = comp.ID.ToString();
+                        componentIdMap[comp.ID] = compId;
                     }
                     catch (Exception compEx)
                     {
@@ -392,8 +393,8 @@ namespace SsisLineage.Core
                 {
                     _graph.DataFlowEdges.Add(new DataFlowEdge
                     {
-                        FromComponentId = path.StartPoint.Component.ID.ToString(),
-                        ToComponentId = path.EndPoint.Component.ID.ToString(),
+                        FromComponentId = $"{taskHost.ID}_{path.StartPoint.Component.ID}",
+                        ToComponentId = $"{taskHost.ID}_{path.EndPoint.Component.ID}",
                         PathRefId = path.ID.ToString()
                     });
                 }
@@ -537,15 +538,26 @@ namespace SsisLineage.Core
 
         private string ResolveComponentName(string compId, XElement exeNode)
         {
+            if (string.IsNullOrWhiteSpace(compId)) return "";
+
             var compNode = _graph.Components.FirstOrDefault(c => c.Id == compId);
-            if (compNode != null) return compNode.Name;
+            if (compNode != null && !string.IsNullOrWhiteSpace(compNode.Name)) return compNode.Name;
+
+            var rawId = compId.Contains("::") ? compId.Split("::").Last() : compId;
             var comp = exeNode.Descendants()
-                .FirstOrDefault(x => x.Name.LocalName == "component" && (x.Attribute("refId")?.Value == compId || x.Attribute("id")?.Value == compId));
+                .FirstOrDefault(x => x.Name.LocalName == "component" &&
+                    (x.Attribute("refId")?.Value == rawId || x.Attribute("id")?.Value == rawId ||
+                     x.Attribute("refId")?.Value == compId || x.Attribute("id")?.Value == compId));
             if (comp != null)
             {
-                return comp.Attribute("name")?.Value ?? compId;
+                var name = comp.Attribute("name")?.Value;
+                if (!string.IsNullOrWhiteSpace(name)) return name;
             }
-            return ExtractComponentNameFromRefId(compId) ?? compId;
+
+            var extracted = ExtractComponentNameFromRefId(rawId);
+            if (!string.IsNullOrWhiteSpace(extracted)) return extracted;
+
+            return !string.IsNullOrWhiteSpace(rawId) && rawId != "?" ? rawId : "";
         }
 
         private string GetTargetColumnName(XElement inCol)
@@ -618,11 +630,12 @@ namespace SsisLineage.Core
                     .Where(x => x != root);
                 foreach (var exe in executables)
                 {
-                    var exeId = GetExecutableId(exe, dts);
+                    var rawExeId = GetExecutableId(exe, dts);
                     var exeName = GetExecutableName(exe, dts);
                     var exeType = GetExecutableType(exe, dts);
 
-                    if (string.IsNullOrEmpty(exeId)) continue;
+                    if (string.IsNullOrEmpty(rawExeId)) continue;
+                    var exeId = QualifyId(packageId, rawExeId);
 
                     var taskNode = new TaskNode
                     {
@@ -663,7 +676,7 @@ namespace SsisLineage.Core
                     // Data Flow Task
                     else if (IsDataFlowTask(exeType))
                     {
-                        ParseDataFlowXmlFallback(packageNode, taskNode, exeId);
+                        ParseDataFlowXmlFallback(packageNode, taskNode, rawExeId);
                     }
                     else if (exeType.Contains("ExecuteSQLTask", StringComparison.OrdinalIgnoreCase))
                     {
@@ -688,8 +701,8 @@ namespace SsisLineage.Core
 
                     _graph.ExecutionEdges.Add(new ExecutionEdge
                     {
-                        FromTaskId = from,
-                        ToTaskId = to,
+                        FromTaskId = QualifyId(packageId, from),
+                        ToTaskId = QualifyId(packageId, to),
                         PrecedenceConstraintValue = constraint.Attribute(dts + "Value")?.Value ?? "Success",
                         Expression = constraint.Attribute(dts + "Expression")?.Value ?? ""
                     });
@@ -806,7 +819,8 @@ namespace SsisLineage.Core
                     .Where(x => x.Name.LocalName == "component");
                 foreach (var comp in components)
                 {
-                    var compId = comp.Attribute("refId")?.Value ?? comp.Attribute("id")?.Value ?? "";
+                    var rawCompId = comp.Attribute("refId")?.Value ?? comp.Attribute("id")?.Value ?? "";
+                    var compId = QualifyId(taskNode.Id, rawCompId);
                     var compName = comp.Attribute("name")?.Value ?? "";
                     var compType = comp.Attribute("componentClassID")?.Value ?? "";
 
@@ -871,7 +885,11 @@ namespace SsisLineage.Core
                         var colName = inCol.Attribute("cachedName")?.Value ?? inCol.Attribute("name")?.Value ?? "";
                         colName = ResolveColumnNameFromLineageId(exeNode, lineageId, colName);
                         var targetCol = GetTargetColumnName(inCol);
-                        var sourceComponentId = ResolveComponentIdFromLineageId(exeNode, lineageId);
+                        var rawSourceCompId = ResolveComponentIdFromLineageId(exeNode, lineageId);
+                        var sourceComponentId = QualifyId(taskNode.Id, rawSourceCompId);
+                        var sourceCompNode = _graph.Components.FirstOrDefault(c => c.Id == sourceComponentId);
+                        var (srcSchema, srcTable) = ExtractSchemaAndTable(sourceCompNode?.SqlQueryOrTable);
+                        var (tgtSchema, tgtTable) = ExtractSchemaAndTable(compNode.SqlQueryOrTable);
 
                         _graph.ColumnMappings.Add(new ColumnMap
                         {
@@ -879,9 +897,13 @@ namespace SsisLineage.Core
                             TaskId = taskNode.Id,
                             SourceComponentId = sourceComponentId,
                             SourceComponentName = ResolveComponentName(sourceComponentId, exeNode),
+                            SourceSchema = srcSchema ?? "",
+                            SourceTable = srcTable ?? "",
                             SourceColumnName = colName,
                             TargetComponentId = compId,
                             TargetComponentName = compName,
+                            TargetSchema = tgtSchema ?? "",
+                            TargetTable = tgtTable ?? "",
                             TargetColumnName = targetCol,
                             OperationType = "XML_FALLBACK"
                         });
@@ -894,8 +916,10 @@ namespace SsisLineage.Core
                 foreach (var path in paths)
                 {
                     var pathId  = path.Attribute("refId")?.Value ?? path.Attribute("id")?.Value ?? "";
-                    var startId = ResolveComponentIdFromEndpoint(exeNode, path.Attribute("startId")?.Value ?? "");
-                    var endId   = ResolveComponentIdFromEndpoint(exeNode, path.Attribute("endId")?.Value ?? "");
+                    var rawStartId = ResolveComponentIdFromEndpoint(exeNode, path.Attribute("startId")?.Value ?? "");
+                    var rawEndId   = ResolveComponentIdFromEndpoint(exeNode, path.Attribute("endId")?.Value ?? "");
+                    var startId = QualifyId(taskNode.Id, rawStartId);
+                    var endId   = QualifyId(taskNode.Id, rawEndId);
 
                     _graph.DataFlowEdges.Add(new DataFlowEdge
                     {
@@ -967,6 +991,45 @@ namespace SsisLineage.Core
 
             var parts = refId.Split('\\', StringSplitOptions.RemoveEmptyEntries);
             return parts.Length > 0 ? parts[^1] : null;
+        }
+        private static string QualifyId(string prefix, string id)
+        {
+            if (string.IsNullOrWhiteSpace(id)) return id;
+            if (id.StartsWith("{") && id.EndsWith("}")) return id;
+            if (id.StartsWith(prefix + "::", StringComparison.OrdinalIgnoreCase)) return id;
+            return $"{prefix}::{id}";
+        }
+
+        public static (string? schema, string? table) ExtractSchemaAndTable(string? sqlOrTable)
+        {
+            if (string.IsNullOrWhiteSpace(sqlOrTable)) return (null, null);
+
+            var trimmed = sqlOrTable.Trim();
+
+            if (!trimmed.StartsWith("SELECT", StringComparison.OrdinalIgnoreCase) &&
+                !trimmed.StartsWith("WITH", StringComparison.OrdinalIgnoreCase) &&
+                !trimmed.Contains('\n') &&
+                !trimmed.Substring(0, Math.Min(10, trimmed.Length)).Contains(' '))
+            {
+                var parts = trimmed.Replace("[", "").Replace("]", "").Split('.');
+                if (parts.Length == 2) return (parts[0], parts[1]);
+                if (parts.Length == 1) return (null, parts[0]);
+            }
+
+            var match = System.Text.RegularExpressions.Regex.Match(
+                trimmed, @"\bFROM\s+\[?([a-zA-Z0-9_]+)\]?(?:\.\[?([a-zA-Z0-9_]+)\]?)?",
+                System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+            if (match.Success)
+            {
+                if (!string.IsNullOrEmpty(match.Groups[2].Value))
+                {
+                    return (match.Groups[1].Value, match.Groups[2].Value);
+                }
+                return (null, match.Groups[1].Value);
+            }
+
+            return (null, null);
         }
         #endregion
     }
