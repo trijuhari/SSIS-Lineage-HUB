@@ -98,13 +98,13 @@ else
             </div>
         </div>
 
-        <MudGrid>
+        <MudGrid Spacing="3">
         <!-- Controls (collapsible) -->
-        <MudItem xs="12" md="4">
-            <MudPaper Class="pa-4" Elevation="2" Style="height:100%">
-                <div class="d-flex justify-space-between align-center @(_controlsExpanded ? "mb-3" : "")">
+        <MudItem xs="12" md="5" lg="4">
+            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(30, 41, 59, 0.5);">
+                <div class="d-flex justify-space-between align-center @(_controlsExpanded ? "mb-4" : "")">
                     <div style="min-width:0;flex:1">
-                        <MudText Typo="Typo.h6">Generate Report</MudText>
+                        <MudText Typo="Typo.h6" Style="font-weight: 700;">Generate Report</MudText>
                         @if (!_controlsExpanded && reportData != null)
                         {
                             <MudText Typo="Typo.caption" Color="Color.Secondary"
@@ -136,7 +136,7 @@ else
                                 }
                             </MudMenu>
                         }
-                        <MudTooltip Text="@(_controlsExpanded ? "Collapse panel" : "Expand to change settings")" Placement="Placement.Left">
+                        <MudTooltip Text="@(_controlsExpanded ? "Collapse panel" : "Expand settings")" Placement="Placement.Left">
                             <MudIconButton Icon="@(_controlsExpanded ? Icons.Material.Filled.ExpandLess : Icons.Material.Filled.ExpandMore)"
                                            Size="Size.Small" OnClick="@(() => _controlsExpanded = !_controlsExpanded)" />
                         </MudTooltip>
@@ -145,122 +145,144 @@ else
 
                 @if (_controlsExpanded)
                 {
-                    <div class="d-flex align-center gap-2 mb-1">
-                        <MudTextField @bind-Value="projectPath" Label="Project path" Placeholder="/home/hirazone/Documents/ssis-lineage-hub/sample-ssis-project"
-                                      Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex:1"
-                                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Folder" />
-                        <MudTooltip Text="Browse and select your SSIS project folder" Placement="Placement.Top">
-                            <MudIconButton OnClick="BrowseFolder"
-                                           Icon="@Icons.Material.Filled.FolderOpen"
-                                           Variant="Variant.Outlined" Color="Color.Primary"
-                                           Size="Size.Medium"
-                                           Style="height:40px; width:40px; border-radius:8px;" />
-                        </MudTooltip>
-                    </div>
+                    <MudStack Spacing="3">
+                        <!-- Quick Sample Presets -->
+                        <div>
+                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-1 d-block" Style="font-weight: 700; letter-spacing: 0.5px;">
+                                QUICK SAMPLE PRESETS
+                            </MudText>
+                            <div class="d-flex gap-2">
+                                <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" Class="flex-1"
+                                           StartIcon="@Icons.Material.Filled.AutoAwesome" OnClick="UseAdventureWorksProject"
+                                           Style="text-transform:none; font-weight: 600; font-size: 0.78rem; border-radius: 8px;">
+                                    AdventureWorks ETL
+                                </MudButton>
+                                <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Secondary" Class="flex-1"
+                                           StartIcon="@Icons.Material.Filled.FolderZip" OnClick="UseSampleProject"
+                                           Style="text-transform:none; font-size: 0.78rem; border-radius: 8px;">
+                                    Standard Sample
+                                </MudButton>
+                            </div>
+                        </div>
 
-                    <div class="d-flex align-center gap-2 mb-2">
-                        <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" Class="flex-1"
-                                   StartIcon="@Icons.Material.Filled.AutoAwesome"
-                                   OnClick="UseAdventureWorksProject" Style="text-transform:none; font-weight: 600;">
-                            ⚡ Load AdventureWorks ETL (Complex)
-                        </MudButton>
-                        <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Secondary" Class="flex-1"
-                                   StartIcon="@Icons.Material.Filled.FolderZip"
-                                   OnClick="UseSampleProject" Style="text-transform:none;">
-                            Standard Sample
-                        </MudButton>
-                    </div>
+                        <!-- Project Inputs -->
+                        <div class="pa-3" style="background: rgba(15, 23, 42, 0.4); border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.05);">
+                            <div class="d-flex align-center gap-2 mb-3">
+                                <MudTextField @bind-Value="projectPath" Label="Project Directory Path" Placeholder="/path/to/ssis-project"
+                                              Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex:1"
+                                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Folder" />
+                                <MudTooltip Text="Browse folder" Placement="Placement.Top">
+                                    <MudIconButton OnClick="BrowseFolder"
+                                                   Icon="@Icons.Material.Filled.FolderOpen"
+                                                   Variant="Variant.Outlined" Color="Color.Primary"
+                                                   Size="Size.Medium"
+                                                   Style="height:40px; width:40px; border-radius:8px;" />
+                                </MudTooltip>
+                            </div>
 
-                    <MudAutocomplete T="string" @bind-Value="startPackage" Label="Start package"
-                                     Placeholder="Master.dtsx" Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-2"
-                                     SearchFunc="SearchPackages" CoerceValue="true" Clearable="true"
-                                     MaxItems="null"
-                                     Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Description" />
+                            <MudAutocomplete T="string" @bind-Value="startPackage" Label="Start Package Name"
+                                             Placeholder="Master.dtsx or 'all'" Variant="Variant.Outlined" Margin="Margin.Dense"
+                                             SearchFunc="SearchPackages" CoerceValue="true" Clearable="true"
+                                             MaxItems="null"
+                                             Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Description" />
+                        </div>
 
-                    <div class="pa-3 my-2" style="border: 1px dashed var(--mud-palette-lines-inputs); border-radius: 10px; background: rgba(96,165,250,0.03);">
-                        <MudCheckBox @bind-Value="includeSqlProcedures" Color="Color.Primary" Dense="true" Class="mb-2"
-                                     Label="Enrich lineage via SQL Server (Procedures/Views)" />
+                        <!-- Expandable SQL Server Enrichment -->
+                        <MudExpansionPanels MultiExpansion="true" Elevation="0" Class="pa-0" Style="border-radius: 10px; overflow: hidden;">
+                            <MudExpansionPanel Text="SQL Server DB Enrichment (Optional)" Icon="@Icons.Material.Filled.Storage"
+                                               Style="background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(255, 255, 255, 0.05);">
+                                <MudStack Spacing="2" Class="pt-2">
+                                    <MudCheckBox @bind-Value="includeSqlProcedures" Color="Color.Primary" Dense="true"
+                                                 Label="Enrich lineage via SQL Server (Procedures/Views)" />
 
-                        <MudTextField @bind-Value="sqlConnectionString" Label="SQL Server Connection String"
-                                      Placeholder="Server=localhost,1433;Database=SsisDemoDB;User Id=sa;Password=YourPassword123!;TrustServerCertificate=True"
-                                      HelperText="Connection string used for SQL procedure definition lookup & database enrichment."
-                                      Variant="Variant.Outlined" Margin="Margin.Dense" Lines="2" Class="mb-2" />
+                                    <MudTextField @bind-Value="sqlConnectionString" Label="SQL Connection String"
+                                                  Placeholder="Server=localhost,1433;Database=SsisDemoDB;User Id=sa;Password=..."
+                                                  Variant="Variant.Outlined" Margin="Margin.Dense" Lines="2" Class="mt-1" />
 
-                        <div class="d-flex align-center gap-2 mt-2">
-                            <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info"
-                                       StartIcon="@Icons.Material.Filled.Storage" Style="flex:1; white-space:nowrap; text-transform:none;"
-                                       OnClick="FillDemoConnectionString">
-                                Use Demo DB
+                                    <div class="d-flex align-center gap-2 mt-1">
+                                        <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info" Class="flex-1"
+                                                   StartIcon="@Icons.Material.Filled.Storage" Style="text-transform:none; font-size: 0.75rem;"
+                                                   OnClick="FillDemoConnectionString">
+                                            Use Demo DB
+                                        </MudButton>
+                                        <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" Class="flex-1"
+                                                   StartIcon="@Icons.Material.Filled.NetworkCheck" Style="text-transform:none; font-size: 0.75rem;"
+                                                   OnClick="TestSqlConnection" Disabled="_isTestingConn">
+                                            @(_isTestingConn ? "Testing..." : "Test Connection")
+                                        </MudButton>
+                                    </div>
+
+                                    @if (!string.IsNullOrEmpty(_connTestResult))
+                                    {
+                                        <MudAlert Severity="@(_connTestSuccess ? Severity.Success : Severity.Error)" Class="mt-2" Dense="true">
+                                            @_connTestResult
+                                        </MudAlert>
+                                    }
+                                </MudStack>
+                            </MudExpansionPanel>
+
+                            <MudExpansionPanel Text="Advanced Name Resolution" Icon="@Icons.Material.Filled.Tune" Class="mt-2"
+                                               Style="background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(255, 255, 255, 0.05);">
+                                <MudStack Spacing="2" Class="pt-2">
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                        Configure linked server aliases and dynamic SQL variable values for stored procedure resolution.
+                                    </MudText>
+
+                                    <MudCheckBox @bind-Value="autoResolveLinkedServers" Color="Color.Primary" Dense="true"
+                                                 Label="Auto-map linked-servers via sys.servers" />
+
+                                    <MudTextField @bind-Value="linkedServerMapText" Label="Linked Server Name Map"
+                                                  Placeholder="LINKEDSRV=StagingServer; OTHERLINK=RealHost"
+                                                  Variant="Variant.Outlined" Margin="Margin.Dense" Lines="2" />
+
+                                    <MudTextField @bind-Value="sqlVariableValuesText" Label="Stored-Proc Variable Values"
+                                                  Placeholder="@@Server=LINKEDSRV; @@Database=StagingDb"
+                                                  Variant="Variant.Outlined" Margin="Margin.Dense" Lines="2" />
+                                </MudStack>
+                            </MudExpansionPanel>
+                        </MudExpansionPanels>
+
+                        <!-- Primary Action Buttons -->
+                        <div class="pt-2">
+                            <MudButton OnClick="GenerateReportAsync" Disabled="isGenerating || isLoadingReport" Variant="Variant.Filled"
+                                       Color="Color.Primary" FullWidth="true" Size="Size.Large"
+                                       StartIcon="@Icons.Material.Filled.PlayArrow"
+                                       Style="border-radius: 10px; font-weight: 700; background: linear-gradient(135deg, #0284c7 0%, #6366f1 100%);">
+                                @(isGenerating ? "Generating Lineage..." : "Generate Report")
                             </MudButton>
-                            <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary"
-                                       StartIcon="@Icons.Material.Filled.NetworkCheck" Style="flex:1; white-space:nowrap; text-transform:none;"
-                                       OnClick="TestSqlConnection" Disabled="_isTestingConn">
-                                @(_isTestingConn ? "Testing..." : "Test Connection")
+
+                            <MudFileUpload T="IBrowserFile" @ref="_reportUpload" FilesChanged="LoadReportFile"
+                                           Accept=".json" Hidden="true" Class="d-none" />
+                            <MudButton Variant="Variant.Outlined" Size="Size.Small" FullWidth="true" Class="mt-2"
+                                       Disabled="isGenerating || isLoadingReport"
+                                       StartIcon="@Icons.Material.Filled.FileOpen"
+                                       OnClick="@(() => _reportUpload?.OpenFilePickerAsync() ?? Task.CompletedTask)"
+                                       Style="border-radius: 8px; text-transform: none;">
+                                @(isLoadingReport ? "Loading report…" : "Load Saved JSON Report…")
                             </MudButton>
                         </div>
 
-                        @if (!string.IsNullOrEmpty(_connTestResult))
+                        @if (isGenerating || isLoadingReport)
                         {
-                            <MudAlert Severity="@(_connTestSuccess ? Severity.Success : Severity.Error)" Class="mt-2" Dense="true">
-                                @_connTestResult
-                            </MudAlert>
+                            <div>
+                                <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mt-2" />
+                                <MudText Typo="Typo.caption" Color="Color.Secondary" Align="Align.Center" Class="d-block mt-1">
+                                    @(isLoadingReport ? "Parsing saved report file..." : "Scanning project DTSX packages...")
+                                </MudText>
+                            </div>
                         }
-                    </div>
 
-                        <MudText Typo="Typo.subtitle2" Class="mt-4">Name resolution (advanced)</MudText>
-                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mb-1">
-                            Help the parser interpret server/table names that appear in SQL — these do not open connections.
-                        </MudText>
-
-                        <MudCheckBox @bind-Value="autoResolveLinkedServers" Color="Color.Primary" Dense="true"
-                                     Label="Auto-map linked-server names to their real server (via sys.servers)" />
-
-                        <MudTextField @bind-Value="linkedServerMapText" Label="Linked-server name map (optional)"
-                                      Placeholder="LINKEDSRV=StagingServer; OTHERLINK=RealHost"
-                                      HelperText="Display only — maps a linked-server NAME to the real server name. LinkedServerName=ActualServerName, separated by ;. Overrides the auto-map above."
-                                      Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-1" Lines="2" />
-
-                        <MudTextField @bind-Value="sqlVariableValuesText" Label="Stored-proc variable values (optional)"
-                                      Placeholder="@@Server=LINKEDSRV; @@Database=StagingDb"
-                                      HelperText="Values for stored-proc parameters used to build dynamic SQL (the server/database variables) so OPENQUERY and remote table names resolve. One Variable=value per pair, separated by ; (see the placeholder)."
-                                      Variant="Variant.Outlined" Margin="Margin.Dense" Class="mt-1" Lines="2" />
-                    }
-
-                    <MudButton OnClick="GenerateReportAsync" Disabled="isGenerating || isLoadingReport" Variant="Variant.Filled"
-                               Color="Color.Primary" FullWidth="true" Class="mt-4"
-                               StartIcon="@Icons.Material.Filled.PlayArrow">
-                        @(isGenerating ? "Generating..." : "Generate Report")
-                    </MudButton>
-
-                    @* d-none suppresses MudFileUpload's built-in "Browse Files" activator button;
-                       the picker is opened programmatically from the button below. *@
-                    <MudFileUpload T="IBrowserFile" @ref="_reportUpload" FilesChanged="LoadReportFile"
-                                   Accept=".json" Hidden="true" Class="d-none" />
-                    <MudButton Variant="Variant.Text" Size="Size.Small" FullWidth="true" Class="mt-3"
-                               Disabled="isGenerating || isLoadingReport"
-                               StartIcon="@Icons.Material.Filled.FileOpen"
-                               OnClick="@(() => _reportUpload?.OpenFilePickerAsync() ?? Task.CompletedTask)">
-                        @(isLoadingReport ? "Loading report…" : "Load saved report…")
-                    </MudButton>
-
-                    @if (isGenerating || isLoadingReport)
-                    {
-                        <MudProgressLinear Indeterminate="true" Color="Color.Primary" Class="mt-3" />
-                        <MudText Typo="Typo.caption" Color="Color.Secondary" Align="Align.Center" Class="d-block mt-1">
-                            @(isLoadingReport ? "Parsing saved report — large files can take a moment…" : "Scanning project…")
-                        </MudText>
-                    }
-
-                    @if (!string.IsNullOrEmpty(errorMessage))
-                    {
-                        <MudAlert Severity="Severity.Error" Variant="Variant.Filled" Class="mt-3" Dense="true">@errorMessage</MudAlert>
-                    }
+                        @if (!string.IsNullOrEmpty(errorMessage))
+                        {
+                            <MudAlert Severity="Severity.Error" Variant="Variant.Filled" Class="mt-2" Dense="true">@errorMessage</MudAlert>
+                        }
+                    </MudStack>
                 }
             </MudPaper>
         </MudItem>
 
         <!-- Summary -->
-        <MudItem xs="12" md="8">
+        <MudItem xs="12" md="7" lg="8">
             @if (reportData != null)
             {
                 <MudPaper Class="pa-4" Elevation="2" Style="height:100%">

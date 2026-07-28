@@ -8,7 +8,7 @@
 <MudDialogProvider />
 <MudSnackbarProvider />
 
-<CommandPalette @bind-IsOpen="_commandPaletteOpen" OnToggleDarkMode="ToggleDarkMode" />
+<CommandPalette @bind-IsOpen="_commandPaletteOpen" />
 
 <MudLayout>
     @if (!IsLandingPage)
@@ -36,11 +36,6 @@
             <MudSpacer />
             <MudTooltip Text="Search commands & entities (Ctrl+K)" Class="d-flex d-sm-none">
                 <MudIconButton Icon="@Icons.Material.Filled.Search" Color="Color.Inherit" OnClick="OpenCommandPalette" />
-            </MudTooltip>
-
-            <MudTooltip Text="@(_isDarkMode ? "Switch to light mode" : "Switch to dark mode")">
-                <MudIconButton Icon="@(_isDarkMode ? Icons.Material.Filled.LightMode : Icons.Material.Filled.DarkMode)"
-                               Color="Color.Inherit" OnClick="@ToggleDarkMode" />
             </MudTooltip>
         </MudAppBar>
 
@@ -121,5 +116,4 @@
     }
 
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
-    private void ToggleDarkMode() => _isDarkMode = !_isDarkMode;
 }

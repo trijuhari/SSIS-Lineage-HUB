@@ -253,7 +253,6 @@
 @code {
     [Parameter] public bool IsOpen { get; set; }
     [Parameter] public EventCallback<bool> IsOpenChanged { get; set; }
-    [Parameter] public EventCallback OnToggleDarkMode { get; set; }
 
     private ElementReference _searchInput;
     private string Query { get; set; } = "";
@@ -295,13 +294,12 @@
             new CommandItem { Title = "Lineage Search & Trace", Subtitle = "Trace column lineage from source to target", Group = "Pages", Icon = Icons.Material.Filled.Search, IconColor = Color.Info, Url = "lineage-trace" },
             new CommandItem { Title = "Detailed Lineage Report", Subtitle = "High-density data grid & export options", Group = "Pages", Icon = Icons.Material.Filled.Description, IconColor = Color.Success, Url = "detailed-report" },
             new CommandItem { Title = "What-If Impact Simulator", Subtitle = "Simulate column drops & breaking downstream changes", Group = "Pages", Icon = Icons.Material.Filled.Science, IconColor = Color.Warning, Url = "what-if" },
-            new CommandItem { Title = "Natural Language Query Engine", Subtitle = "Ask questions in plain English or Bahasa Indonesia", Group = "Pages", Icon = Icons.Material.Filled.Psychology, IconColor = Color.Secondary, Url = "nl-query" },
+            new CommandItem { Title = "Natural Language Query Engine", Subtitle = "Ask questions about your data lineage in plain English", Group = "Pages", Icon = Icons.Material.Filled.Psychology, IconColor = Color.Secondary, Url = "nl-query" },
             new CommandItem { Title = "Risk Scorer & Heatmap", Subtitle = "Identify high-risk packages & fragile data paths", Group = "Pages", Icon = Icons.Material.Filled.LocalFireDepartment, IconColor = Color.Error, Url = "risk-heatmap" },
             new CommandItem { Title = "Data Quality Propagation", Subtitle = "Track data quality decay across transformation steps", Group = "Pages", Icon = Icons.Material.Filled.ReportProblem, IconColor = Color.Error, Url = "quality-propagation" },
             new CommandItem { Title = "Data Contracts Validation", Subtitle = "Validate ETL schemas against YAML contract specifications", Group = "Pages", Icon = Icons.Material.Filled.VerifiedUser, IconColor = Color.Primary, Url = "data-contracts" },
 
             // Actions
-            new CommandItem { Title = "Toggle Dark / Light Theme", Subtitle = "Switch visual color mode", Group = "Quick Actions", Icon = Icons.Material.Filled.Brightness4, IconColor = Color.Warning, Action = () => OnToggleDarkMode.InvokeAsync() },
             new CommandItem { Title = "Load Sample Demo Project", Subtitle = "Load pre-built SSIS demo package report", Group = "Quick Actions", Icon = Icons.Material.Filled.PlayCircle, IconColor = Color.Success, Url = "lineage?Demo=true" }
         };
 
