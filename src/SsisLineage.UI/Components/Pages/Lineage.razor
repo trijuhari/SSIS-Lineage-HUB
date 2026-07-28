@@ -1146,7 +1146,8 @@ else
             
             if (!File.Exists(samplePath))
             {
-                Snackbar.Add("Sample report not found. Please run a scan first.", Severity.Warning);
+                await UseAdventureWorksProject();
+                await GenerateReportAsync();
                 return;
             }
 
