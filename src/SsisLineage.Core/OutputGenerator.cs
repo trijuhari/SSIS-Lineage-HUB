@@ -125,7 +125,7 @@ namespace SsisLineage.Core
             sb.AppendLine();
 
             sb.AppendLine("## Tasks");
-            sb.AppendLine("| Package | Task | Type | Narasi Bisnis |");
+            sb.AppendLine("| Package | Task | Type | Business Narrative |");
             sb.AppendLine("| --- | --- | --- | --- |");
             foreach (var task in graph.Tasks)
             {
@@ -134,7 +134,7 @@ namespace SsisLineage.Core
             sb.AppendLine();
  
             sb.AppendLine("## Data Flow Components");
-            sb.AppendLine("| Package | Task | Component | Type | Connection | SQL / Table | Narasi Bisnis |");
+            sb.AppendLine("| Package | Task | Component | Type | Connection | SQL / Table | Business Narrative |");
             sb.AppendLine("| --- | --- | --- | --- | --- | --- | --- |");
             foreach (var component in graph.Components)
             {
@@ -215,7 +215,7 @@ namespace SsisLineage.Core
 
             sb.AppendLine("    <h2>Tasks</h2>");
             sb.AppendLine("    <table>");
-            sb.AppendLine("        <thead><tr><th>Package</th><th>Task</th><th>Type</th><th>Narasi Bisnis</th></tr></thead>");
+            sb.AppendLine("        <thead><tr><th>Package</th><th>Task</th><th>Type</th><th>Business Narrative</th></tr></thead>");
             sb.AppendLine("        <tbody>");
             foreach (var task in graph.Tasks)
             {
@@ -226,7 +226,7 @@ namespace SsisLineage.Core
  
             sb.AppendLine("    <h2>Data Flow Components</h2>");
             sb.AppendLine("    <table>");
-            sb.AppendLine("        <thead><tr><th>Package</th><th>Task</th><th>Component</th><th>Type</th><th>Connection</th><th>SQL / Table</th><th>Narasi Bisnis</th></tr></thead>");
+            sb.AppendLine("        <thead><tr><th>Package</th><th>Task</th><th>Component</th><th>Type</th><th>Connection</th><th>SQL / Table</th><th>Business Narrative</th></tr></thead>");
             sb.AppendLine("        <tbody>");
             foreach (var component in graph.Components)
             {
@@ -452,7 +452,7 @@ namespace SsisLineage.Core
             sb.AppendLine($"  <summary>Tasks ({graph.Tasks.Count})</summary>");
             sb.AppendLine("<div class=\"report-table-wrapper\">");
             sb.AppendLine("<table class=\"report-table\">");
-            sb.AppendLine("    <thead><tr><th>Package</th><th>Task</th><th>Type</th><th>Narasi Bisnis</th></tr></thead>");
+            sb.AppendLine("    <thead><tr><th>Package</th><th>Task</th><th>Type</th><th>Business Narrative</th></tr></thead>");
             sb.AppendLine("    <tbody>");
             foreach (var task in graph.Tasks)
             {
@@ -467,7 +467,7 @@ namespace SsisLineage.Core
             sb.AppendLine($"  <summary>Data Flow Components ({graph.Components.Count})</summary>");
             sb.AppendLine("<div class=\"report-table-wrapper\">");
             sb.AppendLine("<table class=\"report-table\">");
-            sb.AppendLine("    <thead><tr><th>Package</th><th>Task</th><th>Component</th><th>Type</th><th>Connection</th><th>SQL / Table</th><th>Narasi Bisnis</th></tr></thead>");
+            sb.AppendLine("    <thead><tr><th>Package</th><th>Task</th><th>Component</th><th>Type</th><th>Connection</th><th>SQL / Table</th><th>Business Narrative</th></tr></thead>");
             sb.AppendLine("    <tbody>");
             foreach (var component in graph.Components)
             {

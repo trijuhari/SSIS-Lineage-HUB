@@ -18,6 +18,9 @@ Features a modernized **Landing Page Dashboard** and a streamlined, responsive w
 ### 2. Interactive Data Flow Visualization & Workspace
 ![Interactive Lineage Visualization & Workspace](docs/images/lineage-visualization.png)
 
+### 3. Column/Table Lineage Trace (Impact & Origins)
+![Lineage Search & Trace](docs/images/lineage-trace.png)
+
 ---
 
 ## 🌟 Key Features

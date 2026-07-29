@@ -79,8 +79,8 @@ namespace SsisLineage.Tests
 
             var narrative = BusinessNarrativeGenerator.GenerateTaskNarrative(task, mappings, components, glossary);
             
-            Assert.Contains("Aliran Data (Data Flow):", narrative);
-            Assert.Contains("Mengambil data", narrative);
+            Assert.Contains("Data Flow:", narrative);
+            Assert.Contains("Extracts data", narrative);
             Assert.Contains("Src_Trx", narrative);
             Assert.Contains("Dest_Trx", narrative);
         }
@@ -103,7 +103,7 @@ namespace SsisLineage.Tests
             var components = new List<ComponentNode>();
 
             var narrativeInsert = BusinessNarrativeGenerator.GenerateTaskNarrative(taskInsert, mapsInsert, components, glossary);
-            Assert.Contains("Mengambil data", narrativeInsert);
+            Assert.Contains("Extracts data", narrativeInsert);
             Assert.Contains("DimCustomer", narrativeInsert);
 
             var taskUpdate = new TaskNode
@@ -117,7 +117,7 @@ namespace SsisLineage.Tests
                 new ColumnMap { TaskId = "T3", OperationType = "SQL_PROC_UPDATE", TargetTable = "DimCustomer" }
             };
             var narrativeUpdate = BusinessNarrativeGenerator.GenerateTaskNarrative(taskUpdate, mapsUpdate, components, glossary);
-            Assert.Contains("Memperbarui data", narrativeUpdate);
+            Assert.Contains("Updates data", narrativeUpdate);
         }
 
         [Fact]
@@ -137,7 +137,7 @@ namespace SsisLineage.Tests
             };
 
             var narrative = BusinessNarrativeGenerator.GenerateComponentNarrative(comp, maps, glossary);
-            Assert.Contains("Memuat hasil", narrative);
+            Assert.Contains("Loads", narrative);
             Assert.Contains("FactTransaction", narrative);
         }
     }

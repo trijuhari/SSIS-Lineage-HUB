@@ -513,27 +513,50 @@ else
 
             @if (!string.IsNullOrEmpty(_detail.BusinessNarrative))
             {
-                <div class="mt-4 mb-2">
-                    <MudText Typo="Typo.subtitle2">Narasi Bisnis</MudText>
-                    <MudPaper Class="pa-3 mt-1" Style="background-color: var(--mud-palette-background-grey); border-left: 4px solid var(--mud-palette-primary)">
-                        <MudText Typo="Typo.body2">@_detail.BusinessNarrative</MudText>
-                    </MudPaper>
-                </div>
+                <MudCard Elevation="0" Class="mt-4 mb-3" Style="background: rgba(56, 189, 248, 0.05); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 8px;">
+                    <MudCardHeader Class="pb-2 pt-3 px-4">
+                        <CardHeaderContent>
+                            <div class="d-flex align-center gap-2">
+                                <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Color="Color.Primary" Size="Size.Small" />
+                                <MudText Typo="Typo.subtitle2" Color="Color.Primary" Style="font-weight: 700; letter-spacing: 0.5px;">Business Narrative</MudText>
+                            </div>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent Class="pt-0 pb-3 px-4">
+                        <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-primary); line-height: 1.6;">@_detail.BusinessNarrative</MudText>
+                    </MudCardContent>
+                </MudCard>
             }
 
             @if (_detail.GlossaryTerms.Count > 0)
             {
-                <div class="mt-4 mb-2">
-                    <MudText Typo="Typo.subtitle2">Glosarium Bisnis (@_detail.GlossaryTerms.Count)</MudText>
-                    <div class="d-flex flex-wrap gap-2 mt-1">
-                        @foreach (var term in _detail.GlossaryTerms)
-                        {
-                            <MudChip T="string" Size="Size.Small" Variant="Variant.Filled" Color="Color.Info">
-                                <b>@term.Physical:</b> @term.Business
-                            </MudChip>
-                        }
-                    </div>
-                </div>
+                <MudCard Elevation="0" Class="mt-4 mb-3" Style="background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 8px;">
+                    <MudCardHeader Class="pb-2 pt-3 px-4">
+                        <CardHeaderContent>
+                            <div class="d-flex align-center justify-space-between w-100">
+                                <div class="d-flex align-center gap-2">
+                                    <MudIcon Icon="@Icons.Material.Filled.MenuBook" Color="Color.Info" Size="Size.Small" />
+                                    <MudText Typo="Typo.subtitle2" Color="Color.Info" Style="font-weight: 700; letter-spacing: 0.5px;">Business Glossary</MudText>
+                                </div>
+                                <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined">@_detail.GlossaryTerms.Count terms</MudChip>
+                            </div>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent Class="pt-0 pb-3 px-4">
+                        <div class="d-flex flex-wrap gap-2 mt-1">
+                            @foreach (var term in _detail.GlossaryTerms)
+                            {
+                                <MudTooltip Text="@($"Physical Field: {term.Physical}")" Placement="Placement.Top">
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Filled" Style="background-color: var(--mud-palette-background); border: 1px solid rgba(59, 130, 246, 0.3);">
+                                        <span style="color: var(--mud-palette-info); font-weight: 700; margin-right: 4px;">@term.Physical</span>
+                                        <span style="color: var(--mud-palette-text-secondary);">&rarr;</span>
+                                        <span style="margin-left: 4px; font-weight: 500;">@term.Business</span>
+                                    </MudChip>
+                                </MudTooltip>
+                            }
+                        </div>
+                    </MudCardContent>
+                </MudCard>
             }
 
             @if (_detail.Chips.Count > 0)

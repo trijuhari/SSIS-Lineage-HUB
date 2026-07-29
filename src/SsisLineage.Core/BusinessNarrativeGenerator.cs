@@ -27,17 +27,17 @@ namespace SsisLineage.Core
 
             if (task.Type.Contains("ExecutePackageTask", StringComparison.OrdinalIgnoreCase))
             {
-                return $"Menjalankan package anak (Child Package) untuk memproses sub-alur kerja.";
+                return $"Executes a child package to process a sub-workflow.";
             }
 
             if (task.Type.Contains("Sequence", StringComparison.OrdinalIgnoreCase))
             {
-                return $"Wadah Sequence: Mengelompokkan beberapa task alur kerja untuk dieksekusi bersama.";
+                return $"Sequence Container: Groups multiple workflow tasks to be executed together.";
             }
 
             if (task.Type.Contains("ForEachLoop", StringComparison.OrdinalIgnoreCase) || task.Type.Contains("ForLoop", StringComparison.OrdinalIgnoreCase))
             {
-                return $"Melakukan perulangan (Looping) untuk memproses kumpulan data secara berulang.";
+                return $"Performs a looping operation to process a dataset iteratively.";
             }
 
             if (!string.IsNullOrEmpty(task.Description))
@@ -45,7 +45,7 @@ namespace SsisLineage.Core
                 return task.Description;
             }
 
-            return $"Menjalankan task '{task.Name}' (Tipe: {task.Type}).";
+            return $"Executes the task '{task.Name}' (Type: {task.Type}).";
         }
 
         public static string GenerateComponentNarrative(ComponentNode component, List<ColumnMap> compMappings, BusinessGlossary glossary)
@@ -60,49 +60,49 @@ namespace SsisLineage.Core
 
             if (type.Contains("Source", StringComparison.OrdinalIgnoreCase))
             {
-                var srcText = !string.IsNullOrEmpty(translatedSqlOrTable) ? $" dari {translatedSqlOrTable}" : "";
-                return $"Mengambil data awal (Source){srcText} untuk diproses dalam alur data.";
+                var srcText = !string.IsNullOrEmpty(translatedSqlOrTable) ? $" from {translatedSqlOrTable}" : "";
+                return $"Extracts initial data (Source){srcText} to be processed in the data flow.";
             }
 
             if (type.Contains("Destination", StringComparison.OrdinalIgnoreCase))
             {
-                var destText = !string.IsNullOrEmpty(translatedSqlOrTable) ? $" ke {translatedSqlOrTable}" : "";
-                return $"Memuat hasil pemrosesan data (Destination){destText}.";
+                var destText = !string.IsNullOrEmpty(translatedSqlOrTable) ? $" into {translatedSqlOrTable}" : "";
+                return $"Loads the processed data results (Destination){destText}.";
             }
 
             if (type.Contains("Lookup", StringComparison.OrdinalIgnoreCase))
             {
-                var refText = !string.IsNullOrEmpty(translatedSqlOrTable) ? $" dengan {translatedSqlOrTable}" : "";
-                return $"Mencocokkan/mencari data referensi (Lookup){refText} berdasarkan kolom kunci.";
+                var refText = !string.IsNullOrEmpty(translatedSqlOrTable) ? $" against {translatedSqlOrTable}" : "";
+                return $"Looks up reference data{refText} based on key columns.";
             }
 
             if (type.Contains("Derived", StringComparison.OrdinalIgnoreCase) || type.Contains("Derived Column", StringComparison.OrdinalIgnoreCase))
             {
                 var cols = compMappings.Select(m => m.TargetColumnName).Distinct().ToList();
                 var colText = cols.Count > 0 ? $" ({string.Join(", ", cols.Select(c => glossary.Translate(c, false)))})" : "";
-                return $"Membuat atau memperbarui kolom baru (Derived Column){colText} menggunakan ekspresi logika bisnis.";
+                return $"Creates or updates columns (Derived Column){colText} using business logic expressions.";
             }
 
             if (type.Contains("Aggregate", StringComparison.OrdinalIgnoreCase))
             {
                 var groupCols = compMappings.Where(m => string.IsNullOrEmpty(m.SourceExpression)).Select(m => m.TargetColumnName).Distinct().ToList();
-                var groupText = groupCols.Count > 0 ? $" berdasarkan {string.Join(", ", groupCols.Select(c => glossary.Translate(c, false)))}" : "";
-                return $"Melakukan agregasi data (seperti sum, count, atau avg){groupText}.";
+                var groupText = groupCols.Count > 0 ? $" grouped by {string.Join(", ", groupCols.Select(c => glossary.Translate(c, false)))}" : "";
+                return $"Performs data aggregation (e.g., sum, count, or avg){groupText}.";
             }
 
             if (type.Contains("Union", StringComparison.OrdinalIgnoreCase))
             {
-                return "Menggabungkan beberapa aliran data menjadi satu aliran data tunggal (Union All).";
+                return "Combines multiple data streams into a single dataset (Union All).";
             }
 
             if (type.Contains("Sort", StringComparison.OrdinalIgnoreCase))
             {
-                return "Mengurutkan data berdasarkan kolom tertentu.";
+                return "Sorts data based on specific columns.";
             }
 
             if (type.Contains("Filter", StringComparison.OrdinalIgnoreCase) || type.Contains("Split", StringComparison.OrdinalIgnoreCase))
             {
-                return "Memfilter atau membagi aliran data (Conditional Split) berdasarkan kondisi tertentu.";
+                return "Filters or routes the data stream (Conditional Split) based on specific conditions.";
             }
 
             if (type.Equals("Execute SQL Task", StringComparison.OrdinalIgnoreCase))
@@ -113,10 +113,10 @@ namespace SsisLineage.Core
 
             if (!string.IsNullOrEmpty(translatedSqlOrTable))
             {
-                return $"Memproses data terkait {translatedSqlOrTable} (Tipe: {type}).";
+                return $"Processes data related to {translatedSqlOrTable} (Type: {type}).";
             }
 
-            return $"Melakukan transformasi '{component.Name}' (Tipe: {type}).";
+            return $"Performs transformation '{component.Name}' (Type: {type}).";
         }
 
         private static string GenerateSqlTaskNarrative(TaskNode task, List<ColumnMap> mappings, BusinessGlossary glossary)
@@ -124,7 +124,7 @@ namespace SsisLineage.Core
             if (mappings.Count == 0)
             {
                 // Fallback if no column mappings are generated
-                return $"Menjalankan query SQL untuk memproses data pada database.";
+                return $"Executes a SQL query to process data in the database.";
             }
 
             var opTypes = mappings.Select(m => m.OperationType).Distinct().ToList();
@@ -149,78 +149,78 @@ namespace SsisLineage.Core
 
             if (isMerge)
             {
-                sb.Append("Menggabungkan (Merge) data");
+                sb.Append("Merges data");
                 if (!string.IsNullOrEmpty(primarySource))
                 {
-                    sb.Append($" dari {glossary.Translate(primarySource)}");
+                    sb.Append($" from {glossary.Translate(primarySource)}");
                 }
                 if (targetTables.Count > 0)
                 {
-                    sb.Append($" ke dalam {glossary.Translate(targetTables[0])}");
+                    sb.Append($" into {glossary.Translate(targetTables[0])}");
                 }
                 if (joinDetails.Count > 0)
                 {
                     var cleanJoins = string.Join(", ", joinDetails.Select(j => glossary.TranslateExpression(j)));
-                    sb.Append($" berdasarkan kondisi: {cleanJoins}");
+                    sb.Append($" based on condition: {cleanJoins}");
                 }
-                sb.Append(". Melakukan penambahan (INSERT) jika data baru, atau pembaruan (UPDATE) jika data sudah ada.");
+                sb.Append(". Performs an INSERT for new data, or an UPDATE for existing data.");
             }
             else if (isDelete)
             {
-                sb.Append("Menghapus data");
+                sb.Append("Deletes data");
                 if (targetTables.Count > 0)
                 {
-                    sb.Append($" dari {glossary.Translate(targetTables[0])}");
+                    sb.Append($" from {glossary.Translate(targetTables[0])}");
                 }
                 if (joinedTables.Count > 0)
                 {
-                    sb.Append($" dengan melibatkan tabel {string.Join(", ", joinedTables.Select(t => glossary.Translate(t)))}");
+                    sb.Append($" joining with tables {string.Join(", ", joinedTables.Select(t => glossary.Translate(t)))}");
                 }
                 if (filterConditions.Count > 0)
                 {
                     var cleanFilters = string.Join(" AND ", filterConditions.Select(f => glossary.TranslateExpression(f)));
-                    sb.Append($" berdasarkan filter: {cleanFilters}");
+                    sb.Append($" based on filter: {cleanFilters}");
                 }
                 sb.Append(".");
             }
             else if (isUpdate)
             {
-                sb.Append("Memperbarui data");
+                sb.Append("Updates data");
                 if (targetTables.Count > 0)
                 {
-                    sb.Append($" pada {glossary.Translate(targetTables[0])}");
+                    sb.Append($" in {glossary.Translate(targetTables[0])}");
                 }
                 if (!string.IsNullOrEmpty(primarySource))
                 {
-                    sb.Append($" menggunakan data dari {glossary.Translate(primarySource)}");
+                    sb.Append($" using data from {glossary.Translate(primarySource)}");
                 }
                 if (joinedTables.Count > 1) // more than just primary source
                 {
                     var otherJoins = joinedTables.Where(t => !t.Equals(primarySource, StringComparison.OrdinalIgnoreCase));
-                    sb.Append($", digabung dengan {string.Join(", ", otherJoins.Select(t => glossary.Translate(t)))}");
+                    sb.Append($", joined with {string.Join(", ", otherJoins.Select(t => glossary.Translate(t)))}");
                 }
                 if (joinDetails.Count > 0)
                 {
                     var cleanJoins = string.Join(", ", joinDetails.Select(j => glossary.TranslateExpression(j)));
-                    sb.Append($" berdasarkan {cleanJoins}");
+                    sb.Append($" based on {cleanJoins}");
                 }
                 if (filterConditions.Count > 0)
                 {
                     var cleanFilters = string.Join(" AND ", filterConditions.Select(f => glossary.TranslateExpression(f)));
-                    sb.Append($" dengan filter {cleanFilters}");
+                    sb.Append($" with filter {cleanFilters}");
                 }
                 sb.Append(".");
             }
             else // Insert or Select Into or standard extraction
             {
-                sb.Append("Mengambil data");
+                sb.Append("Extracts data");
                 if (!string.IsNullOrEmpty(primarySource))
                 {
-                    sb.Append($" dari {glossary.Translate(primarySource)}");
+                    sb.Append($" from {glossary.Translate(primarySource)}");
                 }
                 else if (sourceTables.Count > 0)
                 {
-                    sb.Append($" dari {glossary.Translate(sourceTables[0])}");
+                    sb.Append($" from {glossary.Translate(sourceTables[0])}");
                 }
 
                 if (joinedTables.Count > 0)
@@ -229,20 +229,20 @@ namespace SsisLineage.Core
                     var others = joinedTables.Where(t => !t.Equals(primarySource, StringComparison.OrdinalIgnoreCase)).ToList();
                     if (others.Count > 0)
                     {
-                        sb.Append($", digabung dengan {string.Join(", ", others.Select(t => glossary.Translate(t)))}");
+                        sb.Append($", joined with {string.Join(", ", others.Select(t => glossary.Translate(t)))}");
                     }
                 }
 
                 if (joinDetails.Count > 0)
                 {
                     var cleanJoins = string.Join(", ", joinDetails.Select(j => glossary.TranslateExpression(j)));
-                    sb.Append($" berdasarkan {cleanJoins}");
+                    sb.Append($" based on {cleanJoins}");
                 }
 
                 if (filterConditions.Count > 0)
                 {
                     var cleanFilters = string.Join(" AND ", filterConditions.Select(f => glossary.TranslateExpression(f)));
-                    sb.Append($" dengan filter {cleanFilters}");
+                    sb.Append($" with filter {cleanFilters}");
                 }
 
                 // Check if aggregate
@@ -259,17 +259,17 @@ namespace SsisLineage.Core
                         .Select(m => m.TargetColumnName).Distinct().ToList();
                     if (groupCols.Count > 0)
                     {
-                        sb.Append($", lalu diagregasi per {string.Join(", ", groupCols.Select(c => glossary.Translate(c, false)))}");
+                        sb.Append($", then aggregated by {string.Join(", ", groupCols.Select(c => glossary.Translate(c, false)))}");
                     }
                     else
                     {
-                        sb.Append(", lalu diagregasi");
+                        sb.Append(", then aggregated");
                     }
                 }
 
                 if (targetTables.Count > 0)
                 {
-                    sb.Append($", hasilnya dimuat ke {glossary.Translate(targetTables[0])}");
+                    sb.Append($", loading the results into {glossary.Translate(targetTables[0])}");
                 }
                 sb.Append(".");
             }
@@ -288,15 +288,15 @@ namespace SsisLineage.Core
                 .Where(n => !string.IsNullOrEmpty(n)).Distinct().ToList();
 
             var sb = new StringBuilder();
-            sb.Append("Aliran Data (Data Flow): ");
+            sb.Append("Data Flow: ");
             
             if (srcNames.Count > 0)
             {
-                sb.Append($"Mengambil data dari {string.Join(", ", srcNames.Select(s => glossary.Translate(s)))}");
+                sb.Append($"Extracts data from {string.Join(", ", srcNames.Select(s => glossary.Translate(s)))}");
             }
             else
             {
-                sb.Append("Mengambil data");
+                sb.Append("Extracts data");
             }
 
             // Mentions transformation kinds
@@ -307,12 +307,12 @@ namespace SsisLineage.Core
             if (transforms.Count > 0)
             {
                 var cleanTransforms = transforms.Select(t => t.Replace(" Component", "").Replace(" Transformation", "")).ToList();
-                sb.Append($", diproses melalui transformasi {string.Join(", ", cleanTransforms)}");
+                sb.Append($", processes it through {string.Join(", ", cleanTransforms)} transformations");
             }
 
             if (destNames.Count > 0)
             {
-                sb.Append($", dan memuat hasilnya ke {string.Join(", ", destNames.Select(d => glossary.Translate(d)))}");
+                sb.Append($", and loads the results into {string.Join(", ", destNames.Select(d => glossary.Translate(d)))}");
             }
             sb.Append(".");
 
