@@ -35,6 +35,7 @@ namespace SsisLineage.Core.Models
         public string Description { get; set; } = "";
         public string BusinessNarrative { get; set; } = "";
         public int ExecutionSequence { get; set; }
+        public string ModernizationRecommendation { get; set; } = "";
     }
 
     public class ComponentNode
@@ -50,6 +51,7 @@ namespace SsisLineage.Core.Models
         /// <summary>Execute SQL Task parameter/result bindings, e.g. "@0 ← User::StartDate (Input)".</summary>
         public List<string> ParameterBindings { get; set; } = new();
         public int ExecutionSequence { get; set; }
+        public string ModernizationRecommendation { get; set; } = "";
     }
 
     public class ColumnMap

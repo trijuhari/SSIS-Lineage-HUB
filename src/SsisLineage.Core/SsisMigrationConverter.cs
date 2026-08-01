@@ -13,7 +13,9 @@ namespace SsisLineage.Core
         DbtSql,
         PySpark,
         AzureDataFactory,
-        ConsolidatedSql
+        ConsolidatedSql,
+        AirflowDag,
+        PythonPandas
     }
 
     public class GeneratedFile
@@ -63,6 +65,12 @@ namespace SsisLineage.Core
                     break;
                 case MigrationTarget.ConsolidatedSql:
                     GenerateConsolidatedSql(graph, packagesToConvert, result);
+                    break;
+                case MigrationTarget.AirflowDag:
+                    GenerateAirflowDags(graph, packagesToConvert, result);
+                    break;
+                case MigrationTarget.PythonPandas:
+                    GeneratePythonPandasScripts(graph, packagesToConvert, result);
                     break;
             }
 
@@ -386,6 +394,225 @@ namespace SsisLineage.Core
             }
 
             result.Summary = $"Generated {result.Files.Count} SQL Stored Procedures.";
+        }
+
+        // ── 5. Standard Python (Pandas/pyodbc) E&L Generator ─────────────────────
+        private static void GeneratePythonPandasScripts(LineageGraph graph, List<PackageNode> packages, MigrationResult result)
+        {
+            foreach (var pkg in packages)
+            {
+                var pkgComponents = graph.Components.Where(c => c.PackageId == pkg.Id).ToList();
+                var scriptName = CleanIdentifier(pkg.Name).ToLowerInvariant();
+                if (scriptName.StartsWith("pkg_")) scriptName = scriptName.Substring(4);
+                scriptName = "extract_" + scriptName + ".py";
+
+                var sb = new StringBuilder();
+                sb.AppendLine("# Standard Python Extraction Script");
+                sb.AppendLine($"# Migrated from SSIS Package: {pkg.Name}");
+                sb.AppendLine("# Extract from SQL Server and Load to Landing Zone (Parquet)");
+                sb.AppendLine();
+                sb.AppendLine("import pyodbc");
+                sb.AppendLine("import pandas as pd");
+                sb.AppendLine("import os");
+                sb.AppendLine("from datetime import datetime");
+                sb.AppendLine();
+                sb.AppendLine("def extract_and_load():");
+                sb.AppendLine("    print(f\"[{datetime.now()}] Starting extraction for {pkg.Name}...\")");
+                sb.AppendLine();
+                sb.AppendLine("    # TODO: Use environment variables or secret manager for credentials");
+                sb.AppendLine("    conn_str = (");
+                sb.AppendLine("        r'DRIVER={ODBC Driver 17 for SQL Server};'");
+                sb.AppendLine("        r'SERVER=localhost,1433;'");
+                sb.AppendLine("        r'DATABASE=SsisDemoDB;'");
+                sb.AppendLine("        r'UID=sa;'");
+                sb.AppendLine("        r'PWD=YourPassword123!'");
+                sb.AppendLine("    )");
+                sb.AppendLine();
+                sb.AppendLine("    try:");
+                sb.AppendLine("        conn = pyodbc.connect(conn_str)");
+                sb.AppendLine("        print(\"Successfully connected to the source database.\")");
+                sb.AppendLine("    except Exception as e:");
+                sb.AppendLine("        print(f\"Database connection failed: {e}\")");
+                sb.AppendLine("        return");
+                sb.AppendLine();
+
+                var sourceComp = pkgComponents.FirstOrDefault(c => c.Type.Contains("Source", StringComparison.OrdinalIgnoreCase));
+                var destComp = pkgComponents.FirstOrDefault(c => c.Type.Contains("Destination", StringComparison.OrdinalIgnoreCase));
+
+                sb.AppendLine("    # Define source extraction query");
+                if (sourceComp != null && !string.IsNullOrEmpty(sourceComp.SqlQueryOrTable))
+                {
+                    var sqlSingleLine = sourceComp.SqlQueryOrTable.Replace("\r\n", " ").Replace("\n", " ").Replace("\"", "\\\"");
+                    sb.AppendLine($"    extract_query = \"\"\"");
+                    sb.AppendLine($"        {sourceComp.SqlQueryOrTable.Trim()}");
+                    sb.AppendLine($"    \"\"\"");
+                }
+                else
+                {
+                    sb.AppendLine("    extract_query = \"SELECT * FROM staging.raw_source\"");
+                }
+                sb.AppendLine();
+                
+                sb.AppendLine("    print(\"Reading data into pandas DataFrame...\")");
+                sb.AppendLine("    df = pd.read_sql(extract_query, conn)");
+                sb.AppendLine("    conn.close()");
+                sb.AppendLine("    print(f\"Extracted {len(df)} rows.\")");
+                sb.AppendLine();
+                
+                var targetTable = destComp != null && !string.IsNullOrEmpty(destComp.SqlQueryOrTable)
+                    ? CleanIdentifier(destComp.SqlQueryOrTable)
+                    : "fact_target";
+                    
+                sb.AppendLine("    # Ensure landing zone directory exists");
+                sb.AppendLine("    landing_zone = './data_landing_zone'");
+                sb.AppendLine("    os.makedirs(landing_zone, exist_ok=True)");
+                sb.AppendLine();
+                sb.AppendLine($"    # Save to Parquet file");
+                sb.AppendLine($"    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')");
+                sb.AppendLine($"    output_file = f\"{{landing_zone}}/{targetTable}_{{timestamp}}.parquet\"");
+                sb.AppendLine("    ");
+                sb.AppendLine("    print(f\"Saving data to {output_file}...\")");
+                sb.AppendLine("    df.to_parquet(output_file, index=False)");
+                sb.AppendLine("    print(\"Extraction and load completed successfully.\")");
+                sb.AppendLine();
+                sb.AppendLine("if __name__ == '__main__':");
+                sb.AppendLine("    extract_and_load()");
+
+                result.Files.Add(new GeneratedFile
+                {
+                    FileName = scriptName,
+                    Content = sb.ToString(),
+                    Language = "python",
+                    TargetFramework = "Python (Pandas/pyodbc)"
+                });
+            }
+
+            result.Summary = $"Generated {result.Files.Count} Python Extraction Scripts.";
+        }
+
+        private static void GenerateAirflowDags(LineageGraph graph, List<PackageNode> packages, MigrationResult result)
+        {
+            foreach (var pkg in packages)
+            {
+                var sb = new StringBuilder();
+                var dagName = CleanIdentifier(pkg.Name).ToLowerInvariant();
+                if (dagName.StartsWith("pkg_")) dagName = dagName.Substring(4);
+                dagName = "dag_" + dagName;
+
+                sb.AppendLine("from datetime import datetime, timedelta");
+                sb.AppendLine("from airflow import DAG");
+                sb.AppendLine("from airflow.operators.empty import EmptyOperator");
+                sb.AppendLine("from airflow.providers.dbt.cloud.operators.dbt import DbtCloudRunJobOperator");
+                sb.AppendLine("from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator");
+                sb.AppendLine();
+                sb.AppendLine("default_args = {");
+                sb.AppendLine("    'owner': 'data_engineering',");
+                sb.AppendLine("    'depends_on_past': False,");
+                sb.AppendLine("    'email_on_failure': False,");
+                sb.AppendLine("    'email_on_retry': False,");
+                sb.AppendLine("    'retries': 1,");
+                sb.AppendLine("    'retry_delay': timedelta(minutes=5),");
+                sb.AppendLine("}");
+                sb.AppendLine();
+                sb.AppendLine($"with DAG(");
+                sb.AppendLine($"    dag_id='{dagName}',");
+                sb.AppendLine($"    default_args=default_args,");
+                sb.AppendLine($"    description='Auto-converted from SSIS Package {pkg.Name}',");
+                sb.AppendLine($"    schedule_interval=None,");
+                sb.AppendLine($"    start_date=datetime(2026, 1, 1),");
+                sb.AppendLine($"    catchup=False,");
+                sb.AppendLine($"    tags=['ssis_migration'],");
+                sb.AppendLine($") as dag:");
+                sb.AppendLine();
+                sb.AppendLine("    start_pipeline = EmptyOperator(task_id='start_pipeline')");
+                sb.AppendLine("    end_pipeline = EmptyOperator(task_id='end_pipeline')");
+                sb.AppendLine();
+
+                var tasks = graph.Tasks.Where(t => t.PackageId == pkg.Id).OrderBy(t => t.ExecutionSequence).ToList();
+                var taskNames = new List<string>();
+
+                foreach (var task in tasks)
+                {
+                    var taskId = CleanIdentifier(task.Name).ToLowerInvariant();
+                    taskNames.Add(taskId);
+
+                    var tType = task.Type?.ToLowerInvariant() ?? "";
+                    if (tType.Contains("execute sql") || tType.Contains("executesql"))
+                    {
+                        sb.AppendLine($"    {taskId} = SQLExecuteQueryOperator(");
+                        sb.AppendLine($"        task_id='{taskId}',");
+                        sb.AppendLine($"        conn_id='sql_default',");
+                        sb.AppendLine($"        sql='-- TODO: Insert SQL from SSIS task',");
+                        sb.AppendLine($"    )");
+                    }
+                    else if (tType.Contains("data flow") || tType.Contains("pipelinetask"))
+                    {
+                        sb.AppendLine($"    {taskId} = DbtCloudRunJobOperator(");
+                        sb.AppendLine($"        task_id='{taskId}',");
+                        sb.AppendLine($"        dbt_cloud_conn_id='dbt_cloud_default',");
+                        sb.AppendLine($"        job_id=12345, # TODO: Configure actual dbt job ID");
+                        sb.AppendLine($"    )");
+                    }
+                    else
+                    {
+                        sb.AppendLine($"    {taskId} = EmptyOperator(");
+                        sb.AppendLine($"        task_id='{taskId}',");
+                        sb.AppendLine($"    )");
+                    }
+                    sb.AppendLine();
+                }
+
+                sb.AppendLine("    # Set up task dependencies");
+                if (taskNames.Count > 0)
+                {
+                    sb.AppendLine($"    start_pipeline >> {taskNames.First()}");
+                    
+                    var execEdges = graph.ExecutionEdges
+                        .Where(e => tasks.Any(t => t.Id == e.FromTaskId) && tasks.Any(t => t.Id == e.ToTaskId))
+                        .ToList();
+
+                    if (execEdges.Count > 0)
+                    {
+                        foreach (var edge in execEdges)
+                        {
+                            var fromTask = tasks.FirstOrDefault(t => t.Id == edge.FromTaskId);
+                            var toTask = tasks.FirstOrDefault(t => t.Id == edge.ToTaskId);
+                            if (fromTask != null && toTask != null)
+                            {
+                                sb.AppendLine($"    {CleanIdentifier(fromTask.Name).ToLowerInvariant()} >> {CleanIdentifier(toTask.Name).ToLowerInvariant()}");
+                            }
+                        }
+                        
+                        var lastTasks = tasks.Where(t => !execEdges.Any(e => e.FromTaskId == t.Id)).ToList();
+                        foreach (var lt in lastTasks)
+                        {
+                            sb.AppendLine($"    {CleanIdentifier(lt.Name).ToLowerInvariant()} >> end_pipeline");
+                        }
+                    }
+                    else
+                    {
+                        for (int i = 0; i < taskNames.Count - 1; i++)
+                        {
+                            sb.AppendLine($"    {taskNames[i]} >> {taskNames[i + 1]}");
+                        }
+                        sb.AppendLine($"    {taskNames.Last()} >> end_pipeline");
+                    }
+                }
+                else
+                {
+                    sb.AppendLine("    start_pipeline >> end_pipeline");
+                }
+
+                result.Files.Add(new GeneratedFile
+                {
+                    FileName = $"{dagName}.py",
+                    Content = sb.ToString(),
+                    Language = "python",
+                    TargetFramework = "Apache Airflow DAG"
+                });
+            }
+
+            result.Summary = $"Generated {result.Files.Count} Apache Airflow DAGs.";
         }
 
         private static string CleanIdentifier(string name)

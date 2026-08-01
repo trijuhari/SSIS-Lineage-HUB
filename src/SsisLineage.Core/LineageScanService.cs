@@ -187,6 +187,8 @@ namespace SsisLineage.Core
                 comp.BusinessNarrative = BusinessNarrativeGenerator.GenerateComponentNarrative(comp, compMappings, glossary);
             }
 
+            SsisModernizationRecommender.EnrichGraphWithRecommendations(graph);
+
             var outputFiles = WriteOutputs(graph, outputDirectory);
 
             return new LineageScanResult

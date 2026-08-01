@@ -528,6 +528,26 @@ else
                 </MudCard>
             }
 
+            @if (!string.IsNullOrEmpty(_detail.ModernizationRecommendation))
+            {
+                <MudCard Elevation="0" Class="mt-4 mb-3" Style="background: rgba(168, 85, 247, 0.05); border: 1px solid rgba(168, 85, 247, 0.2); border-radius: 8px;">
+                    <MudCardHeader Class="pb-2 pt-3 px-4">
+                        <CardHeaderContent>
+                            <div class="d-flex align-center gap-2">
+                                <MudIcon Icon="@Icons.Material.Filled.Transform" Color="Color.Tertiary" Size="Size.Small" />
+                                <MudText Typo="Typo.subtitle2" Color="Color.Tertiary" Style="font-weight: 700; letter-spacing: 0.5px;">Modernization Target</MudText>
+                            </div>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+                    <MudCardContent Class="pt-0 pb-3 px-4">
+                        <div class="d-flex align-center gap-2">
+                            <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-secondary);">Recommended approach:</MudText>
+                            <MudChip T="string" Size="Size.Small" Color="Color.Tertiary" Variant="Variant.Filled" Style="font-weight: 600;">@_detail.ModernizationRecommendation</MudChip>
+                        </div>
+                    </MudCardContent>
+                </MudCard>
+            }
+
             @if (_detail.GlossaryTerms.Count > 0)
             {
                 <MudCard Elevation="0" Class="mt-4 mb-3" Style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px;">
@@ -1308,6 +1328,7 @@ else
         public List<(string Id, string Label)> Chips = new();
         public List<(string Source, string Target, string Op)> Mappings = new();
         public string BusinessNarrative = "";
+        public string ModernizationRecommendation = "";
         public List<(string Physical, string Business)> GlossaryTerms = new();
     }
 
@@ -1371,6 +1392,7 @@ else
             if (t == null) return;
             d.Title = t.Name;
             d.Subtitle = string.IsNullOrEmpty(t.Type) ? "Task" : t.Type;
+            d.ModernizationRecommendation = t.ModernizationRecommendation;
             d.Icon = Icons.Material.Filled.Checklist;
             d.Facts.Add(("Package", t.PackageName));
             if (!string.IsNullOrEmpty(t.Description)) d.Facts.Add(("Description", t.Description));
@@ -1408,6 +1430,7 @@ else
             if (c == null) return;
             d.Title = c.Name;
             d.Subtitle = string.IsNullOrEmpty(c.Type) ? "Component" : c.Type;
+            d.ModernizationRecommendation = c.ModernizationRecommendation;
             d.Icon = Icons.Material.Filled.Widgets;
             if (!string.IsNullOrEmpty(c.ConnectionManager)) d.Facts.Add(("Connection", c.ConnectionManager));
             if (!string.IsNullOrEmpty(c.SqlQueryOrTable)) d.Facts.Add(("SQL / Table", c.SqlQueryOrTable));

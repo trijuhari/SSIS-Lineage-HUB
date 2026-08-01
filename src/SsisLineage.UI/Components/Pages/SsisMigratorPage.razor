@@ -15,7 +15,7 @@
             SSIS Code Migrator & Modernization Engine
         </MudText>
         <MudText Typo="Typo.body2" Color="Color.Secondary">
-            Konversi otomatis paket SSIS (.dtsx) menjadi dbt SQL Models, Databricks PySpark, Azure Data Factory (ADF), atau SQL Stored Procedures.
+            Automatically convert SSIS packages (.dtsx) into dbt SQL Models, Databricks PySpark, Apache Airflow DAGs, Azure Data Factory (ADF), or SQL Stored Procedures.
         </MudText>
     </div>
     <MudChip T="string" Color="Color.Success" Variant="Variant.Filled" Style="font-weight:700;">CLOUD MODERNIZATION</MudChip>
@@ -23,7 +23,7 @@
 
 <!-- Configuration Cards -->
 <MudGrid Class="mb-6">
-    <MudItem xs="12" sm="6" md="3">
+    <MudItem xs="12" sm="6" md="4">
         <div Class="pa-4 mud-paper mud-elevation-2"
              style="@GetCardStyle(MigrationTarget.DbtSql)"
              @onclick="() => SelectTarget(MigrationTarget.DbtSql)">
@@ -39,7 +39,7 @@
         </div>
     </MudItem>
 
-    <MudItem xs="12" sm="6" md="3">
+    <MudItem xs="12" sm="6" md="4">
         <div Class="pa-4 mud-paper mud-elevation-2"
              style="@GetCardStyle(MigrationTarget.PySpark)"
              @onclick="() => SelectTarget(MigrationTarget.PySpark)">
@@ -55,7 +55,23 @@
         </div>
     </MudItem>
 
-    <MudItem xs="12" sm="6" md="3">
+    <MudItem xs="12" sm="6" md="4">
+        <div Class="pa-4 mud-paper mud-elevation-2"
+             style="@GetCardStyle(MigrationTarget.PythonPandas)"
+             @onclick="() => SelectTarget(MigrationTarget.PythonPandas)">
+            <div class="d-flex align-center justify-space-between mb-2">
+                <MudIcon Icon="@Icons.Material.Filled.DataArray" Color="Color.Error" Size="Size.Large" />
+                @if (_selectedTarget == MigrationTarget.PythonPandas)
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Error" Size="Size.Medium" />
+                }
+            </div>
+            <MudText Typo="Typo.h6" Class="font-weight-bold">Python (Pandas)</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Generate standard Python extraction scripts using pyodbc & pandas for ELT load to Landing Zone.</MudText>
+        </div>
+    </MudItem>
+
+    <MudItem xs="12" sm="6" md="4">
         <div Class="pa-4 mud-paper mud-elevation-2"
              style="@GetCardStyle(MigrationTarget.AzureDataFactory)"
              @onclick="() => SelectTarget(MigrationTarget.AzureDataFactory)">
@@ -71,7 +87,23 @@
         </div>
     </MudItem>
 
-    <MudItem xs="12" sm="6" md="3">
+    <MudItem xs="12" sm="6" md="4">
+        <div Class="pa-4 mud-paper mud-elevation-2"
+             style="@GetCardStyle(MigrationTarget.AirflowDag)"
+             @onclick="() => SelectTarget(MigrationTarget.AirflowDag)">
+            <div class="d-flex align-center justify-space-between mb-2">
+                <MudIcon Icon="@Icons.Material.Filled.Air" Color="Color.Tertiary" Size="Size.Large" />
+                @if (_selectedTarget == MigrationTarget.AirflowDag)
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Tertiary" Size="Size.Medium" />
+                }
+            </div>
+            <MudText Typo="Typo.h6" Class="font-weight-bold">Apache Airflow DAGs</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Orchestrate migrations with Airflow DAG Python scripts mapping SSIS control flow.</MudText>
+        </div>
+    </MudItem>
+
+    <MudItem xs="12" sm="6" md="4">
         <div Class="pa-4 mud-paper mud-elevation-2"
              style="@GetCardStyle(MigrationTarget.ConsolidatedSql)"
              @onclick="() => SelectTarget(MigrationTarget.ConsolidatedSql)">
@@ -106,7 +138,37 @@
                    OnClick="RunMigration" Size="Size.Large">
             Generate Migration Code
         </MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Archive"
+                   OnClick="DownloadProjectWorkspace" Size="Size.Large" Class="ml-2">
+            Export Full Project (ZIP)
+        </MudButton>
     </div>
+
+    @if (_effortDays > 0)
+    {
+        <MudPaper Elevation="0" Class="pa-3 mt-4" Style="background: rgba(34, 197, 94, 0.1); border: 1px solid var(--mud-palette-success); border-radius: 8px;">
+            <div class="d-flex align-center justify-space-between">
+                <div class="d-flex align-center gap-3">
+                    <MudIcon Icon="@Icons.Material.Filled.Analytics" Color="Color.Success" />
+                    <div>
+                        <MudText Typo="Typo.subtitle2" Class="font-weight-bold">Executive Effort Estimation</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Based on @_totalComponents components analyzed in the selected scope.</MudText>
+                    </div>
+                </div>
+                <div class="d-flex align-center gap-4">
+                    <div class="text-center">
+                        <MudText Typo="Typo.h5" Class="font-weight-bold color-success">@_effortSize</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">T-Shirt Size</MudText>
+                    </div>
+                    <MudDivider Vertical="true" FlexItem="true" />
+                    <div class="text-center">
+                        <MudText Typo="Typo.h5" Class="font-weight-bold color-success">~@_effortDays Days</MudText>
+                        <MudText Typo="Typo.caption" Color="Color.Secondary">Est. Dev & Test Effort</MudText>
+                    </div>
+                </div>
+            </div>
+        </MudPaper>
+    }
 
     @if (_result != null && _result.Files.Any())
     {
@@ -177,7 +239,7 @@
 else if (_reportData == null)
 {
     <MudAlert Severity="Severity.Info" Class="my-6">
-        Silakan muat proyek SSIS terlebih dahulu pada halaman Lineage Discovery.
+        Please load an SSIS project first on the Lineage Discovery page.
     </MudAlert>
 }
 
@@ -189,6 +251,10 @@ else if (_reportData == null)
     private MigrationResult? _result;
     private GeneratedFile? _activeFile;
     private bool _copied;
+
+    private string _effortSize = "";
+    private int _effortDays = 0;
+    private int _totalComponents = 0;
 
     protected override void OnInitialized()
     {
@@ -211,12 +277,53 @@ else if (_reportData == null)
         if (_reportData?.Graph == null) return;
         _result = SsisMigrationConverter.ConvertProject(_reportData.Graph, _selectedTarget, _selectedPackageId);
         _activeFile = _result.Files.FirstOrDefault();
+        CalculateEffort();
+    }
+
+    private void CalculateEffort()
+    {
+        if (_reportData?.Graph == null) return;
+        
+        var packages = _selectedPackageId == "ALL" 
+            ? _reportData.Graph.Packages 
+            : _reportData.Graph.Packages.Where(p => p.Id == _selectedPackageId).ToList();
+            
+        var packageIds = packages.Select(p => p.Id).ToHashSet();
+        
+        _totalComponents = _reportData.Graph.Components.Count(c => packageIds.Contains(c.PackageId));
+        
+        // 1.5 days per component roughly (including mapping, dev, test)
+        _effortDays = (int)(_totalComponents * 1.5); 
+        if (_effortDays == 0) _effortDays = 1;
+        
+        if (_effortDays <= 5) _effortSize = "Small";
+        else if (_effortDays <= 15) _effortSize = "Medium";
+        else if (_effortDays <= 40) _effortSize = "Large";
+        else _effortSize = "Extra Large";
     }
 
     private void OnFileSelected(GeneratedFile file)
     {
         _activeFile = file;
         StateHasChanged();
+    }
+
+    private async Task DownloadProjectWorkspace()
+    {
+        if (_reportData?.Graph == null) return;
+        
+        try
+        {
+            var templatePath = System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "wwwroot", "templates", "data_engineering_project_template.zip");
+            var zipBytes = ProjectExportService.ExportToTemplateZip(_reportData.Graph, templatePath);
+            var base64 = Convert.ToBase64String(zipBytes);
+            await JS.InvokeVoidAsync("downloadFileFromBase64", "Modern_Data_Engineering_Project.zip", base64);
+            Snackbar.Add("Project exported successfully!", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Export failed: {ex.Message}", Severity.Error);
+        }
     }
 
     private async Task CopyActiveFileCode()
@@ -246,6 +353,8 @@ else if (_reportData == null)
             {
                 MigrationTarget.DbtSql => "#f59e0b",
                 MigrationTarget.PySpark => "#3b82f6",
+                MigrationTarget.PythonPandas => "#ef4444",
+                MigrationTarget.AirflowDag => "#a855f7",
                 MigrationTarget.AzureDataFactory => "#06b6d4",
                 _ => "#10b981"
             };

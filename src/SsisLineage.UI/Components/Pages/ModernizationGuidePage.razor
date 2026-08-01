@@ -1,0 +1,188 @@
+@page "/modernization-guide"
+@using MudBlazor
+
+<PageTitle>SSIS Modernization Guide — SSIS Lineage Hub</PageTitle>
+
+<div class="mb-4 d-flex align-center justify-space-between flex-wrap gap-4">
+    <div>
+        <MudText Typo="Typo.h5" Class="d-flex align-center gap-2 font-weight-bold">
+            <MudIcon Icon="@Icons.Material.Filled.MenuBook" Color="Color.Tertiary" Size="Size.Large" />
+            Modernization Knowledge Base
+        </MudText>
+        <MudText Typo="Typo.body2" Color="Color.Secondary">
+            Comprehensive guidelines for migrating SSIS to the Modern Data Stack (dbt, Python, Airflow).
+        </MudText>
+    </div>
+    <MudChip T="string" Color="Color.Tertiary" Variant="Variant.Filled" Style="font-weight:700;">STRATEGY 2026</MudChip>
+</div>
+
+<MudTabs Elevation="2" Rounded="true" ApplyEffectsToPanels="true" PanelClass="pa-4" Class="mt-6">
+    <MudTabPanel Text="Executive Summary" Icon="@Icons.Material.Filled.Assessment">
+        <MudGrid>
+            <MudItem xs="12" md="8">
+                <MudText Typo="Typo.h6" Class="mb-4 font-weight-bold">SSIS Modernization Journey 2026</MudText>
+                <MudText Typo="Typo.body1" Class="mb-4" Style="line-height: 1.6;">
+                    The legacy SQL Server Integration Services (SSIS) architecture is being phased out in favor of a Modern Data Stack. 
+                    This shift brings version control, CI/CD, isolated testing, and scalable orchestration to our data engineering workflows.
+                </MudText>
+                
+                <MudAlert Severity="Severity.Info" Class="mb-4">
+                    <strong>Core Directive:</strong> We are executing an incremental migration. SQL Server remains our primary database, but orchestration moves to Apache Airflow and transformation moves to dbt.
+                </MudAlert>
+
+                <MudText Typo="Typo.subtitle1" Class="mt-6 mb-2 font-weight-bold">Key Benefits</MudText>
+                <MudList T="string">
+                    <MudListItem Icon="@Icons.Material.Filled.CheckCircle" IconColor="Color.Success">SQL-First Transformations via dbt Models</MudListItem>
+                    <MudListItem Icon="@Icons.Material.Filled.CheckCircle" IconColor="Color.Success">Python-based Extraction & Loading (Pandas/PySpark)</MudListItem>
+                    <MudListItem Icon="@Icons.Material.Filled.CheckCircle" IconColor="Color.Success">Robust Orchestration & Scheduling with Apache Airflow</MudListItem>
+                    <MudListItem Icon="@Icons.Material.Filled.CheckCircle" IconColor="Color.Success">Full Git Integration & CI/CD Pipelines</MudListItem>
+                </MudList>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudPaper Class="pa-4" Style="background: rgba(168, 85, 247, 0.05); border: 1px solid rgba(168, 85, 247, 0.2);">
+                    <MudText Typo="Typo.subtitle2" Class="mb-2 font-weight-bold color-tertiary">Quick Links</MudText>
+                    <MudButton Href="/ssis-migrator" Variant="Variant.Text" Color="Color.Tertiary" StartIcon="@Icons.Material.Filled.Transform" Class="mb-2 w-100 justify-start">
+                        Go to SSIS Code Migrator
+                    </MudButton>
+                    <MudButton Href="/lineage" Variant="Variant.Text" Color="Color.Primary" StartIcon="@Icons.Material.Filled.AccountTree" Class="w-100 justify-start">
+                        Go to Lineage Discovery
+                    </MudButton>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+    </MudTabPanel>
+
+    <MudTabPanel Text="Target Architecture" Icon="@Icons.Material.Filled.Architecture">
+        <MudText Typo="Typo.h6" Class="mb-4 font-weight-bold">The Modern Data Stack (MDS)</MudText>
+        <MudGrid>
+            <MudItem xs="12" md="4">
+                <MudCard Elevation="0" Style="border: 1px solid var(--mud-palette-lines-default);">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.subtitle1" Class="font-weight-bold">1. Orchestration</MudText>
+                        </CardHeaderContent>
+                        <CardHeaderActions>
+                            <MudIcon Icon="@Icons.Material.Filled.Air" Color="Color.Primary" />
+                        </CardHeaderActions>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudText Typo="Typo.body2">
+                            <strong>Apache Airflow</strong> replaces SQL Server Agent and SSIS Control Flow. Airflow DAGs will trigger extraction scripts, dbt runs, and manage dependencies.
+                        </MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudCard Elevation="0" Style="border: 1px solid var(--mud-palette-lines-default);">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.subtitle1" Class="font-weight-bold">2. Ingestion / E & L</MudText>
+                        </CardHeaderContent>
+                        <CardHeaderActions>
+                            <MudIcon Icon="@Icons.Material.Filled.Code" Color="Color.Secondary" />
+                        </CardHeaderActions>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudText Typo="Typo.body2">
+                            <strong>Python (pyodbc/pandas)</strong> replaces SSIS Source/Destination components for moving raw data from sources into the Staging area.
+                        </MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+            <MudItem xs="12" md="4">
+                <MudCard Elevation="0" Style="border: 1px solid var(--mud-palette-lines-default);">
+                    <MudCardHeader>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.subtitle1" Class="font-weight-bold">3. Transformation</MudText>
+                        </CardHeaderContent>
+                        <CardHeaderActions>
+                            <MudIcon Icon="@Icons.Material.Filled.Layers" Color="Color.Warning" />
+                        </CardHeaderActions>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudText Typo="Typo.body2">
+                            <strong>dbt (data build tool)</strong> replaces SSIS Data Flow Transformations (Derived Column, Lookup, Aggregate). Transformations are written in SQL and materialized as views/tables.
+                        </MudText>
+                    </MudCardContent>
+                </MudCard>
+            </MudItem>
+        </MudGrid>
+    </MudTabPanel>
+
+    <MudTabPanel Text="SSIS Component Mapping" Icon="@Icons.Material.Filled.Map">
+        <MudText Typo="Typo.h6" Class="mb-4 font-weight-bold">How to Map SSIS Elements to the New Stack</MudText>
+        
+        <MudTable Items="@ComponentMappings" Hover="true" Dense="true" Elevation="0" Style="border: 1px solid var(--mud-palette-lines-default);">
+            <HeaderContent>
+                <MudTh>SSIS Component</MudTh>
+                <MudTh>Modern Equivalent</MudTh>
+                <MudTh>Implementation Notes</MudTh>
+            </HeaderContent>
+            <RowTemplate>
+                <MudTd DataLabel="SSIS Component">
+                    <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@context.Ssis</MudChip>
+                </MudTd>
+                <MudTd DataLabel="Modern Equivalent">
+                    <strong>@context.Modern</strong>
+                </MudTd>
+                <MudTd DataLabel="Notes">@context.Notes</MudTd>
+            </RowTemplate>
+        </MudTable>
+    </MudTabPanel>
+
+    <MudTabPanel Text="Migration Workflow" Icon="@Icons.Material.Filled.Timeline">
+        <MudText Typo="Typo.h6" Class="mb-4 font-weight-bold">Step-by-Step Migration Process</MudText>
+        <MudTimeline>
+            <MudTimelineItem Color="Color.Primary" Variant="Variant.Filled">
+                <ItemContent>
+                    <MudCard Elevation="0" Class="pa-4 mb-4" Style="border: 1px solid var(--mud-palette-lines-default);">
+                        <MudText Typo="Typo.subtitle1" Class="font-weight-bold">1. Assessment & Lineage Analysis</MudText>
+                        <MudText Typo="Typo.body2">Use the <strong>Lineage Discovery</strong> tool to parse the legacy .dtsx package. Understand the dependencies, column-level lineage, and execution flow.</MudText>
+                    </MudCard>
+                </ItemContent>
+            </MudTimelineItem>
+            <MudTimelineItem Color="Color.Secondary" Variant="Variant.Filled">
+                <ItemContent>
+                    <MudCard Elevation="0" Class="pa-4 mb-4" Style="border: 1px solid var(--mud-palette-lines-default);">
+                        <MudText Typo="Typo.subtitle1" Class="font-weight-bold">2. Code Skeleton Generation</MudText>
+                        <MudText Typo="Typo.body2">Use the <strong>SSIS Code Migrator</strong> to automatically generate the baseline dbt models and Airflow DAGs for the target package.</MudText>
+                    </MudCard>
+                </ItemContent>
+            </MudTimelineItem>
+            <MudTimelineItem Color="Color.Warning" Variant="Variant.Filled">
+                <ItemContent>
+                    <MudCard Elevation="0" Class="pa-4 mb-4" Style="border: 1px solid var(--mud-palette-lines-default);">
+                        <MudText Typo="Typo.subtitle1" Class="font-weight-bold">3. Transformation Implementation (dbt)</MudText>
+                        <MudText Typo="Typo.body2">Refine the generated dbt models. Implement complex business logic using CTEs (Common Table Expressions) and dbt macros.</MudText>
+                    </MudCard>
+                </ItemContent>
+            </MudTimelineItem>
+            <MudTimelineItem Color="Color.Tertiary" Variant="Variant.Filled">
+                <ItemContent>
+                    <MudCard Elevation="0" Class="pa-4 mb-4" Style="border: 1px solid var(--mud-palette-lines-default);">
+                        <MudText Typo="Typo.subtitle1" Class="font-weight-bold">4. Orchestration & Testing (Airflow)</MudText>
+                        <MudText Typo="Typo.body2">Deploy the Airflow DAG. Run data quality tests (using dbt test or Great Expectations) in parallel with legacy SSIS to ensure parity.</MudText>
+                    </MudCard>
+                </ItemContent>
+            </MudTimelineItem>
+        </MudTimeline>
+    </MudTabPanel>
+</MudTabs>
+
+@code {
+    private record ComponentMap(string Ssis, string Modern, string Notes);
+    
+    private List<ComponentMap> ComponentMappings = new()
+    {
+        new("Control Flow Precedence", "Airflow Dependencies (>>)", "Use bitshift operators in Airflow to define execution order."),
+        new("Execute SQL Task", "SQLExecuteQueryOperator or dbt hook", "Move pre/post execution scripts to Airflow or dbt pre-hooks."),
+        new("Execute Package Task", "TriggerDagRunOperator", "Trigger child DAGs if modularizing, or combine into a single DAG."),
+        new("OLE DB Source", "Python Extraction Script", "Extract data using pandas/pyodbc and load to landing zone."),
+        new("Derived Column", "dbt SQL Select (Expressions)", "Convert SSIS expressions into standard SQL column transformations."),
+        new("Lookup Transformation", "dbt SQL LEFT JOIN", "Implement lookups as standard SQL joins in your dbt models."),
+        new("Conditional Split", "dbt SQL CASE or Multiple Models", "Use CASE statements for row-level logic, or filter into multiple dbt models."),
+        new("Aggregate", "dbt SQL GROUP BY", "Standard SQL aggregation functions."),
+        new("Sort", "dbt SQL ORDER BY", "Usually unnecessary in ELT, but use ORDER BY if required by downstream systems."),
+        new("Script Component", "Python / PySpark", "Translate C#/VB.NET logic into Python scripts or PySpark DataFrames.")
+    };
+}
