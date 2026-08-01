@@ -103,6 +103,20 @@ namespace SsisLineage.Core
                 {
                     schemaYaml.AppendLine($"      - name: {col}");
                     schemaYaml.AppendLine($"        description: \"Mapped from source column\"");
+                    
+                    var testList = new List<string>();
+                    var colLower = col.ToLowerInvariant();
+                    if (colLower.EndsWith("_id") || colLower.EndsWith("id") || colLower == "id") 
+                        testList.Add("not_null");
+                    if (colLower == "id" || colLower.StartsWith("pk_")) 
+                        testList.Add("unique");
+                        
+                    if (testList.Any())
+                    {
+                        schemaYaml.AppendLine("        tests:");
+                        foreach(var t in testList.Distinct())
+                            schemaYaml.AppendLine($"          - {t}");
+                    }
                 }
 
                 // Generate Model SQL (.sql)
@@ -518,7 +532,7 @@ namespace SsisLineage.Core
                 sb.AppendLine($"    dag_id='{dagName}',");
                 sb.AppendLine($"    default_args=default_args,");
                 sb.AppendLine($"    description='Auto-converted from SSIS Package {pkg.Name}',");
-                sb.AppendLine($"    schedule_interval=None,");
+                sb.AppendLine($"    schedule=None,");
                 sb.AppendLine($"    start_date=datetime(2026, 1, 1),");
                 sb.AppendLine($"    catchup=False,");
                 sb.AppendLine($"    tags=['ssis_migration'],");
