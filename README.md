@@ -1,10 +1,10 @@
-# SSIS Lineage Discovery Hub
+# SSIS Lineage & Modernization Hub
 
 [![MIT License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![.NET 10](https://img.shields.io/badge/.NET-10.0-512BD4)](https://dotnet.microsoft.com/download/dotnet/10.0)
 [![Offline](https://img.shields.io/badge/offline-100%25%20local-brightgreen)](#privacy--offline)
 
-A professional, offline-first data lineage discovery engine that scans Microsoft SSIS projects (`.dtproj` / `.dtsx`), builds interactive data-flow graphs, enriches mappings using SQL Server stored procedures, and exports multiple documentation formats.
+A professional, offline-first data lineage discovery and **modernization engine** that scans Microsoft SSIS projects (`.dtproj` / `.dtsx`). It builds interactive data-flow graphs, enriches mappings, and **auto-generates enterprise-ready Modern Data Stack code (Airflow, dbt, Python ELT)** from legacy SSIS packages.
 
 Features a modernized **Landing Page Dashboard** and a streamlined, responsive workspace configuration sidebar.
 
@@ -25,6 +25,8 @@ Features a modernized **Landing Page Dashboard** and a streamlined, responsive w
 
 ## 🌟 Key Features
 
+*   **End-to-End Code Migration**: Instantly converts legacy SSIS Control & Data Flows into Airflow DAGs, Python Pandas Extraction scripts, and dbt SQL models.
+*   **Enterprise Export ZIP**: Generates a complete, ready-to-run containerized project archive including `docker-compose`, GitHub Actions CI/CD workflows, `.env` mappings, and automated `pytest` DAG validations.
 *   **Decoupled Landing Page**: Serves as a clean entry portal featuring quick-launch actions, live project overview statistics, and sample tutorial datasets.
 *   **Interactive Lineage Visualization**: Zoomable Cytoscape-powered graphs mapping packages, control flow tasks, components, and column-level origins.
 *   **Modern Workspace Sidebar**: Integrated with MudBlazor expansion panels to collapse database connection overrides and advanced settings, keeping workspaces clean and compact.

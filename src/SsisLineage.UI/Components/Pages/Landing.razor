@@ -4,7 +4,7 @@
 @inject ISnackbar Snackbar
 @implements IDisposable
 
-<PageTitle>SSIS Lineage Hub • Enterprise DTSX Discovery</PageTitle>
+<PageTitle>SSIS Lineage & Modernization Hub</PageTitle>
 
 <style>
     :root {
@@ -311,10 +311,10 @@
             </div>
             <div class="d-flex flex-column">
                 <span style="font-size: 0.95rem; font-weight: 700; letter-spacing: -0.02em; line-height: 1.1;">
-                    SSIS Lineage
+                    SSIS Lineage &
                 </span>
                 <span style="font-size: 0.65rem; color: var(--text-secondary); font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em;">
-                    Discovery Hub
+                    Modernization Hub
                 </span>
             </div>
         </a>
@@ -353,7 +353,7 @@
             </h1>
 
             <p class="hero-desc mb-10">
-                Extract column-level lineage, stitch cross-package dependencies, resolve database stored procedures, and validate data contracts from DTSX files. Zero Visual Studio runtime dependency.
+                Extract column-level lineage, stitch cross-package dependencies, and <b>auto-generate enterprise-ready Airflow & dbt pipelines</b> from your legacy DTSX files. Zero Visual Studio runtime dependency.
             </p>
 
             <div class="d-flex gap-4 align-center justify-center flex-wrap">
@@ -430,6 +430,7 @@
                         <button class="preview-tab @(_previewMode == "graph" ? "active" : "")" @onclick='() => _previewMode = "graph"'>Graph</button>
                         <button class="preview-tab @(_previewMode == "narrative" ? "active" : "")" @onclick='() => _previewMode = "narrative"'>Narrative</button>
                         <button class="preview-tab @(_previewMode == "contract" ? "active" : "")" @onclick='() => _previewMode = "contract"'>Contract</button>
+                        <button class="preview-tab @(_previewMode == "migration" ? "active" : "")" @onclick='() => _previewMode = "migration"'>Airflow</button>
                         <button class="preview-tab @(_previewMode == "export" ? "active" : "")" @onclick='() => _previewMode = "export"'>Export</button>
                     </div>
                 </div>
@@ -512,6 +513,25 @@
                                     </div>
                                 </MudItem>
                             </MudGrid>
+                        </div>
+                    }
+                    else if (_previewMode == "migration")
+                    {
+                        <div class="w-100" style="max-width: 700px;">
+<pre style="margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: #a1a1aa; background: rgba(0,0,0,0.3); padding: 16px; border-radius: 8px; border: 1px solid var(--border-color);"><code><span style="color: #c678dd;">from</span> airflow.operators.bash <span style="color: #c678dd;">import</span> BashOperator
+
+<span style="color: #61afef;">with</span> DAG(dag_id=<span style="color: #98c379;">'dag_pkg_03_load'</span>, schedule=<span style="color: #d19a66;">None</span>) <span style="color: #61afef;">as</span> dag:
+    df_extract = BashOperator(
+        task_id=<span style="color: #98c379;">'df_sales_extract'</span>,
+        bash_command=<span style="color: #98c379;">'python /opt/airflow/dags/scripts/extract_sales.py'</span>
+    )
+    df_transform = BashOperator(
+        task_id=<span style="color: #98c379;">'df_sales_dbt'</span>,
+        bash_command=<span style="color: #98c379;">'dbt run --select stg_03_load_sales'</span>
+    )
+    
+    <span style="color: #7f848e;"># Auto-mapped ELT Sequence</span>
+    df_extract >> df_transform</code></pre>
                         </div>
                     }
                     else
