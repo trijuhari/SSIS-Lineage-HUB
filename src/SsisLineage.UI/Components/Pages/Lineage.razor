@@ -20,7 +20,7 @@
     <!-- Centered Configuration Page -->
     <div class="d-flex align-center justify-center animate-fade-in" style="min-height: 80vh;">
         <MudContainer MaxWidth="MaxWidth.Small">
-            <MudPaper Class="pa-6" Elevation="4" Style="border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(30, 41, 59, 0.7); backdrop-filter: blur(12px); border-radius: 16px;">
+            <MudPaper Class="pa-6" Elevation="4" Style="border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(24, 24, 27, 0.7); backdrop-filter: blur(12px); border-radius: 16px;">
                 <div class="d-flex align-center justify-space-between mb-4">
                     <div>
                         <MudText Typo="Typo.h5" Style="font-weight: 700;">SSIS Local Scan</MudText>
@@ -101,7 +101,7 @@ else
         <MudGrid Spacing="3">
         <!-- Controls (collapsible) -->
         <MudItem xs="12" md="5" lg="4">
-            <MudPaper Class="pa-4" Elevation="2" Style="border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(30, 41, 59, 0.5);">
+            <MudPaper Class="pa-4" Elevation="0" Style="border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.08); background: rgba(24, 24, 27, 0.5);">
                 <div class="d-flex justify-space-between align-center @(_controlsExpanded ? "mb-4" : "")">
                     <div style="min-width:0;flex:1">
                         <MudText Typo="Typo.h6" Style="font-weight: 700;">Generate Report</MudText>
@@ -166,7 +166,7 @@ else
                         </div>
 
                         <!-- Project Inputs -->
-                        <div class="pa-3" style="background: rgba(15, 23, 42, 0.4); border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.05);">
+                        <div class="pa-3" style="background: rgba(24, 24, 27, 0.4); border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.05);">
                             <div class="d-flex align-center gap-2 mb-3">
                                 <MudTextField @bind-Value="projectPath" Label="Project Directory Path" Placeholder="/path/to/ssis-project"
                                               Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex:1"
@@ -190,7 +190,7 @@ else
                         <!-- Expandable SQL Server Enrichment -->
                         <MudExpansionPanels MultiExpansion="true" Elevation="0" Class="pa-0" Style="border-radius: 10px; overflow: hidden;">
                             <MudExpansionPanel Text="SQL Server DB Enrichment (Optional)" Icon="@Icons.Material.Filled.Storage"
-                                               Style="background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(255, 255, 255, 0.05);">
+                                               Style="background: rgba(24, 24, 27, 0.4); border: 1px solid rgba(255, 255, 255, 0.05);">
                                 <MudStack Spacing="2" Class="pt-2">
                                     <MudCheckBox @bind-Value="includeSqlProcedures" Color="Color.Primary" Dense="true"
                                                  Label="Enrich lineage via SQL Server (Procedures/Views)" />
@@ -222,7 +222,7 @@ else
                             </MudExpansionPanel>
 
                             <MudExpansionPanel Text="Advanced Name Resolution" Icon="@Icons.Material.Filled.Tune" Class="mt-2"
-                                               Style="background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(255, 255, 255, 0.05);">
+                                               Style="background: rgba(24, 24, 27, 0.4); border: 1px solid rgba(255, 255, 255, 0.05);">
                                 <MudStack Spacing="2" Class="pt-2">
                                     <MudText Typo="Typo.caption" Color="Color.Secondary">
                                         Configure linked server aliases and dynamic SQL variable values for stored procedure resolution.
@@ -247,7 +247,7 @@ else
                             <MudButton OnClick="GenerateReportAsync" Disabled="isGenerating || isLoadingReport" Variant="Variant.Filled"
                                        Color="Color.Primary" FullWidth="true" Size="Size.Large"
                                        StartIcon="@Icons.Material.Filled.PlayArrow"
-                                       Style="border-radius: 10px; font-weight: 700; background: linear-gradient(135deg, #0284c7 0%, #6366f1 100%);">
+                                       Style="border-radius: 10px; font-weight: 700; color: #09090b;">
                                 @(isGenerating ? "Generating Lineage..." : "Generate Report")
                             </MudButton>
 
@@ -513,7 +513,7 @@ else
 
             @if (!string.IsNullOrEmpty(_detail.BusinessNarrative))
             {
-                <MudCard Elevation="0" Class="mt-4 mb-3" Style="background: rgba(56, 189, 248, 0.05); border: 1px solid rgba(56, 189, 248, 0.2); border-radius: 8px;">
+                <MudCard Elevation="0" Class="mt-4 mb-3" Style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px;">
                     <MudCardHeader Class="pb-2 pt-3 px-4">
                         <CardHeaderContent>
                             <div class="d-flex align-center gap-2">
@@ -530,7 +530,7 @@ else
 
             @if (_detail.GlossaryTerms.Count > 0)
             {
-                <MudCard Elevation="0" Class="mt-4 mb-3" Style="background: rgba(59, 130, 246, 0.05); border: 1px solid rgba(59, 130, 246, 0.2); border-radius: 8px;">
+                <MudCard Elevation="0" Class="mt-4 mb-3" Style="background: rgba(255, 255, 255, 0.03); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px;">
                     <MudCardHeader Class="pb-2 pt-3 px-4">
                         <CardHeaderContent>
                             <div class="d-flex align-center justify-space-between w-100">
@@ -547,8 +547,8 @@ else
                             @foreach (var term in _detail.GlossaryTerms)
                             {
                                 <MudTooltip Text="@($"Physical Field: {term.Physical}")" Placement="Placement.Top">
-                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Filled" Style="background-color: var(--mud-palette-background); border: 1px solid rgba(59, 130, 246, 0.3);">
-                                        <span style="color: var(--mud-palette-info); font-weight: 700; margin-right: 4px;">@term.Physical</span>
+                                    <MudChip T="string" Size="Size.Small" Variant="Variant.Filled" Style="background-color: var(--mud-palette-background); border: 1px solid rgba(255, 255, 255, 0.15);">
+                                        <span style="color: var(--mud-palette-text-primary); font-weight: 700; margin-right: 4px;">@term.Physical</span>
                                         <span style="color: var(--mud-palette-text-secondary);">&rarr;</span>
                                         <span style="margin-left: 4px; font-weight: 500;">@term.Business</span>
                                     </MudChip>
