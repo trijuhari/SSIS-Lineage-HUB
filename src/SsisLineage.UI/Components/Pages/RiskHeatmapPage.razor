@@ -15,7 +15,7 @@
             <MudText Typo="Typo.overline" Color="Color.Error" Style="letter-spacing:1px;">Governance & Risk</MudText>
             <MudText Typo="Typo.h4" Style="font-weight:700;">Lineage Risk Scorer & Heatmap</MudText>
             <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1">
-                Analisis risiko per tabel (0–100) berdasarkan fan-out downstream, kedalaman transformasi, dan konsumsi antar-package.
+                Risk analysis per table (0-100) based on downstream fan-out, transformation depth, and cross-package consumption.
             </MudText>
         </div>
 
@@ -35,7 +35,7 @@
             <MudIcon Icon="@Icons.Material.Filled.LocalFireDepartment" Size="Size.Large" Color="Color.Error" />
             <MudText Typo="Typo.subtitle1" Class="mt-2" Style="font-weight:700;">No lineage report loaded</MudText>
             <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center" Class="mb-3">
-                Generate atau load lineage report terlebih dahulu untuk menghitung skor risiko tabel.
+                Generate or load a lineage report first to calculate table risk scores.
             </MudText>
             <MudButton Href="/lineage" Variant="Variant.Filled" Color="Color.Error" StartIcon="@Icons.Material.Filled.Hub">
                 Go to Workspace
@@ -90,7 +90,7 @@
         <!-- ── Filter & Search ── -->
         <MudPaper Class="pa-4" Elevation="1" Style="border-radius:16px;">
             <div class="d-flex align-center gap-4 flex-wrap">
-                <MudTextField @bind-Value="_search" Label="Cari Tabel..." Placeholder="dbo.MasterPinjaman"
+                <MudTextField @bind-Value="_search" Label="Search Table..." Placeholder="dbo.MasterPinjaman"
                               Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex:1; min-width:200px;"
                               Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Clearable="true" />
 
@@ -132,7 +132,7 @@
                         </CellTemplate>
                     </TemplateColumn>
 
-                    <PropertyColumn Property="x => x.DownstreamTableCount" Title="Fan-Out (Tabel Downstream)" Sortable="true" />
+                    <PropertyColumn Property="x => x.DownstreamTableCount" Title="Fan-Out (Downstream Tables)" Sortable="true" />
                     <PropertyColumn Property="x => x.Depth" Title="Depth (Hops)" Sortable="true" />
                     <PropertyColumn Property="x => x.ReaderPackageCount" Title="Shared Readers (Pkgs)" Sortable="true" />
                     <PropertyColumn Property="x => x.MappingCount" Title="Column Mappings" Sortable="true" />

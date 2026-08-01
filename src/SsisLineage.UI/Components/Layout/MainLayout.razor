@@ -1,6 +1,8 @@
 @inherits LayoutComponentBase
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JS
+@using SsisLineage.UI.Services
+@inject LanguageService Lang
 @implements IDisposable
 
 <MudThemeProvider Theme="LineageTheme.Theme" IsDarkMode="_isDarkMode" />
@@ -13,17 +15,17 @@
 <MudLayout>
     @if (!IsLandingPage)
     {
-        <MudAppBar Elevation="0" Style="background: rgba(9, 9, 11, 0.8); backdrop-filter: blur(12px); border-bottom: 1px solid rgba(255, 255, 255, 0.1);">
-            <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@ToggleDrawer" Style="color: #a1a1aa;" />
+        <MudAppBar Elevation="0" Style="background: rgba(2, 6, 23, 0.8); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); border-bottom: 1px solid rgba(255, 255, 255, 0.08);">
+            <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@ToggleDrawer" Style="color: #94a3b8;" />
             <a href="/" class="d-flex align-center gap-3 mr-2" style="text-decoration: none; color: inherit; transition: opacity 0.2s;" onmouseover="this.style.opacity='0.85'" onmouseout="this.style.opacity='1'">
-                <div class="d-flex align-center justify-center" style="background: #fafafa; border-radius: 6px; width: 32px; height: 32px; color: #09090b;">
+                <div class="d-flex align-center justify-center" style="background: linear-gradient(135deg, #38bdf8, #2563eb); border-radius: 8px; width: 32px; height: 32px; color: #ffffff; box-shadow: 0 2px 8px rgba(37, 99, 235, 0.4);">
                     <MudIcon Icon="@Icons.Material.Filled.Hub" Size="Size.Small" />
                 </div>
                 <div class="d-flex flex-column" style="margin-top: 2px;">
-                    <MudText Typo="Typo.h6" Style="font-weight: 700; font-size: 0.95rem; letter-spacing: -0.02em; line-height: 1.1; color: #fafafa;">
+                    <MudText Typo="Typo.h6" Style="font-weight: 700; font-size: 0.95rem; letter-spacing: -0.02em; line-height: 1.1; color: #f8fafc;">
                         SSIS Lineage
                     </MudText>
-                    <span style="font-size: 0.65rem; color: #a1a1aa; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; line-height: 1;">
+                    <span style="font-size: 0.65rem; color: #94a3b8; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; line-height: 1;">
                         Discovery Hub
                     </span>
                 </div>
@@ -31,29 +33,36 @@
 
             <!-- Command Palette Trigger Button -->
             <div class="ml-4 d-none d-sm-flex align-center" style="cursor: pointer;" @onclick="OpenCommandPalette">
-                <MudPaper Elevation="0" Class="px-3 py-1 d-flex align-center gap-2" Style="background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px;">
-                    <MudIcon Icon="@Icons.Material.Filled.Search" Size="Size.Small" Style="color: #a1a1aa;" />
-                    <MudText Typo="Typo.body2" Style="font-size: 0.85rem; color: #a1a1aa;">Search commands, entities...</MudText>
-                    <span style="font-size: 0.7rem; background: rgba(255, 255, 255, 0.1); border-radius: 4px; padding: 1px 5px; color: #a1a1aa; border: 1px solid rgba(255, 255, 255, 0.1);">Ctrl+K</span>
+                <MudPaper Elevation="0" Class="px-3 py-1 d-flex align-center gap-2" Style="background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; transition: background 0.2s;" onmouseover="this.style.background='rgba(30, 41, 59, 0.6)'" onmouseout="this.style.background='rgba(15, 23, 42, 0.4)'">
+                    <MudIcon Icon="@Icons.Material.Filled.Search" Size="Size.Small" Style="color: #94a3b8;" />
+                    <MudText Typo="Typo.body2" Style="font-size: 0.85rem; color: #94a3b8;">@Lang.Get("Search commands, entities...")</MudText>
+                    <span style="font-size: 0.7rem; background: rgba(255, 255, 255, 0.05); border-radius: 4px; padding: 1px 5px; color: #94a3b8; border: 1px solid rgba(255, 255, 255, 0.1);">Ctrl+K</span>
                 </MudPaper>
             </div>
 
             <MudSpacer />
+            
+            <MudTooltip Text="@(Lang.IsEnglish ? "Switch to Indonesian" : "Beralih ke Bahasa Inggris")">
+                <MudButton Variant="Variant.Text" Color="Color.Inherit" OnClick="ToggleLanguage" 
+                           Style="color: #94a3b8; font-weight: bold; font-size: 0.85rem; text-transform: uppercase;">
+                    @(Lang.IsEnglish ? "EN" : "ID")
+                </MudButton>
+            </MudTooltip>
             <MudTooltip Text="Search commands & entities (Ctrl+K)" Class="d-flex d-sm-none">
                 <MudIconButton Icon="@Icons.Material.Filled.Search" Color="Color.Inherit" OnClick="OpenCommandPalette" />
             </MudTooltip>
         </MudAppBar>
 
         <MudDrawer @bind-Open="_drawerOpen" Elevation="0" Variant="DrawerVariant.Responsive" ClipMode="DrawerClipMode.Always" 
-                   Style="border-right: 1px solid rgba(255, 255, 255, 0.08); background: #09090b;">
+                   Style="border-right: 1px solid rgba(255, 255, 255, 0.08); background: #020617;">
             <div class="px-6 py-4 mt-2">
-                <MudText Typo="Typo.subtitle2" Style="font-size: 0.75rem; font-weight: 600; color: #a1a1aa; letter-spacing: 0.05em; text-transform: uppercase;">WORKSPACE</MudText>
+                <MudText Typo="Typo.subtitle2" Style="font-size: 0.75rem; font-weight: 700; color: #38bdf8; letter-spacing: 0.05em; text-transform: uppercase;">@Lang.Get("WORKSPACE")</MudText>
             </div>
             <NavMenu />
         </MudDrawer>
     }
 
-    <MudMainContent Style="background-color: #09090b; min-height: 100vh;">
+    <MudMainContent Style="background-color: #020617; min-height: 100vh;">
         <CascadingValue Value="_isDarkMode" Name="IsDarkMode">
             @Body
         </CascadingValue>
@@ -84,6 +93,7 @@
     protected override void OnInitialized()
     {
         NavigationManager.LocationChanged += OnLocationChanged;
+        Lang.OnLanguageChanged += StateHasChanged;
     }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
@@ -117,8 +127,10 @@
     public void Dispose()
     {
         NavigationManager.LocationChanged -= OnLocationChanged;
+        Lang.OnLanguageChanged -= StateHasChanged;
         _dotNetRef?.Dispose();
     }
 
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
+    private void ToggleLanguage() => Lang.ToggleLanguage();
 }

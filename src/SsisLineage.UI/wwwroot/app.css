@@ -291,20 +291,20 @@
     border-radius: 6px !important;
     margin: 2px 12px !important;
     transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1) !important;
-    color: #a1a1aa !important;
+    color: #94a3b8 !important;
 }
 .modern-nav-link .mud-nav-link-text {
     font-weight: 500;
     font-size: 0.875rem;
 }
 .modern-nav-link:hover {
-    background-color: rgba(255, 255, 255, 0.05) !important;
-    color: #fafafa !important;
+    background-color: rgba(56, 189, 248, 0.1) !important;
+    color: #f8fafc !important;
 }
 .modern-nav-link.active {
-    background: rgba(255, 255, 255, 0.1) !important;
-    color: #fafafa !important;
-    border-left: 3px solid #fafafa !important;
+    background: linear-gradient(90deg, rgba(56, 189, 248, 0.15) 0%, transparent 100%) !important;
+    color: #38bdf8 !important;
+    border-left: 3px solid #38bdf8 !important;
     border-radius: 0 6px 6px 0 !important;
 }
 

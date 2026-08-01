@@ -14,7 +14,7 @@
         <MudText Typo="Typo.overline" Color="Color.Error" Style="letter-spacing:1px;">Data Governance & Quality</MudText>
         <MudText Typo="Typo.h4" Style="font-weight:700;">Data Quality Propagation Estimator</MudText>
         <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1">
-            Simulasikan dampak penyebaran isu kualitas data (NULLs, Duplikasi, Error Format) dari sumber awal ke seluruh downstream pipeline secara instan (100% offline).
+            Simulate the propagation impact of data quality issues (NULLs, Duplications, Format Errors) from upstream sources to the entire downstream pipeline instantly (100% offline).
         </MudText>
     </div>
 
@@ -63,7 +63,7 @@
 
             <div class="d-flex align-center justify-space-between mt-4">
                 <MudText Typo="Typo.caption" Color="Color.Secondary">
-                    Pilih sampel entitas yang tersedia di project Anda untuk langsung melihat jalur kontaminasi data.
+                    Select a sample entity available in your project to instantly view the data contamination path.
                 </MudText>
                 <div class="d-flex align-center gap-2">
                     <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Default" OnClick="PresetSample">
@@ -127,7 +127,7 @@
                             ☣️ Contaminated Downstream Entities (@_report.ImpactedNodes.Count)
                         </MudText>
                         <MudText Typo="Typo.caption" Color="Color.Secondary">
-                            Urutan alur kontaminasi data dari `@_report.SourceTag.EntityName`
+                            Data contamination flow sequence from `@_report.SourceTag.EntityName`
                         </MudText>
                     </div>
                     <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.Download" OnClick="ExportMarkdown">
@@ -138,7 +138,7 @@
                 @if (_report.ImpactedNodes.Count == 0)
                 {
                     <MudAlert Severity="Severity.Success" Class="my-2">
-                        Tidak ada entitas downstream yang terpengaruh oleh isu kualitas data pada `@_report.SourceTag.EntityName`. Data aman!
+                        No downstream entities are affected by data quality issues on `@_report.SourceTag.EntityName`. Data is safe!
                     </MudAlert>
                 }
                 else

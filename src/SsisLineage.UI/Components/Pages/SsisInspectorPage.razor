@@ -13,7 +13,7 @@
             SSIS Performance & Anti-Pattern Inspector
         </MudText>
         <MudText Typo="Typo.body2" Color="Color.Secondary">
-            Audit otomatis kinerja, kejanggalan desain (anti-patterns), dan risiko keamanan pada paket SSIS.
+            Automatically audit performance, design anomalies (anti-patterns), and security risks in SSIS packages.
         </MudText>
     </div>
     <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Refresh" OnClick="LoadInspection">
@@ -77,7 +77,7 @@ else if (_report != null)
     <!-- Filters & Search Toolbar -->
     <MudPaper Class="pa-4 mb-6" Elevation="2">
         <div class="d-flex align-center gap-4 flex-wrap">
-            <MudTextField @bind-Value="_searchQuery" Placeholder="Cari aturan, komponen, atau paket…" Immediate="true"
+            <MudTextField @bind-Value="_searchQuery" Placeholder="Search rules, components, or packages..." Immediate="true"
                           Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
                           Variant="Variant.Outlined" Margin="Margin.Dense" Style="min-width: 260px;" />
 
@@ -108,7 +108,7 @@ else if (_report != null)
     @if (!FilteredFindings.Any())
     {
         <MudAlert Severity="Severity.Success" Variant="Variant.Filled" Class="my-4">
-            🎉 Tidak ditemukan masalah anti-pattern untuk filter yang dipilih! Paket SSIS Anda dalam kondisi optimal.
+            🎉 No anti-patterns found for the selected filters! Your SSIS packages are in optimal condition.
         </MudAlert>
     }
     else
@@ -135,13 +135,13 @@ else if (_report != null)
 
                     <!-- Masalah / Explanation -->
                     <div class="mt-3 mb-2 pa-3" style="background: rgba(255,255,255,0.03); border-radius: 6px; border-left: 3px solid var(--mud-palette-text-secondary);">
-                        <MudText Typo="Typo.subtitle2" Class="font-weight-bold color-error">📌 Analisis Masalah:</MudText>
+                        <MudText Typo="Typo.subtitle2" Class="font-weight-bold color-error">📌 Issue Analysis:</MudText>
                         <MudText Typo="Typo.body2" Class="mt-1">@f.Description</MudText>
                     </div>
 
                     <!-- Cara Perbaikan / Remediation -->
                     <div class="mb-3 pa-3" style="background: rgba(16,185,129,0.08); border-radius: 6px; border-left: 3px solid var(--mud-palette-success);">
-                        <MudText Typo="Typo.subtitle2" Class="font-weight-bold text-success">💡 Panduan Perbaikan (Remediation):</MudText>
+                        <MudText Typo="Typo.subtitle2" Class="font-weight-bold text-success">💡 Remediation Guide:</MudText>
                         <MudText Typo="Typo.body2" Class="mt-1">@f.Remediation</MudText>
                     </div>
 
@@ -169,7 +169,7 @@ else if (_report != null)
 else
 {
     <MudAlert Severity="Severity.Info" Class="my-6">
-        Silakan muat ulang atau buka halaman Lineage Discovery terlebih dahulu untuk memindai paket SSIS.
+        Please reload or open the Lineage Discovery page first to scan SSIS packages.
     </MudAlert>
 }
 

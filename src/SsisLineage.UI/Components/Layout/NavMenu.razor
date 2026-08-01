@@ -1,41 +1,56 @@
 @using Microsoft.AspNetCore.Components.Routing
+@using SsisLineage.UI.Services
+@inject LanguageService Lang
+@implements IDisposable
 
 <MudNavMenu Class="modern-nav-menu px-2">
     <div class="px-4 py-2 mt-2">
-        <MudText Typo="Typo.overline" Style="font-size: 0.7rem; font-weight: 700; color: #64748b; letter-spacing: 1px;">DISCOVERY</MudText>
+        <MudText Typo="Typo.overline" Style="font-size: 0.7rem; font-weight: 700; color: #64748b; letter-spacing: 1px;">@Lang.Get("DISCOVERY")</MudText>
     </div>
     <MudNavLink Href="lineage" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.AccountTree" Class="modern-nav-link mb-1">
-        Lineage Discovery
+        @Lang.Get("Lineage Discovery")
     </MudNavLink>
     <MudNavLink Href="lineage-trace" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Search" Class="modern-nav-link mb-1">
-        Lineage Search
+        @Lang.Get("Lineage Search")
     </MudNavLink>
     <MudNavLink Href="detailed-report" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Description" Class="modern-nav-link mb-3">
-        Detailed Report
+        @Lang.Get("Detailed Report")
     </MudNavLink>
 
     <div class="px-4 py-2">
-        <MudText Typo="Typo.overline" Style="font-size: 0.7rem; font-weight: 700; color: #64748b; letter-spacing: 1px;">ANALYSIS & GOVERNANCE</MudText>
+        <MudText Typo="Typo.overline" Style="font-size: 0.7rem; font-weight: 700; color: #64748b; letter-spacing: 1px;">@Lang.Get("ANALYSIS & GOVERNANCE")</MudText>
     </div>
     <MudNavLink Href="ssis-inspector" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.HealthAndSafety" Class="modern-nav-link mb-1">
-        SSIS Inspector
+        @Lang.Get("SSIS Inspector")
     </MudNavLink>
     <MudNavLink Href="ssis-migrator" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Transform" Class="modern-nav-link mb-1">
-        Code Migrator
+        @Lang.Get("Code Migrator")
     </MudNavLink>
     <MudNavLink Href="what-if" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Science" Class="modern-nav-link mb-1">
-        What-If Simulator
+        @Lang.Get("What-If Simulator")
     </MudNavLink>
     <MudNavLink Href="nl-query" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Psychology" Class="modern-nav-link mb-1">
-        NL Query Engine
+        @Lang.Get("NL Query Engine")
     </MudNavLink>
     <MudNavLink Href="risk-heatmap" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.LocalFireDepartment" Class="modern-nav-link mb-1">
-        Risk Scorer & Heatmap
+        @Lang.Get("Risk Scorer & Heatmap")
     </MudNavLink>
     <MudNavLink Href="quality-propagation" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.ReportProblem" Class="modern-nav-link mb-1">
-        Quality Propagation
+        @Lang.Get("Quality Propagation")
     </MudNavLink>
     <MudNavLink Href="data-contracts" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Description" Class="modern-nav-link mb-1">
-        Data Contracts
+        @Lang.Get("Data Contracts")
     </MudNavLink>
 </MudNavMenu>
+
+@code {
+    protected override void OnInitialized()
+    {
+        Lang.OnLanguageChanged += StateHasChanged;
+    }
+
+    public void Dispose()
+    {
+        Lang.OnLanguageChanged -= StateHasChanged;
+    }
+}

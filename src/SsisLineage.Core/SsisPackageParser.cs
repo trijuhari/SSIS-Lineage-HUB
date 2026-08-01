@@ -69,6 +69,7 @@ namespace SsisLineage.Core
         {
             _visitedPackages.Clear();
             ParsePackageRecursive(rootPackagePath, null);
+            CalculateExecutionSequences();
             return _graph;
         }
 
@@ -79,6 +80,7 @@ namespace SsisLineage.Core
             {
                 ParsePackageRecursive(path, null);
             }
+            CalculateExecutionSequences();
             return _graph;
         }
 
@@ -1032,5 +1034,100 @@ namespace SsisLineage.Core
             return (null, null);
         }
         #endregion
+
+        private void CalculateExecutionSequences()
+        {
+            // 1. Sort Tasks
+            var taskInDegree = _graph.Tasks.ToDictionary(t => t.Id, t => 0);
+            var taskAdj = _graph.Tasks.ToDictionary(t => t.Id, t => new List<string>());
+
+            foreach (var edge in _graph.ExecutionEdges)
+            {
+                if (taskAdj.ContainsKey(edge.FromTaskId) && taskAdj.ContainsKey(edge.ToTaskId))
+                {
+                    taskAdj[edge.FromTaskId].Add(edge.ToTaskId);
+                    taskInDegree[edge.ToTaskId]++;
+                }
+            }
+
+            var taskQueue = new Queue<TaskNode>(_graph.Tasks.Where(t => taskInDegree[t.Id] == 0).OrderBy(t => t.Name));
+            int taskSeq = 0;
+            var processedTasks = new HashSet<string>();
+
+            while (taskQueue.Count > 0)
+            {
+                var t = taskQueue.Dequeue();
+                if (!processedTasks.Add(t.Id)) continue;
+                t.ExecutionSequence = ++taskSeq;
+
+                foreach (var neighbor in taskAdj[t.Id])
+                {
+                    taskInDegree[neighbor]--;
+                    if (taskInDegree[neighbor] == 0)
+                    {
+                        var nNode = _graph.Tasks.FirstOrDefault(n => n.Id == neighbor);
+                        if (nNode != null) taskQueue.Enqueue(nNode);
+                    }
+                }
+            }
+            
+            // Handle disconnected/cycles for tasks
+            foreach (var t in _graph.Tasks.Where(x => !processedTasks.Contains(x.Id)).OrderBy(x => x.Name))
+            {
+                t.ExecutionSequence = ++taskSeq;
+            }
+
+            // 2. Sort Components
+            var compInDegree = _graph.Components.ToDictionary(c => c.Id, c => 0);
+            var compAdj = _graph.Components.ToDictionary(c => c.Id, c => new List<string>());
+
+            foreach (var edge in _graph.DataFlowEdges)
+            {
+                if (compAdj.ContainsKey(edge.FromComponentId) && compAdj.ContainsKey(edge.ToComponentId))
+                {
+                    compAdj[edge.FromComponentId].Add(edge.ToComponentId);
+                    compInDegree[edge.ToComponentId]++;
+                }
+            }
+
+            var compQueue = new Queue<ComponentNode>(_graph.Components.Where(c => compInDegree[c.Id] == 0).OrderBy(c => c.Name));
+            int compSeq = 0;
+            var processedComps = new HashSet<string>();
+
+            while (compQueue.Count > 0)
+            {
+                var c = compQueue.Dequeue();
+                if (!processedComps.Add(c.Id)) continue;
+                c.ExecutionSequence = ++compSeq;
+
+                foreach (var neighbor in compAdj[c.Id])
+                {
+                    compInDegree[neighbor]--;
+                    if (compInDegree[neighbor] == 0)
+                    {
+                        var nNode = _graph.Components.FirstOrDefault(n => n.Id == neighbor);
+                        if (nNode != null) compQueue.Enqueue(nNode);
+                    }
+                }
+            }
+
+            // Handle disconnected/cycles for components
+            foreach (var c in _graph.Components.Where(x => !processedComps.Contains(x.Id)).OrderBy(x => x.Name))
+            {
+                c.ExecutionSequence = ++compSeq;
+            }
+
+            // 3. Reorder the lists in the graph
+            _graph.Tasks = _graph.Tasks.OrderBy(t => t.ExecutionSequence).ToList();
+            _graph.Components = _graph.Components.OrderBy(c => c.ExecutionSequence).ToList();
+
+            var taskSeqDict = _graph.Tasks.ToDictionary(t => t.Id, t => t.ExecutionSequence);
+            var compSeqDict = _graph.Components.ToDictionary(c => c.Id, c => c.ExecutionSequence);
+            
+            _graph.ColumnMappings = _graph.ColumnMappings
+                .OrderBy(m => taskSeqDict.TryGetValue(m.TaskId, out var ts) ? ts : 999999)
+                .ThenBy(m => compSeqDict.TryGetValue(m.SourceComponentId, out var cs) ? cs : 999999)
+                .ToList();
+        }
     }
 }

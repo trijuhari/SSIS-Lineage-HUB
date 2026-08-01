@@ -3,22 +3,29 @@
 @using SsisLineage.UI.Services
 @inject NavigationManager NavigationManager
 @inject ISnackbar Snackbar
+@inject LanguageService Lang
+@implements IDisposable
 
 <PageTitle>SSIS Lineage Hub • Enterprise DTSX Discovery</PageTitle>
 
 <style>
     :root {
-        --bg-color: #09090b;
-        --border-color: rgba(255, 255, 255, 0.1);
-        --text-primary: #fafafa;
-        --text-secondary: #a1a1aa;
-        --text-tertiary: #71717a;
-        --card-bg: rgba(24, 24, 27, 0.4);
-        --card-bg-hover: rgba(24, 24, 27, 0.8);
+        --bg-color: #020617;
+        --border-color: rgba(255, 255, 255, 0.08);
+        --text-primary: #f8fafc;
+        --text-secondary: #94a3b8;
+        --text-tertiary: #64748b;
+        --card-bg: rgba(15, 23, 42, 0.4);
+        --card-bg-hover: rgba(30, 41, 59, 0.7);
+        --primary-accent: #8b5cf6;
+        --secondary-accent: #38bdf8;
     }
 
     .landing-page {
         background-color: var(--bg-color);
+        background-image: 
+            radial-gradient(circle at 15% 50%, rgba(56, 189, 248, 0.08), transparent 25%),
+            radial-gradient(circle at 85% 30%, rgba(139, 92, 246, 0.08), transparent 25%);
         color: var(--text-primary);
         min-height: 100vh;
         display: flex;
@@ -32,17 +39,17 @@
         background-image: linear-gradient(to right, rgba(255, 255, 255, 0.03) 1px, transparent 1px),
                           linear-gradient(to bottom, rgba(255, 255, 255, 0.03) 1px, transparent 1px);
         background-size: 4rem 4rem;
-        mask-image: linear-gradient(to bottom, white 10%, transparent 90%);
-        -webkit-mask-image: linear-gradient(to bottom, white 10%, transparent 90%);
+        mask-image: linear-gradient(to bottom, white 5%, transparent 80%);
+        -webkit-mask-image: linear-gradient(to bottom, white 5%, transparent 80%);
         pointer-events: none;
         z-index: 0;
     }
 
     .nav-header {
         border-bottom: 1px solid var(--border-color);
-        background: rgba(9, 9, 11, 0.8);
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
+        background: rgba(2, 6, 23, 0.75);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
         z-index: 50;
         position: sticky;
         top: 0;
@@ -52,128 +59,149 @@
         display: inline-flex;
         align-items: center;
         gap: 8px;
-        padding: 4px 14px;
+        padding: 6px 16px;
         border-radius: 9999px;
-        background: rgba(255, 255, 255, 0.03);
-        border: 1px solid var(--border-color);
+        background: rgba(56, 189, 248, 0.05);
+        border: 1px solid rgba(56, 189, 248, 0.2);
         font-size: 0.75rem;
-        font-weight: 500;
-        color: var(--text-secondary);
+        font-weight: 600;
+        color: var(--secondary-accent);
+        box-shadow: 0 0 15px rgba(56, 189, 248, 0.1);
     }
     
     .hero-heading {
-        font-size: clamp(2.5rem, 5vw, 4rem);
-        font-weight: 700;
+        font-size: clamp(2.8rem, 6vw, 4.5rem);
+        font-weight: 800;
         letter-spacing: -0.04em;
         line-height: 1.1;
-        color: var(--text-primary);
+        background: linear-gradient(135deg, #ffffff 0%, #cbd5e1 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
     }
     
-    .hero-heading .muted {
-        color: var(--text-secondary);
+    .hero-heading-highlight {
+        background: linear-gradient(135deg, var(--secondary-accent) 0%, var(--primary-accent) 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
     }
     
     .hero-desc {
-        font-size: 1.125rem;
+        font-size: 1.15rem;
         color: var(--text-secondary);
-        max-width: 640px;
-        line-height: 1.6;
+        max-width: 680px;
+        line-height: 1.7;
         margin: 0 auto;
     }
     
     .btn-solid {
-        background: var(--text-primary);
-        color: var(--bg-color);
+        background: linear-gradient(135deg, var(--secondary-accent) 0%, #2563eb 100%);
+        color: #ffffff;
         font-weight: 600;
-        border-radius: 6px;
-        padding: 10px 24px;
-        transition: opacity 0.2s;
+        border-radius: 8px;
+        padding: 12px 28px;
+        transition: transform 0.2s, box-shadow 0.2s;
         text-decoration: none;
         display: inline-flex;
         align-items: center;
         gap: 8px;
-        border: 1px solid transparent;
+        border: none;
+        box-shadow: 0 4px 14px rgba(37, 99, 235, 0.3);
     }
     
     .btn-solid:hover {
-        opacity: 0.9;
+        transform: translateY(-2px);
+        box-shadow: 0 6px 20px rgba(37, 99, 235, 0.4);
     }
     
     .btn-outline {
-        background: rgba(255, 255, 255, 0.03);
+        background: rgba(255, 255, 255, 0.02);
         color: var(--text-primary);
-        font-weight: 500;
-        border-radius: 6px;
+        font-weight: 600;
+        border-radius: 8px;
         border: 1px solid var(--border-color);
-        padding: 10px 24px;
-        transition: background 0.2s, border-color 0.2s;
+        padding: 12px 28px;
+        transition: background 0.2s, border-color 0.2s, transform 0.2s;
         text-decoration: none;
         display: inline-flex;
         align-items: center;
         gap: 8px;
+        backdrop-filter: blur(8px);
     }
     
     .btn-outline:hover {
-        background: rgba(255, 255, 255, 0.08);
+        background: rgba(255, 255, 255, 0.06);
         border-color: rgba(255, 255, 255, 0.2);
+        transform: translateY(-2px);
     }
     
     .bento-card {
         background: var(--card-bg);
+        backdrop-filter: blur(12px);
         border: 1px solid var(--border-color);
-        border-radius: 12px;
-        padding: 24px;
-        transition: border-color 0.2s, background 0.2s;
+        border-radius: 16px;
+        padding: 28px;
+        transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
         height: 100%;
         display: flex;
         flex-direction: column;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
     }
     
     .bento-card:hover {
-        border-color: rgba(255, 255, 255, 0.2);
+        border-color: rgba(139, 92, 246, 0.3);
         background: var(--card-bg-hover);
+        transform: translateY(-4px);
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 0 20px rgba(139, 92, 246, 0.1);
     }
 
     .bento-icon {
-        width: 36px;
-        height: 36px;
-        border-radius: 8px;
-        background: rgba(255, 255, 255, 0.05);
-        border: 1px solid var(--border-color);
+        width: 44px;
+        height: 44px;
+        border-radius: 10px;
+        background: linear-gradient(135deg, rgba(56, 189, 248, 0.15) 0%, rgba(139, 92, 246, 0.15) 100%);
+        border: 1px solid rgba(139, 92, 246, 0.2);
         display: flex;
         align-items: center;
         justify-content: center;
-        margin-bottom: 16px;
-        color: var(--text-primary);
+        margin-bottom: 20px;
+        color: var(--primary-accent);
+        box-shadow: 0 4px 14px rgba(139, 92, 246, 0.1);
+        transition: transform 0.3s, box-shadow 0.3s;
+    }
+    
+    .bento-card:hover .bento-icon {
+        transform: scale(1.1);
+        box-shadow: 0 4px 20px rgba(139, 92, 246, 0.3);
     }
     
     .section-title {
         font-size: 0.875rem;
-        font-weight: 600;
-        color: var(--text-secondary);
+        font-weight: 700;
+        color: var(--secondary-accent);
         text-transform: uppercase;
-        letter-spacing: 0.05em;
-        margin-bottom: 8px;
+        letter-spacing: 0.1em;
+        margin-bottom: 12px;
     }
     
     .section-heading {
-        font-size: 2rem;
-        font-weight: 700;
+        font-size: 2.25rem;
+        font-weight: 800;
         letter-spacing: -0.02em;
         color: var(--text-primary);
     }
     
     .preview-window {
-        background: #000;
-        border: 1px solid var(--border-color);
-        border-radius: 12px;
+        background: #020617;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 16px;
         overflow: hidden;
+        box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(255, 255, 255, 0.05);
     }
     
     .preview-header {
-        background: var(--card-bg);
+        background: rgba(15, 23, 42, 0.8);
         border-bottom: 1px solid var(--border-color);
-        padding: 12px 16px;
+        padding: 12px 20px;
         display: flex;
         align-items: center;
         justify-content: space-between;
@@ -181,10 +209,10 @@
 
     .preview-tabs {
         display: flex;
-        gap: 4px;
-        background: rgba(0, 0, 0, 0.5);
+        gap: 6px;
+        background: rgba(2, 6, 23, 0.6);
         padding: 4px;
-        border-radius: 8px;
+        border-radius: 10px;
         border: 1px solid var(--border-color);
     }
 
@@ -192,10 +220,10 @@
         background: transparent;
         color: var(--text-secondary);
         border: none;
-        padding: 4px 12px;
-        font-size: 0.8rem;
-        font-weight: 500;
-        border-radius: 4px;
+        padding: 6px 14px;
+        font-size: 0.85rem;
+        font-weight: 600;
+        border-radius: 6px;
         cursor: pointer;
         transition: all 0.2s;
     }
@@ -203,44 +231,53 @@
     .preview-tab.active {
         background: rgba(255, 255, 255, 0.1);
         color: var(--text-primary);
+        box-shadow: 0 2px 4px rgba(0,0,0,0.2);
     }
 
     .preview-tab:hover:not(.active) {
         color: var(--text-primary);
+        background: rgba(255, 255, 255, 0.05);
     }
     
     .preview-body {
         min-height: 320px;
-        padding: 24px;
+        padding: 32px;
         display: flex;
         align-items: center;
         justify-content: center;
         position: relative;
+        background: radial-gradient(circle at 50% 50%, rgba(30, 41, 59, 0.5) 0%, transparent 100%);
     }
     
     .flow-node {
-        background: #18181b;
-        border: 1px solid var(--border-color);
-        border-radius: 8px;
-        padding: 16px;
-        min-width: 200px;
+        background: #0f172a;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+        border-radius: 12px;
+        padding: 20px;
+        min-width: 220px;
         position: relative;
         z-index: 2;
+        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
+        transition: transform 0.2s;
     }
     
-    .flow-node.source { border-left: 3px solid #60a5fa; }
-    .flow-node.transform { border-left: 3px solid #c084fc; }
-    .flow-node.target { border-left: 3px solid #34d399; }
+    .flow-node:hover {
+        transform: translateY(-2px);
+    }
+    
+    .flow-node.source { border-top: 3px solid #38bdf8; }
+    .flow-node.transform { border-top: 3px solid #a78bfa; }
+    .flow-node.target { border-top: 3px solid #34d399; }
     
     .flow-node-label {
         font-size: 0.7rem;
-        font-weight: 700;
+        font-weight: 800;
         text-transform: uppercase;
-        letter-spacing: 0.05em;
-        margin-bottom: 4px;
+        letter-spacing: 0.08em;
+        margin-bottom: 6px;
     }
-    .flow-node.source .flow-node-label { color: #60a5fa; }
-    .flow-node.transform .flow-node-label { color: #c084fc; }
+    .flow-node.source .flow-node-label { color: #38bdf8; }
+    .flow-node.transform .flow-node-label { color: #a78bfa; }
     .flow-node.target .flow-node-label { color: #34d399; }
 
     .flow-arrow {
@@ -248,7 +285,7 @@
         display: flex;
         align-items: center;
         gap: 8px;
-        font-size: 0.75rem;
+        font-size: 0.85rem;
         font-weight: 500;
     }
     
@@ -256,6 +293,7 @@
         color: var(--text-secondary);
         text-decoration: none;
         font-size: 0.875rem;
+        font-weight: 500;
         transition: color 0.2s;
     }
     
@@ -268,9 +306,9 @@
     <div class="grid-background"></div>
     
     <!-- Header -->
-    <header class="nav-header w-100 px-6 px-md-10 py-3 d-flex align-center justify-space-between">
+    <header class="nav-header w-100 px-6 px-md-10 py-4 d-flex align-center justify-space-between">
         <a href="/" class="d-flex align-center gap-3" style="text-decoration: none; color: inherit;">
-            <div class="d-flex align-center justify-center" style="background: var(--text-primary); color: var(--bg-color); border-radius: 6px; width: 32px; height: 32px;">
+            <div class="d-flex align-center justify-center" style="background: linear-gradient(135deg, var(--secondary-accent), #2563eb); color: #ffffff; border-radius: 8px; width: 36px; height: 36px; box-shadow: 0 4px 10px rgba(37, 99, 235, 0.3);">
                 <MudIcon Icon="@Icons.Material.Filled.Hub" Size="Size.Small" />
             </div>
             <div class="d-flex flex-column">
@@ -284,13 +322,20 @@
         </a>
 
         <div class="d-none d-md-flex align-center gap-8">
-            <a href="#features" class="footer-link">Capabilities</a>
-            <a href="#preview" class="footer-link">Preview</a>
-            <a href="#modules" class="footer-link">Modules</a>
-            <a href="#export" class="footer-link">Export</a>
+            <a href="#features" class="footer-link">@(Lang.IsEnglish ? "Capabilities" : "Kemampuan")</a>
+            <a href="#preview" class="footer-link">@(Lang.IsEnglish ? "Preview" : "Pratinjau")</a>
+            <a href="#modules" class="footer-link">@(Lang.IsEnglish ? "Modules" : "Modul")</a>
+            <a href="#export" class="footer-link">@(Lang.IsEnglish ? "Export" : "Ekspor")</a>
         </div>
 
         <div class="d-flex align-center gap-3">
+            <MudTooltip Text="@(Lang.IsEnglish ? "Switch to Indonesian" : "Beralih ke Bahasa Inggris")">
+                <MudButton Variant="Variant.Text" Color="Color.Inherit" OnClick="Lang.ToggleLanguage" 
+                           Style="color: #94a3b8; font-weight: bold; font-size: 0.85rem; text-transform: uppercase;">
+                    @(Lang.IsEnglish ? "EN" : "ID")
+                </MudButton>
+            </MudTooltip>
+            
             <a href="/lineage?demo=true" class="btn-outline" style="padding: 6px 14px; font-size: 0.875rem;">
                 Demo
             </a>
@@ -307,26 +352,26 @@
         <div class="text-center w-100 mb-20" style="max-width: 860px;">
             <div class="tag-badge mb-8 mx-auto">
                 <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" Style="font-size: 0.9rem;" />
-                <span>100% Offline & Local Execution</span>
+                <span>@(Lang.IsEnglish ? "100% Offline & Local Execution" : "100% Luring & Eksekusi Lokal")</span>
             </div>
 
             <h1 class="hero-heading mb-6">
-                Data Lineage & Intelligence <br />
-                <span class="muted">For SQL Server Integration Services</span>
+                @(Lang.IsEnglish ? "Data Lineage & Intelligence" : "Data Lineage & Kecerdasan") <br />
+                <span class="hero-heading-highlight">@(Lang.IsEnglish ? "For SQL Server Integration Services" : "Untuk SQL Server Integration Services")</span>
             </h1>
 
             <p class="hero-desc mb-10">
-                Extract column-level lineage, stitch cross-package dependencies, resolve database stored procedures, and validate data contracts from DTSX files. Zero Visual Studio runtime dependency.
+                @(Lang.IsEnglish ? "Extract column-level lineage, stitch cross-package dependencies, resolve database stored procedures, and validate data contracts from DTSX files. Zero Visual Studio runtime dependency." : "Ekstrak lineage tingkat kolom, gabungkan dependensi lintas paket, selesaikan stored procedure database, dan validasi data contract dari file DTSX. Tanpa dependensi runtime Visual Studio.")
             </p>
 
             <div class="d-flex gap-4 align-center justify-center flex-wrap">
                 <a href="/lineage" class="btn-solid" style="font-size: 1rem; padding: 12px 28px;">
                     <MudIcon Icon="@Icons.Material.Filled.AccountTree" Size="Size.Small" />
-                    Open Workspace
+                    @(Lang.IsEnglish ? "Open Workspace" : "Buka Ruang Kerja")
                 </a>
                 <a href="/lineage?demo=true" class="btn-outline" style="font-size: 1rem; padding: 12px 28px;">
                     <MudIcon Icon="@Icons.Material.Filled.PlayArrow" Size="Size.Small" />
-                    Load Demo Data
+                    @(Lang.IsEnglish ? "Load Demo Data" : "Muat Data Demo")
                 </a>
             </div>
         </div>
@@ -339,8 +384,8 @@
                         <div class="bento-icon">
                             <MudIcon Icon="@Icons.Material.Filled.Shield" Size="Size.Small" />
                         </div>
-                        <h3 style="font-size: 1rem; font-weight: 600; margin-bottom: 8px;">Private by Design</h3>
-                        <p style="font-size: 0.875rem; color: var(--text-secondary); line-height: 1.5;">Zero cloud calls or telemetry. Code, XML parsing, and SQL parsing run strictly on localhost.</p>
+                        <h3 style="font-size: 1rem; font-weight: 600; margin-bottom: 8px;">@(Lang.IsEnglish ? "Private by Design" : "Privat Sepenuhnya")</h3>
+                        <p style="font-size: 0.875rem; color: var(--text-secondary); line-height: 1.5;">@(Lang.IsEnglish ? "Zero cloud calls or telemetry. Code, XML parsing, and SQL parsing run strictly on localhost." : "Tanpa koneksi cloud atau telemetri. Kode, pemrosesan XML, dan parsing SQL berjalan 100% lokal.")</p>
                     </div>
                 </MudItem>
                 <MudItem xs="12" sm="6" md="3">
@@ -348,8 +393,8 @@
                         <div class="bento-icon">
                             <MudIcon Icon="@Icons.Material.Filled.AccountTree" Size="Size.Small" />
                         </div>
-                        <h3 style="font-size: 1rem; font-weight: 600; margin-bottom: 8px;">Column Precision</h3>
-                        <p style="font-size: 0.875rem; color: var(--text-secondary); line-height: 1.5;">Trace exact source-to-target mappings across transformations, conditional splits, and joins.</p>
+                        <h3 style="font-size: 1rem; font-weight: 600; margin-bottom: 8px;">@(Lang.IsEnglish ? "Column Precision" : "Presisi Tingkat Kolom")</h3>
+                        <p style="font-size: 0.875rem; color: var(--text-secondary); line-height: 1.5;">@(Lang.IsEnglish ? "Trace exact source-to-target mappings across transformations, conditional splits, and joins." : "Lacak rute pemetaan dari sumber ke target secara presisi melintasi transformasi, percabangan, dan join.")</p>
                     </div>
                 </MudItem>
                 <MudItem xs="12" sm="6" md="3">
@@ -357,8 +402,8 @@
                         <div class="bento-icon">
                             <MudIcon Icon="@Icons.Material.Filled.Terminal" Size="Size.Small" />
                         </div>
-                        <h3 style="font-size: 1rem; font-weight: 600; margin-bottom: 8px;">T-SQL Resolution</h3>
-                        <p style="font-size: 0.875rem; color: var(--text-secondary); line-height: 1.5;">Parses inline T-SQL, dynamic execution scripts, and database stored procedures automatically.</p>
+                        <h3 style="font-size: 1rem; font-weight: 600; margin-bottom: 8px;">@(Lang.IsEnglish ? "T-SQL Resolution" : "Resolusi T-SQL")</h3>
+                        <p style="font-size: 0.875rem; color: var(--text-secondary); line-height: 1.5;">@(Lang.IsEnglish ? "Parses inline T-SQL, dynamic execution scripts, and database stored procedures automatically." : "Memecah dan membaca baris kode T-SQL, script dinamis, hingga stored procedure secara otomatis.")</p>
                     </div>
                 </MudItem>
                 <MudItem xs="12" sm="6" md="3">
@@ -366,8 +411,8 @@
                         <div class="bento-icon">
                             <MudIcon Icon="@Icons.Material.Filled.FileDownload" Size="Size.Small" />
                         </div>
-                        <h3 style="font-size: 1rem; font-weight: 600; margin-bottom: 8px;">Open Standards</h3>
-                        <p style="font-size: 0.875rem; color: var(--text-secondary); line-height: 1.5;">One-click exports to OpenLineage JSON, Cypher graph scripts, Mermaid DAGs, CSV, & YAML.</p>
+                        <h3 style="font-size: 1rem; font-weight: 600; margin-bottom: 8px;">@(Lang.IsEnglish ? "Open Standards" : "Standar Terbuka")</h3>
+                        <p style="font-size: 0.875rem; color: var(--text-secondary); line-height: 1.5;">@(Lang.IsEnglish ? "One-click exports to OpenLineage JSON, Cypher graph scripts, Mermaid DAGs, CSV, & YAML." : "Ekspor sekali klik ke format OpenLineage JSON, Cypher graph, diagram Mermaid, CSV & YAML.")</p>
                     </div>
                 </MudItem>
             </MudGrid>
@@ -376,8 +421,8 @@
         <!-- Interactive Preview Section -->
         <div class="w-100 mb-20" id="preview">
             <div class="text-center mb-10">
-                <div class="section-title">Workspace Preview</div>
-                <h2 class="section-heading">Interactive Data Flow Inspection</h2>
+                <div class="section-title">@(Lang.IsEnglish ? "Workspace Preview" : "Pratinjau Ruang Kerja")</div>
+                <h2 class="section-heading">@(Lang.IsEnglish ? "Interactive Data Flow Inspection" : "Inspeksi Data Flow Interaktif")</h2>
             </div>
 
             <div class="preview-window">
@@ -390,10 +435,10 @@
                     </div>
 
                     <div class="preview-tabs d-none d-sm-flex">
-                        <button class="preview-tab @(_previewMode == "graph" ? "active" : "")" @onclick='() => _previewMode = "graph"'>Graph</button>
-                        <button class="preview-tab @(_previewMode == "narrative" ? "active" : "")" @onclick='() => _previewMode = "narrative"'>Narrative</button>
-                        <button class="preview-tab @(_previewMode == "contract" ? "active" : "")" @onclick='() => _previewMode = "contract"'>Contract</button>
-                        <button class="preview-tab @(_previewMode == "export" ? "active" : "")" @onclick='() => _previewMode = "export"'>Export</button>
+                        <button class="preview-tab @(_previewMode == "graph" ? "active" : "")" @onclick='() => _previewMode = "graph"'>@(Lang.IsEnglish ? "Graph" : "Grafik")</button>
+                        <button class="preview-tab @(_previewMode == "narrative" ? "active" : "")" @onclick='() => _previewMode = "narrative"'>@(Lang.IsEnglish ? "Narrative" : "Narasi")</button>
+                        <button class="preview-tab @(_previewMode == "contract" ? "active" : "")" @onclick='() => _previewMode = "contract"'>@(Lang.IsEnglish ? "Contract" : "Kontrak")</button>
+                        <button class="preview-tab @(_previewMode == "export" ? "active" : "")" @onclick='() => _previewMode = "export"'>@(Lang.IsEnglish ? "Export" : "Ekspor")</button>
                     </div>
                 </div>
 
@@ -499,23 +544,23 @@
         <!-- Modules Grid -->
         <div class="w-100 mb-20" id="modules">
             <div class="mb-10 d-flex flex-column" style="align-items: center; text-align: center;">
-                <div class="section-title">Intelligence Modules</div>
-                <h2 class="section-heading">Data Engineering Analysis Suite</h2>
-                <p class="hero-desc mt-4" style="font-size: 1rem; text-align: center;">Comprehensive suite for auditing, tracing, simulating, and validating Microsoft SSIS catalog packages.</p>
+                <div class="section-title">@(Lang.IsEnglish ? "Intelligence Modules" : "Modul Kecerdasan")</div>
+                <h2 class="section-heading">@(Lang.IsEnglish ? "Data Engineering Analysis Suite" : "Set Analisis Data Engineering")</h2>
+                <p class="hero-desc mt-4" style="font-size: 1rem; text-align: center;">@(Lang.IsEnglish ? "Comprehensive suite for auditing, tracing, simulating, and validating Microsoft SSIS catalog packages." : "Suite komprehensif untuk mengaudit, melacak, menyimulasikan, dan memvalidasi paket Microsoft SSIS.")</p>
             </div>
 
             <MudGrid Spacing="4">
                 @{
                     var modules = new[] {
-                        new { Title = "Cross-Package Lineage", Desc = "Visualizes end-to-end DTSX dependencies with interactive zoom and field mapping.", Icon = Icons.Material.Filled.AccountTree, Link = "/lineage" },
-                        new { Title = "Column Lineage Trace", Desc = "Trace any column upstream or downstream across multi-step pipeline transformations.", Icon = Icons.Material.Filled.Search, Link = "/lineage-trace" },
-                        new { Title = "What-If Simulator", Desc = "Predict the downstream ripple effect of changing data types before altering production.", Icon = Icons.Material.Filled.Science, Link = "/what-if" },
-                        new { Title = "Quality Propagation", Desc = "Tracks quality decay scores through lookup joins, conditional splits, and destinations.", Icon = Icons.Material.Filled.ReportProblem, Link = "/quality-propagation" },
-                        new { Title = "Data Contracts", Desc = "Automatically validates output schemas against data warehouse contracts to catch breaking changes.", Icon = Icons.Material.Filled.Description, Link = "/data-contracts" },
-                        new { Title = "Risk Heatmap", Desc = "Highlights high-complexity packages, fragile script tasks, and unanchored queries.", Icon = Icons.Material.Filled.LocalFireDepartment, Link = "/risk-heatmap" },
-                        new { Title = "NL Query Engine", Desc = "Query your SSIS lineage using plain English statements to immediately surface field paths.", Icon = Icons.Material.Filled.Psychology, Link = "/nl-query" },
-                        new { Title = "SSIS Inspector", Desc = "Deep XML inspector auditing connection managers, hardcoded risks, and variable scopes.", Icon = Icons.Material.Filled.HealthAndSafety, Link = "/ssis-inspector" },
-                        new { Title = "Code Migrator", Desc = "Auto-convert legacy SSIS packages into modern PySpark dataframes or Airflow DAGs.", Icon = Icons.Material.Filled.Transform, Link = "/ssis-migrator" }
+                        new { Title = Lang.IsEnglish ? "Cross-Package Lineage" : "Lineage Antar-Paket", Desc = Lang.IsEnglish ? "Visualizes end-to-end DTSX dependencies with interactive zoom and field mapping." : "Visualisasikan dependensi DTSX end-to-end dengan zoom interaktif dan pemetaan kolom.", Icon = Icons.Material.Filled.AccountTree, Link = "/lineage" },
+                        new { Title = Lang.IsEnglish ? "Column Lineage Trace" : "Jejak Lineage Kolom", Desc = Lang.IsEnglish ? "Trace any column upstream or downstream across multi-step pipeline transformations." : "Lacak kolom ke sumber atau target melintasi transformasi multi-langkah.", Icon = Icons.Material.Filled.Search, Link = "/lineage-trace" },
+                        new { Title = Lang.IsEnglish ? "What-If Simulator" : "Simulator What-If", Desc = Lang.IsEnglish ? "Predict the downstream ripple effect of changing data types before altering production." : "Prediksi efek berantai dari perubahan tipe data sebelum diterapkan ke produksi.", Icon = Icons.Material.Filled.Science, Link = "/what-if" },
+                        new { Title = Lang.IsEnglish ? "Quality Propagation" : "Propagasi Kualitas", Desc = Lang.IsEnglish ? "Tracks quality decay scores through lookup joins, conditional splits, and destinations." : "Lacak penurunan kualitas melalui lookup join, split kondisional, dan target.", Icon = Icons.Material.Filled.ReportProblem, Link = "/quality-propagation" },
+                        new { Title = Lang.IsEnglish ? "Data Contracts" : "Kontrak Data", Desc = Lang.IsEnglish ? "Automatically validates output schemas against data warehouse contracts to catch breaking changes." : "Validasi otomatis skema keluaran terhadap kontrak data warehouse untuk mencegah kerusakan.", Icon = Icons.Material.Filled.Description, Link = "/data-contracts" },
+                        new { Title = Lang.IsEnglish ? "Risk Heatmap" : "Heatmap Risiko", Desc = Lang.IsEnglish ? "Highlights high-complexity packages, fragile script tasks, and unanchored queries." : "Menyoroti paket berkerumitan tinggi, skrip rentan, dan kueri tanpa anchor.", Icon = Icons.Material.Filled.LocalFireDepartment, Link = "/risk-heatmap" },
+                        new { Title = Lang.IsEnglish ? "NL Query Engine" : "Mesin Query NL", Desc = Lang.IsEnglish ? "Query your SSIS lineage using plain English statements to immediately surface field paths." : "Lakukan kueri lineage SSIS dengan bahasa alami untuk memunculkan rute data seketika.", Icon = Icons.Material.Filled.Psychology, Link = "/nl-query" },
+                        new { Title = Lang.IsEnglish ? "SSIS Inspector" : "Inspektur SSIS", Desc = Lang.IsEnglish ? "Deep XML inspector auditing connection managers, hardcoded risks, and variable scopes." : "Inspektur XML mendalam untuk mengaudit pengelola koneksi, risiko hardcode, dan cakupan variabel.", Icon = Icons.Material.Filled.HealthAndSafety, Link = "/ssis-inspector" },
+                        new { Title = Lang.IsEnglish ? "Code Migrator" : "Migrasi Kode", Desc = Lang.IsEnglish ? "Auto-convert legacy SSIS packages into modern PySpark dataframes or Airflow DAGs." : "Konversi otomatis paket SSIS lawas ke PySpark atau Airflow DAG modern.", Icon = Icons.Material.Filled.Transform, Link = "/ssis-migrator" }
                     };
                 }
 
@@ -534,7 +579,7 @@
                                     @mod.Desc
                                 </p>
                                 <div class="d-flex align-center justify-space-between pt-4" style="border-top: 1px solid var(--border-color);">
-                                    <span style="font-size: 0.8rem; font-weight: 500; color: var(--text-primary);">Explore Module &rarr;</span>
+                                    <span style="font-size: 0.8rem; font-weight: 500; color: var(--text-primary);">@(Lang.IsEnglish ? "Explore Module" : "Jelajahi Modul") &rarr;</span>
                                 </div>
                             </div>
                         </a>
@@ -548,16 +593,16 @@
             <div class="bento-card" style="padding: 40px; background: rgba(9, 9, 11, 0.5);">
                 <MudGrid Spacing="6" Class="align-center">
                     <MudItem xs="12" md="6">
-                        <div class="section-title">Open Standards</div>
-                        <h2 class="section-heading mb-4" style="font-size: 1.75rem;">Export Lineage Metadata</h2>
+                        <div class="section-title">@(Lang.IsEnglish ? "Open Standards" : "Standar Terbuka")</div>
+                        <h2 class="section-heading mb-4" style="font-size: 1.75rem;">@(Lang.IsEnglish ? "Export Lineage Metadata" : "Ekspor Metadata Lineage")</h2>
                         <p class="hero-desc" style="font-size: 1rem; margin-left: 0; text-align: left; margin-bottom: 24px;">
-                            Seamlessly export extracted data lineage graphs into open standards for enterprise data catalogs, graph databases, and documentation pipelines.
+                            @(Lang.IsEnglish ? "Seamlessly export extracted data lineage graphs into open standards for enterprise data catalogs, graph databases, and documentation pipelines." : "Ekspor graf data lineage ke standar terbuka untuk katalog data perusahaan, database graf, dan dokumentasi secara instan.")
                         </p>
                         <div class="d-flex gap-2 flex-wrap">
-                            <span class="tag-badge" style="background: rgba(255,255,255,0.05); color: var(--text-primary);">OpenLineage JSON</span>
-                            <span class="tag-badge" style="background: rgba(255,255,255,0.05); color: var(--text-primary);">Mermaid.js</span>
-                            <span class="tag-badge" style="background: rgba(255,255,255,0.05); color: var(--text-primary);">Neo4j Cypher</span>
-                            <span class="tag-badge" style="background: rgba(255,255,255,0.05); color: var(--text-primary);">CSV Data</span>
+                            <span class="tag-badge">OpenLineage JSON</span>
+                            <span class="tag-badge">Mermaid.js</span>
+                            <span class="tag-badge">Neo4j Cypher</span>
+                            <span class="tag-badge">CSV Data</span>
                         </div>
                     </MudItem>
                     <MudItem xs="12" md="6">
@@ -576,17 +621,27 @@ $ dotnet ssis-lineage parse ./samples \
     <!-- Footer -->
     <footer class="w-100 px-6 px-md-10 py-6 d-flex align-center justify-space-between flex-wrap gap-4" style="border-top: 1px solid var(--border-color); background: var(--bg-color);">
         <div style="font-size: 0.85rem; color: var(--text-secondary);">
-            <span style="font-weight: 600; color: var(--text-primary);">SSIS Lineage Hub</span> • Enterprise Discovery Platform
+            <span style="font-weight: 600; color: var(--text-primary);">SSIS Lineage Hub</span> • @(Lang.IsEnglish ? "Enterprise Discovery Platform" : "Platform Penemuan Enterprise")
         </div>
         <div class="d-flex gap-6">
-            <a href="/lineage" class="footer-link">Workspace</a>
-            <a href="/lineage-trace" class="footer-link">Trace</a>
-            <a href="/data-contracts" class="footer-link">Contracts</a>
-            <a href="/nl-query" class="footer-link">AI Query</a>
+            <a href="/lineage" class="footer-link">@(Lang.IsEnglish ? "Workspace" : "Ruang Kerja")</a>
+            <a href="/lineage-trace" class="footer-link">@(Lang.IsEnglish ? "Trace" : "Lacak")</a>
+            <a href="/data-contracts" class="footer-link">@(Lang.IsEnglish ? "Contracts" : "Kontrak")</a>
+            <a href="/nl-query" class="footer-link">@(Lang.IsEnglish ? "AI Query" : "Kueri AI")</a>
         </div>
     </footer>
 </div>
 
 @code {
     private string _previewMode = "graph";
+
+    protected override void OnInitialized()
+    {
+        Lang.OnLanguageChanged += StateHasChanged;
+    }
+
+    public void Dispose()
+    {
+        Lang.OnLanguageChanged -= StateHasChanged;
+    }
 }

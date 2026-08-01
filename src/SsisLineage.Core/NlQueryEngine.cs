@@ -267,20 +267,22 @@ namespace SsisLineage.Core
             {
                 return new List<string>
                 {
-                    "Dimana data OsPokok berasal?",
-                    "Package mana yang nulis ke FactSimpanan?",
-                    "Package mana yang baca dari MasterPinjaman?",
-                    "Kolom yang paling banyak dipakai?",
-                    "Tabel yang tidak punya downstream?",
-                    "List semua package"
+                    "Where does OsPokok come from?",
+                    "Which package writes to FactSimpanan?",
+                    "Which package reads from MasterPinjaman?",
+                    "Which column is used the most?",
+                    "Which tables have no downstream?",
+                    "List all packages"
                 };
             }
 
+            var rand = new Random();
             var tables = graph.ColumnMappings
                 .Select(m => m.SourceTable)
                 .Concat(graph.ColumnMappings.Select(m => m.TargetTable))
                 .Where(t => !string.IsNullOrEmpty(t))
                 .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(x => rand.Next())
                 .Take(3)
                 .ToList();
 
@@ -289,18 +291,19 @@ namespace SsisLineage.Core
                 .Concat(graph.ColumnMappings.Select(m => m.TargetColumnName))
                 .Where(c => !string.IsNullOrEmpty(c) && c != "*")
                 .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(x => rand.Next())
                 .Take(3)
                 .ToList();
 
             var list = new List<string>();
-            if (cols.Count > 0) list.Add($"Dimana data {cols[0]} berasal?");
-            if (tables.Count > 0) list.Add($"Package mana yang nulis ke {tables[0]}?");
-            if (tables.Count > 1) list.Add($"Package mana yang baca dari {tables[1]}?");
-            if (cols.Count > 1) list.Add($"Kemana kolom {cols[1]} diteruskan?");
+            if (cols.Count > 0) list.Add($"Where does data {cols[0]} come from?");
+            if (tables.Count > 0) list.Add($"Which package writes to {tables[0]}?");
+            if (tables.Count > 1) list.Add($"Which package reads from {tables[1]}?");
+            if (cols.Count > 1) list.Add($"Where does column {cols[1]} go to?");
 
-            list.Add("Kolom yang paling banyak dipakai?");
-            list.Add("Tabel yang tidak punya downstream?");
-            list.Add("List semua package");
+            list.Add("Which column is used the most?");
+            list.Add("Which tables have no downstream?");
+            list.Add("List all packages");
 
             return list;
         }
@@ -310,8 +313,8 @@ namespace SsisLineage.Core
             var suggestions = SuggestedQuestions(graph);
             if (!string.IsNullOrEmpty(parsed.Entity))
             {
-                suggestions.Insert(0, $"Kemana {parsed.Entity} diteruskan?");
-                suggestions.Insert(1, $"Package mana yang pakai {parsed.Entity}?");
+                suggestions.Insert(0, $"Where does {parsed.Entity} go to?");
+                suggestions.Insert(1, $"Which package uses {parsed.Entity}?");
             }
             return suggestions.Distinct().Take(5).ToList();
         }
@@ -351,9 +354,9 @@ namespace SsisLineage.Core
                 Rows    = matches,
                 FollowUps = new List<string>
                 {
-                    $"Kemana {entity} diteruskan?",
-                    $"Package mana yang nulis ke {entity}?",
-                    $"Mapping apa yang ada di {entity}?"
+                    $"Where does {entity} go to?",
+                    $"Which package writes to {entity}?",
+                    $"What mappings exist in {entity}?"
                 }
             };
         }
@@ -385,8 +388,8 @@ namespace SsisLineage.Core
                 Rows    = matches,
                 FollowUps = new List<string>
                 {
-                    $"Dimana {entity} berasal?",
-                    $"Package mana yang pakai kolom {entity}?",
+                    $"Where does {entity} come from?",
+                    $"Which package uses column {entity}?",
                 }
             };
         }
@@ -425,9 +428,9 @@ namespace SsisLineage.Core
                 Rows    = rows,
                 FollowUps = new List<string>
                 {
-                    $"Package mana yang baca dari {entity}?",
-                    $"Mapping apa yang ada di {entity}?",
-                    $"Dimana data {entity} berasal?"
+                    $"Which package reads from {entity}?",
+                    $"What mappings exist in {entity}?",
+                    $"Where does data {entity} come from?"
                 }
             };
         }
@@ -466,8 +469,8 @@ namespace SsisLineage.Core
                 Rows    = rows,
                 FollowUps = new List<string>
                 {
-                    $"Package mana yang nulis ke {entity}?",
-                    $"Kemana data dari {entity} diteruskan?",
+                    $"Which package writes to {entity}?",
+                    $"Where does data from {entity} go to?",
                 }
             };
         }
@@ -503,9 +506,9 @@ namespace SsisLineage.Core
                 Rows    = rows,
                 FollowUps = new List<string>
                 {
-                    $"Package mana yang nulis ke {entity}?",
-                    $"Package mana yang baca dari {entity}?",
-                    $"Dimana {entity} berasal?"
+                    $"Which package writes to {entity}?",
+                    $"Which package reads from {entity}?",
+                    $"Where does {entity} come from?"
                 }
             };
         }
@@ -540,8 +543,8 @@ namespace SsisLineage.Core
                 Rows    = rows,
                 FollowUps = new List<string>
                 {
-                    "Kolom apa yang tidak punya downstream?",
-                    "Tabel yang tidak punya downstream?",
+                    "Which column has no downstream?",
+                    "Which tables have no downstream?",
                 }
             };
         }
@@ -582,8 +585,8 @@ namespace SsisLineage.Core
                 Rows    = rows,
                 FollowUps = new List<string>
                 {
-                    "Kolom yang paling banyak dipakai?",
-                    "List semua package",
+                    "Which column is used the most?",
+                    "List all packages",
                 }
             };
         }
@@ -616,8 +619,8 @@ namespace SsisLineage.Core
                 Rows    = rows,
                 FollowUps = new List<string>
                 {
-                    $"Dimana {entity} berasal?",
-                    $"Kemana {entity} diteruskan?",
+                    $"Where does {entity} come from?",
+                    $"Where does {entity} go to?",
                 }
             };
         }
@@ -649,8 +652,8 @@ namespace SsisLineage.Core
                 Rows    = rows,
                 FollowUps = new List<string>
                 {
-                    "Kolom yang paling banyak dipakai?",
-                    "Tabel yang tidak punya downstream?",
+                    "Which column is used the most?",
+                    "Which tables have no downstream?",
                 }
             };
         }
@@ -669,14 +672,14 @@ namespace SsisLineage.Core
 
         public static List<string> SuggestedQuestions() => new()
         {
-            "Dimana data OsPokok berasal?",
-            "Package mana yang nulis ke FactSimpanan?",
-            "Package mana yang baca dari MasterPinjaman?",
-            "Kemana kolom NamaAnggota diteruskan?",
-            "Kolom yang paling banyak dipakai?",
-            "Tabel yang tidak punya downstream?",
-            "List semua package",
-            "Package mana yang pakai kolom IdAnggota?",
+            "Where does OsPokok come from?",
+            "Which package writes to FactSimpanan?",
+            "Which package reads from MasterPinjaman?",
+            "Where does column NamaAnggota go to?",
+            "Which column is used the most?",
+            "Which tables have no downstream?",
+            "List all packages",
+            "Which package uses column IdAnggota?",
         };
 
         // ── Helpers ───────────────────────────────────────────────────────────

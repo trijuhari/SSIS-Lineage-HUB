@@ -14,7 +14,7 @@
         <MudText Typo="Typo.overline" Color="Color.Primary" Style="letter-spacing:1px;">DataOps & Governance</MudText>
         <MudText Typo="Typo.h4" Style="font-weight:700;">Data Contract Validator</MudText>
         <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1">
-            Generate skema Data Contract (YAML) dari SSIS pipeline dan validasi apakah ada kolom wajib terhapus atau skema berubah (100% offline).
+            Generate Data Contract schemas (YAML) from SSIS pipelines and validate whether mandatory columns are removed or schemas have changed (100% offline).
         </MudText>
     </div>
 
@@ -137,7 +137,7 @@
                 else
                 {
                     <MudAlert Severity="Severity.Success" Class="my-2">
-                        🎉 Semua data contract terpenuhi sempurna! Tidak ada breaking changes atau kolom wajib yang hilang.
+                        🎉 All data contracts are perfectly fulfilled! No breaking changes or missing mandatory columns.
                     </MudAlert>
                 }
             </MudTabPanel>
