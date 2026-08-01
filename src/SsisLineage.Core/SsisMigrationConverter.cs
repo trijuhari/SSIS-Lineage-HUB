@@ -429,13 +429,15 @@ namespace SsisLineage.Core
                 sb.AppendLine("import pandas as pd");
                 sb.AppendLine("import os");
                 sb.AppendLine("from datetime import datetime");
+                sb.AppendLine("import warnings");
+                sb.AppendLine("warnings.filterwarnings('ignore', category=UserWarning)");
                 sb.AppendLine();
                 sb.AppendLine("def extract_and_load():");
                 sb.AppendLine("    print(f\"[{datetime.now()}] Starting extraction for {pkg.Name}...\")");
                 sb.AppendLine();
                 sb.AppendLine("    # TODO: Use environment variables or secret manager for credentials");
                 sb.AppendLine("    conn_str = (");
-                sb.AppendLine("        r'DRIVER={ODBC Driver 17 for SQL Server};'");
+                sb.AppendLine("        r'DRIVER={ODBC Driver 18 for SQL Server};'");
                 sb.AppendLine("        r'SERVER=localhost,1433;'");
                 sb.AppendLine("        r'DATABASE=SsisDemoDB;'");
                 sb.AppendLine("        r'UID=sa;'");
@@ -516,7 +518,7 @@ namespace SsisLineage.Core
                 sb.AppendLine("from datetime import datetime, timedelta");
                 sb.AppendLine("from airflow import DAG");
                 sb.AppendLine("from airflow.operators.empty import EmptyOperator");
-                sb.AppendLine("from airflow.providers.dbt.cloud.operators.dbt import DbtCloudRunJobOperator");
+                sb.AppendLine("from airflow.operators.bash import BashOperator");
                 sb.AppendLine("from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator");
                 sb.AppendLine();
                 sb.AppendLine("default_args = {");
@@ -553,19 +555,33 @@ namespace SsisLineage.Core
                     var tType = task.Type?.ToLowerInvariant() ?? "";
                     if (tType.Contains("execute sql") || tType.Contains("executesql"))
                     {
+                        var sqlComp = graph.Components.FirstOrDefault(c => c.TaskId == task.Id && c.Type == "Execute SQL Task");
+                        var sqlQuery = sqlComp != null && !string.IsNullOrEmpty(sqlComp.SqlQueryOrTable) 
+                                       ? sqlComp.SqlQueryOrTable.Replace("'", "\\'").Replace("\n", " ").Replace("\r", "") 
+                                       : "-- TODO: Insert SQL from SSIS task";
+                                       
                         sb.AppendLine($"    {taskId} = SQLExecuteQueryOperator(");
                         sb.AppendLine($"        task_id='{taskId}',");
                         sb.AppendLine($"        conn_id='sql_default',");
-                        sb.AppendLine($"        sql='-- TODO: Insert SQL from SSIS task',");
+                        sb.AppendLine($"        sql='{sqlQuery}',");
                         sb.AppendLine($"    )");
                     }
                     else if (tType.Contains("data flow") || tType.Contains("pipelinetask"))
                     {
-                        sb.AppendLine($"    {taskId} = DbtCloudRunJobOperator(");
-                        sb.AppendLine($"        task_id='{taskId}',");
-                        sb.AppendLine($"        dbt_cloud_conn_id='dbt_cloud_default',");
-                        sb.AppendLine($"        job_id=12345, # TODO: Configure actual dbt job ID");
+                        var dbtModelName = "stg_" + dagName.Replace("dag_pkg_", "").Replace("dag_", "");
+                        var pyScriptName = "extract_" + dagName.Replace("dag_pkg_", "").Replace("dag_", "") + ".py";
+                        
+                        sb.AppendLine($"    {taskId}_extract = BashOperator(");
+                        sb.AppendLine($"        task_id='{taskId}_extract_python',");
+                        sb.AppendLine($"        bash_command='python /opt/airflow/dags/scripts/{pyScriptName}',");
                         sb.AppendLine($"    )");
+                        sb.AppendLine();
+                        sb.AppendLine($"    {taskId}_dbt = BashOperator(");
+                        sb.AppendLine($"        task_id='{taskId}_transform_dbt',");
+                        sb.AppendLine($"        bash_command='cd /opt/airflow/dags/dbt_project && dbt run --select {dbtModelName}',");
+                        sb.AppendLine($"    )");
+                        sb.AppendLine();
+                        sb.AppendLine($"    {taskId}_extract >> {taskId}_dbt");
                     }
                     else
                     {
@@ -575,7 +591,7 @@ namespace SsisLineage.Core
                     }
                     sb.AppendLine();
                 }
-
+sb.AppendLine();
                 sb.AppendLine("    # Set up task dependencies");
                 if (taskNames.Count > 0)
                 {
@@ -593,23 +609,53 @@ namespace SsisLineage.Core
                             var toTask = tasks.FirstOrDefault(t => t.Id == edge.ToTaskId);
                             if (fromTask != null && toTask != null)
                             {
-                                sb.AppendLine($"    {CleanIdentifier(fromTask.Name).ToLowerInvariant()} >> {CleanIdentifier(toTask.Name).ToLowerInvariant()}");
+                                var fromName = CleanIdentifier(fromTask.Name).ToLowerInvariant();
+                                var toName = CleanIdentifier(toTask.Name).ToLowerInvariant();
+                                
+                                var fromType = fromTask.Type?.ToLowerInvariant() ?? "";
+                                var toType = toTask.Type?.ToLowerInvariant() ?? "";
+                                
+                                var fromRef = (fromType.Contains("data flow") || fromType.Contains("pipelinetask")) ? $"{fromName}_dbt" : fromName;
+                                var toRef = (toType.Contains("data flow") || toType.Contains("pipelinetask")) ? $"{toName}_extract" : toName;
+                                
+                                sb.AppendLine($"    {fromRef} >> {toRef}");
                             }
                         }
                         
                         var lastTasks = tasks.Where(t => !execEdges.Any(e => e.FromTaskId == t.Id)).ToList();
-                        foreach (var lt in lastTasks)
+                        foreach (var lTask in lastTasks)
                         {
-                            sb.AppendLine($"    {CleanIdentifier(lt.Name).ToLowerInvariant()} >> end_pipeline");
+                            var lName = CleanIdentifier(lTask.Name).ToLowerInvariant();
+                            var lType = lTask.Type?.ToLowerInvariant() ?? "";
+                            var lRef = (lType.Contains("data flow") || lType.Contains("pipelinetask")) ? $"{lName}_dbt" : lName;
+                            
+                            sb.AppendLine($"    {lRef} >> end_pipeline");
                         }
                     }
                     else
                     {
-                        for (int i = 0; i < taskNames.Count - 1; i++)
+                        for (int i = 0; i < tasks.Count - 1; i++)
                         {
-                            sb.AppendLine($"    {taskNames[i]} >> {taskNames[i + 1]}");
+                            var fromTask = tasks[i];
+                            var toTask = tasks[i + 1];
+                            
+                            var fromName = CleanIdentifier(fromTask.Name).ToLowerInvariant();
+                            var toName = CleanIdentifier(toTask.Name).ToLowerInvariant();
+                            
+                            var fromType = fromTask.Type?.ToLowerInvariant() ?? "";
+                            var toType = toTask.Type?.ToLowerInvariant() ?? "";
+                            
+                            var fromRef = (fromType.Contains("data flow") || fromType.Contains("pipelinetask")) ? $"{fromName}_dbt" : fromName;
+                            var toRef = (toType.Contains("data flow") || toType.Contains("pipelinetask")) ? $"{toName}_extract" : toName;
+                            
+                            sb.AppendLine($"    {fromRef} >> {toRef}");
                         }
-                        sb.AppendLine($"    {taskNames.Last()} >> end_pipeline");
+                        
+                        var lastTask = tasks.Last();
+                        var lName = CleanIdentifier(lastTask.Name).ToLowerInvariant();
+                        var lType = lastTask.Type?.ToLowerInvariant() ?? "";
+                        var lRef = (lType.Contains("data flow") || lType.Contains("pipelinetask")) ? $"{lName}_dbt" : lName;
+                        sb.AppendLine($"    {lRef} >> end_pipeline");
                     }
                 }
                 else
