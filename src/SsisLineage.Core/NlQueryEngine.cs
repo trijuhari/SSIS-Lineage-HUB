@@ -10,15 +10,15 @@ namespace SsisLineage.Core
 
     public enum NlQueryIntent
     {
-        FindColumnSource,          // "dimana OsPokok berasal?" / "where does X come from?"
-        FindColumnTarget,          // "kemana X pergi?" / "where does X go?"
-        FindPackagesWritingToTable,// "package mana yang nulis ke X?"
-        FindPackagesReadingFromTable, // "package mana yang baca dari X?"
-        FindTableMappings,         // "mapping apa yang ada di tabel X?"
-        FindHighFanoutColumns,     // "kolom yang dipakai paling banyak?"
-        FindOrphanTables,          // "tabel yang tidak punya downstream?"
-        FindPackageForColumn,      // "package mana yang pakai kolom X?"
-        FindAllPackages,           // "list semua package"
+        FindColumnSource,          // "where does X come from?"
+        FindColumnTarget,          // "where does X go?"
+        FindPackagesWritingToTable,// "which package writes to X?"
+        FindPackagesReadingFromTable, // "which package reads from X?"
+        FindTableMappings,         // "what mappings exist in table X?"
+        FindHighFanoutColumns,     // "which column is used the most?"
+        FindOrphanTables,          // "which tables have no downstream?"
+        FindPackageForColumn,      // "which package uses column X?"
+        FindAllPackages,           // "list all packages"
         Unknown
     }
 
@@ -60,47 +60,47 @@ namespace SsisLineage.Core
         {
             // Column source / upstream
             (NlQueryIntent.FindColumnSource,
-             new[]{ "berasal","asal","dari mana","source of","where does","where do","come from","upstream","narik dari","ambil dari","asal usul" },
+             new[]{ "source of","where does","where do","come from","upstream","comes from" },
              "Column Source / Upstream"),
 
             // Column target / downstream
             (NlQueryIntent.FindColumnTarget,
-             new[]{ "kemana","pergi ke","target","downstream","goes to","go to","diteruskan","ke mana","tujuan" },
+             new[]{ "target","downstream","goes to","go to","flows to","destined to" },
              "Column Target / Downstream"),
 
             // Packages writing to table
             (NlQueryIntent.FindPackagesWritingToTable,
-             new[]{ "nulis ke","tulis ke","insert ke","write to","writes to","load ke","simpan ke","masuk ke" },
+             new[]{ "write to","writes to","insert into","load to","save to" },
              "Packages Writing to Table"),
 
             // Packages reading from table
             (NlQueryIntent.FindPackagesReadingFromTable,
-             new[]{ "baca dari","ambil dari","read from","reads from","select dari","source dari" },
+             new[]{ "read from","reads from","select from","source from" },
              "Packages Reading from Table"),
 
             // High fanout
             (NlQueryIntent.FindHighFanoutColumns,
-             new[]{ "paling banyak dipakai","most used","most referenced","banyak downstream","high fanout","sering dipakai","paling sering" },
+             new[]{ "most used","most referenced","high fanout","most downstream" },
              "High-Fanout Columns"),
 
             // Orphan tables
             (NlQueryIntent.FindOrphanTables,
-             new[]{ "tidak punya downstream","no downstream","orphan","tidak terpakai","dead end","tidak ada target" },
+             new[]{ "no downstream","orphan","unused","dead end","no target" },
              "Orphan Tables (No Downstream)"),
 
             // List all packages
             (NlQueryIntent.FindAllPackages,
-             new[]{ "list package","semua package","all packages","daftar package","show packages" },
+             new[]{ "list package","list packages","all packages","show packages" },
              "All Packages"),
 
             // Package using column
             (NlQueryIntent.FindPackageForColumn,
-             new[]{ "package mana yang pakai","which package uses","package apa yang pakai","siapa yang pakai kolom" },
+             new[]{ "which package uses","what package uses","who uses column" },
              "Packages Using Column"),
 
             // Table mappings (fallback)
             (NlQueryIntent.FindTableMappings,
-             new[]{ "mapping","dipetakan","pemetaan","column map","lineage of","lineage dari","alur dari","alur" },
+             new[]{ "mapping","mapped","column map","lineage of","flow of","flow" },
              "Table/Column Mappings"),
         };
 
@@ -122,7 +122,7 @@ namespace SsisLineage.Core
                 }
             }
 
-            // Extract threshold number (e.g. "lebih dari 5 downstream")
+            // Extract threshold number (e.g. "more than 5 downstream")
             var numMatch = Regex.Match(lower, @"\b(\d+)\b");
             if (numMatch.Success && int.TryParse(numMatch.Value, out var n))
                 result.Threshold = Math.Max(1, n);
@@ -143,10 +143,8 @@ namespace SsisLineage.Core
                     stripped = stripped.Replace(k, " ");
 
             // Strip common filler words (bilingual)
-            var fillers = new[]{ "dimana","dari","kemana","ke","yang","apa","siapa","mana",
-                                 "tabel","kolom","table","column","pakai","dipakai","the","a",
-                                 "an","of","in","to","from","does","do","where","is","are",
-                                 "have","has","that","this","?","'","\""};
+            var fillers = new[]{ "table","column","the","a","an","of","in","to","from","does","do","where",
+                                 "is","are","have","has","that","this","?","'","\""};
 
             var tokens = Regex.Split(stripped.Trim(), @"\s+")
                 .Where(t => t.Length > 0 && !fillers.Contains(t.ToLowerInvariant()))
@@ -161,8 +159,8 @@ namespace SsisLineage.Core
             if (string.IsNullOrEmpty(entity)) return "";
             // Heuristic: entity with a dot is likely schema.table
             if (entity.Contains('.')) return "table";
-            // If query mentions "kolom" / "column" explicitly → column
-            if (lower.Contains("kolom") || lower.Contains("column") || lower.Contains("field")) return "column";
+            // If query mentions "column" or "field" explicitly → column
+            if (lower.Contains("column") || lower.Contains("field")) return "column";
             return "table"; // default assumption
         }
     }
@@ -250,7 +248,7 @@ namespace SsisLineage.Core
                 return new NlQueryResult
                 {
                     Query   = parsed,
-                    Summary = $"Hasil pencarian dinamis graph: Ditemukan {matches.Count} alur data terkait \"{parsed.Original}\".",
+                    Summary = $"Dynamic graph search: Found {matches.Count} data flows related to \"{parsed.Original}\".",
                     Rows    = matches,
                     FollowUps = GenerateDynamicFollowUps(parsed, graph)
                 };
@@ -322,7 +320,7 @@ namespace SsisLineage.Core
         private static NlQueryResult UnknownResult(ParsedNlQuery parsed, LineageGraph graph) => new()
         {
             Query   = parsed,
-            Summary = $"Pencarian \"{parsed.Original}\" tidak menemukan entitas spesifik. Coba pertanyaan di bawah ini:",
+            Summary = $"Search \"{parsed.Original}\" found no specific entity. Try the questions below:",
             Rows    = new List<NlResultRow>(),
             FollowUps = SuggestedQuestions(graph)
         };

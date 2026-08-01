@@ -1,10 +1,8 @@
 @page "/nl-query"
 @using SsisLineage.Core
 @using SsisLineage.Core.Models
-@using SsisLineage.UI.Services
 @inject LineageService LineageService
 @inject NavigationManager NavigationManager
-@inject LanguageService Lang
 @implements IDisposable
 
 <PageTitle>NL Query Engine — SSIS Lineage Hub</PageTitle>
@@ -13,10 +11,10 @@
 
     <!-- ── Header ── -->
     <div>
-        <MudText Typo="Typo.overline" Color="Color.Info" Style="letter-spacing:1px;">@Lang.Get("Natural Language")</MudText>
-        <MudText Typo="Typo.h4" Style="font-weight:700;">@Lang.Get("Query Engine")</MudText>
+        <MudText Typo="Typo.overline" Color="Color.Info" Style="letter-spacing:1px;">Natural Language</MudText>
+        <MudText Typo="Typo.h4" Style="font-weight:700;">Query Engine</MudText>
         <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1">
-            @Lang.Get("Ask anything about your data lineage — in English or Indonesian.")
+            Ask anything about your data lineage — in English or Indonesian.
             100% offline, berbasis graph traversal.
         </MudText>
     </div>
@@ -26,12 +24,12 @@
     {
         <MudPaper Outlined="true" Elevation="0" Class="pa-8 d-flex flex-column align-center justify-center" Style="border-radius:16px;">
             <MudIcon Icon="@Icons.Material.Filled.Psychology" Size="Size.Large" Color="Color.Info" />
-            <MudText Typo="Typo.subtitle1" Class="mt-2" Style="font-weight:700;">@Lang.Get("No lineage report loaded")</MudText>
+            <MudText Typo="Typo.subtitle1" Class="mt-2" Style="font-weight:700;">No lineage report loaded</MudText>
             <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center" Class="mb-3">
-                @Lang.Get("Generate or load a lineage report first, then return here to start querying.")
+                Generate or load a lineage report first, then return here to start querying.
             </MudText>
             <MudButton Href="/lineage" Variant="Variant.Filled" Color="Color.Info" StartIcon="@Icons.Material.Filled.Hub">
-                @Lang.Get("Go to Workspace")
+                Go to Workspace
             </MudButton>
         </MudPaper>
     }
@@ -43,8 +41,8 @@
 
             <div class="d-flex align-end gap-3">
                 <MudTextField @bind-Value="_query"
-                              Label='@Lang.Get("Ask something about your lineage…")'
-                              Placeholder='@Lang.Get("e.g., \"Where does OsPokok come from?\" or \"Which package writes to FactSimpanan?\"")'
+                              Label='Ask something about your lineage…'
+                              Placeholder='e.g., "Where does OsPokok come from?" or "Which package writes to FactSimpanan?"'
                               Variant="Variant.Outlined" Margin="Margin.None" Style="flex:1"
                               Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Psychology"
                               AdornmentColor="Color.Info"
@@ -55,7 +53,7 @@
                            StartIcon="@Icons.Material.Filled.Search"
                            Style="height:56px; min-width:110px; border-radius:12px; font-weight:700;"
                            Disabled="_isRunning">
-                    @(_isRunning ? "..." : Lang.Get("Ask"))
+                    @(_isRunning ? "..." : "Ask")
                 </MudButton>
             </div>
 
@@ -84,7 +82,7 @@
         {
             <div>
                 <MudText Typo="Typo.subtitle2" Color="Color.Secondary" Class="mb-2">
-                    @Lang.Get("Frequently asked questions:")
+                    Frequently asked questions:
                 </MudText>
                 <div class="d-flex flex-wrap gap-2">
                     @foreach (var q in _suggestions)
@@ -213,8 +211,7 @@
 
     protected override void OnInitialized()
     {
-        Lang.OnLanguageChanged += StateHasChanged;
-        var report = LineageService.GetPublishedReport();
+                var report = LineageService.GetPublishedReport();
         if (report != null)
         {
             _graph = report.Graph;
@@ -278,6 +275,5 @@
 
     public void Dispose()
     {
-        Lang.OnLanguageChanged -= StateHasChanged;
-    }
+            }
 }

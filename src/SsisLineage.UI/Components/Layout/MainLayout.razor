@@ -1,8 +1,6 @@
 @inherits LayoutComponentBase
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JS
-@using SsisLineage.UI.Services
-@inject LanguageService Lang
 @implements IDisposable
 
 <MudThemeProvider Theme="LineageTheme.Theme" IsDarkMode="_isDarkMode" />
@@ -35,19 +33,14 @@
             <div class="ml-4 d-none d-sm-flex align-center" style="cursor: pointer;" @onclick="OpenCommandPalette">
                 <MudPaper Elevation="0" Class="px-3 py-1 d-flex align-center gap-2" Style="background: rgba(15, 23, 42, 0.4); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px; transition: background 0.2s;" onmouseover="this.style.background='rgba(30, 41, 59, 0.6)'" onmouseout="this.style.background='rgba(15, 23, 42, 0.4)'">
                     <MudIcon Icon="@Icons.Material.Filled.Search" Size="Size.Small" Style="color: #94a3b8;" />
-                    <MudText Typo="Typo.body2" Style="font-size: 0.85rem; color: #94a3b8;">@Lang.Get("Search commands, entities...")</MudText>
+                    <MudText Typo="Typo.body2" Style="font-size: 0.85rem; color: #94a3b8;">Search commands, entities...</MudText>
                     <span style="font-size: 0.7rem; background: rgba(255, 255, 255, 0.05); border-radius: 4px; padding: 1px 5px; color: #94a3b8; border: 1px solid rgba(255, 255, 255, 0.1);">Ctrl+K</span>
                 </MudPaper>
             </div>
 
             <MudSpacer />
             
-            <MudTooltip Text="@(Lang.IsEnglish ? "Switch to Indonesian" : "Beralih ke Bahasa Inggris")">
-                <MudButton Variant="Variant.Text" Color="Color.Inherit" OnClick="ToggleLanguage" 
-                           Style="color: #94a3b8; font-weight: bold; font-size: 0.85rem; text-transform: uppercase;">
-                    @(Lang.IsEnglish ? "EN" : "ID")
-                </MudButton>
-            </MudTooltip>
+
             <MudTooltip Text="Search commands & entities (Ctrl+K)" Class="d-flex d-sm-none">
                 <MudIconButton Icon="@Icons.Material.Filled.Search" Color="Color.Inherit" OnClick="OpenCommandPalette" />
             </MudTooltip>
@@ -56,7 +49,7 @@
         <MudDrawer @bind-Open="_drawerOpen" Elevation="0" Variant="DrawerVariant.Responsive" ClipMode="DrawerClipMode.Always" 
                    Style="border-right: 1px solid rgba(255, 255, 255, 0.08); background: #020617;">
             <div class="px-6 py-4 mt-2">
-                <MudText Typo="Typo.subtitle2" Style="font-size: 0.75rem; font-weight: 700; color: #38bdf8; letter-spacing: 0.05em; text-transform: uppercase;">@Lang.Get("WORKSPACE")</MudText>
+                <MudText Typo="Typo.subtitle2" Style="font-size: 0.75rem; font-weight: 700; color: #38bdf8; letter-spacing: 0.05em; text-transform: uppercase;">WORKSPACE</MudText>
             </div>
             <NavMenu />
         </MudDrawer>
@@ -93,8 +86,7 @@
     protected override void OnInitialized()
     {
         NavigationManager.LocationChanged += OnLocationChanged;
-        Lang.OnLanguageChanged += StateHasChanged;
-    }
+            }
 
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
@@ -127,10 +119,8 @@
     public void Dispose()
     {
         NavigationManager.LocationChanged -= OnLocationChanged;
-        Lang.OnLanguageChanged -= StateHasChanged;
-        _dotNetRef?.Dispose();
+                _dotNetRef?.Dispose();
     }
 
     private void ToggleDrawer() => _drawerOpen = !_drawerOpen;
-    private void ToggleLanguage() => Lang.ToggleLanguage();
 }

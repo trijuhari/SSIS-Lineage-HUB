@@ -607,37 +607,37 @@ else
             <div class="d-flex align-center gap-3">
                 <MudIcon Icon="@Icons.Material.Filled.HelpOutline" Color="Color.Info" Size="Size.Large" />
                 <div>
-                    <MudText Typo="Typo.h6" Class="font-weight-bold" Style="line-height:1.2;">Panduan Legenda & Penjelasan Warna Diagram</MudText>
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">Panduan membaca simbol, garis alur (edges), dan warna komponen (nodes) pada SSIS Lineage Hub</MudText>
+                    <MudText Typo="Typo.h6" Class="font-weight-bold" Style="line-height:1.2;">Legend & Diagram Color Guide</MudText>
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">Guide to reading symbols, flow lines (edges), and component colors (nodes) in SSIS Lineage Hub</MudText>
                 </div>
             </div>
             <MudIconButton Icon="@Icons.Material.Filled.Close" OnClick="() => _showLegendModal = false" />
         </div>
         <div class="detail-modal-body pa-4">
             <MudTabs Elevation="0" Rounded="true" ApplyEffectsToPanels="true">
-                <MudTabPanel Text="🏹 Tipe Garis & Hubungan (Edges)" Icon="@Icons.Material.Filled.Timeline">
+                <MudTabPanel Text="🏹 Line Types & Relationships (Edges)" Icon="@Icons.Material.Filled.Timeline">
                     <MudGrid Spacing="3" Class="mt-2">
                         <MudItem xs="12" md="6">
                             <MudPaper Class="pa-3 mb-3" Elevation="1" Style="border-left: 5px solid #0284c7; background: rgba(2,132,199,0.03);">
                                 <div class="d-flex align-center gap-2 mb-2">
                                     <span style="display:inline-block; width:28px; height:4px; background:#0284c7; border-radius:2px;"></span>
-                                    <MudText Typo="Typo.subtitle2" Class="font-weight-bold" Style="color:#0284c7;">1. Execution Line (Garis Biru Solid)</MudText>
+                                    <MudText Typo="Typo.subtitle2" Class="font-weight-bold" Style="color:#0284c7;">1. Execution Line (Solid Blue Line)</MudText>
                                 </div>
                                 <MudText Typo="Typo.body2" Class="mb-1">
-                                    <strong>Control Flow Precedence Constraint:</strong> Menunjukkan urutan eksekusi tugas di dalam satu paket SSIS.
+                                    <strong>Control Flow Precedence Constraint:</strong> Indicates the order of task execution within an SSIS package.
                                 </MudText>
                                 <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                    💡 <em>Arti:</em> Task A harus selesai dieksekusi terlebih dahulu sebelum Task B dapat dijalankan.
+                                    💡 <em>Meaning:</em> Task A must complete execution before Task B can start.
                                 </MudText>
                             </MudPaper>
 
                             <MudPaper Class="pa-3 mb-3" Elevation="1" Style="border-left: 5px solid #10b981; background: rgba(16,185,129,0.03);">
                                 <div class="d-flex align-center gap-2 mb-2">
                                     <span style="display:inline-block; width:28px; height:4px; background:#10b981; border-radius:2px;"></span>
-                                    <MudText Typo="Typo.subtitle2" Class="font-weight-bold" Style="color:#10b981;">2. Data Flow Line (Garis Hijau Solid)</MudText>
+                                    <MudText Typo="Typo.subtitle2" Class="font-weight-bold" Style="color:#10b981;">2. Data Flow Line (Solid Green Line)</MudText>
                                 </div>
                                 <MudText Typo="Typo.body2" Class="mb-1">
-                                    <strong>Aliran Transformation Data:</strong> Menunjukkan pergerakan record data antar komponen data flow.
+                                    <strong>Data Transformation Flow:</strong> Indicates the movement of data records between data flow components.
                                 </MudText>
                                 <MudText Typo="Typo.caption" Color="Color.Secondary">
                                     💡 <em>Meaning:</em> Data flows from <code>OLE DB Source</code> ➔ Transformation Component ➔ <code>Destination Table</code>.
@@ -649,41 +649,41 @@ else
                             <MudPaper Class="pa-3 mb-3" Elevation="1" Style="border-left: 5px solid #a855f7; background: rgba(168,85,247,0.03);">
                                 <div class="d-flex align-center gap-2 mb-2">
                                     <span style="display:inline-block; width:28px; height:4px; background:#a855f7; border-radius:2px; border-style:dashed;"></span>
-                                    <MudText Typo="Typo.subtitle2" Class="font-weight-bold" Style="color:#a855f7;">3. Invokes Line (Garis Ungu Putus-Putus)</MudText>
+                                    <MudText Typo="Typo.subtitle2" Class="font-weight-bold" Style="color:#a855f7;">3. Invokes Line (Dashed Purple Line)</MudText>
                                 </div>
                                 <MudText Typo="Typo.body2" Class="mb-1">
-                                    <strong>Execute Package Task:</strong> Pemanggilan antar-paket SSIS.
+                                    <strong>Execute Package Task:</strong> Cross-package SSIS invocation.
                                 </MudText>
                                 <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                    💡 <em>Arti:</em> Master Package memanggil dan mengeksekusi Child Package (misal: <code>Master.dtsx</code> ➔ <code>Pkg_01.dtsx</code>).
+                                    💡 <em>Meaning:</em> Master Package invokes and executes a Child Package (e.g.: <code>Master.dtsx</code> ➔ <code>Pkg_01.dtsx</code>).
                                 </MudText>
                             </MudPaper>
 
                             <MudPaper Class="pa-3 mb-3" Elevation="1" Style="border-left: 5px solid #64748b; background: rgba(100,116,139,0.03);">
                                 <div class="d-flex align-center gap-2 mb-2">
                                     <span style="display:inline-block; width:28px; height:4px; background:#64748b; border-radius:2px; border-style:dashed;"></span>
-                                    <MudText Typo="Typo.subtitle2" Class="font-weight-bold" Style="color:#64748b;">4. Contains Line (Garis Cyan / Abu-abu Putus-Putus)</MudText>
+                                    <MudText Typo="Typo.subtitle2" Class="font-weight-bold" Style="color:#64748b;">4. Contains Line (Dashed Cyan / Gray Line)</MudText>
                                 </div>
                                 <MudText Typo="Typo.body2" Class="mb-1">
-                                    <strong>Structural Hierarchy (Parent-Child):</strong> Hubungan kontainer proyek.
+                                    <strong>Structural Hierarchy (Parent-Child):</strong> Project container relationship.
                                 </MudText>
                                 <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                    💡 <em>Arti:</em> Package menampung Task, atau Task menampung Komponen Data Flow di dalamnya.
+                                    💡 <em>Meaning:</em> Package contains Tasks, or a Task contains Data Flow Components.
                                 </MudText>
                             </MudPaper>
                         </MudItem>
                     </MudGrid>
                 </MudTabPanel>
 
-                <MudTabPanel Text="🎨 Penjelasan Warna Node (Komponen)" Icon="@Icons.Material.Filled.Category">
+                <MudTabPanel Text="🎨 Node Colors (Components)" Icon="@Icons.Material.Filled.Category">
                     <MudGrid Spacing="2" Class="mt-2">
                         <MudItem xs="12" sm="6" md="3">
                             <MudPaper Class="pa-3 text-center h-100" Elevation="2" Style="border-top: 5px solid #6366f1;">
                                 <MudIcon Icon="@Icons.Material.Filled.Inventory2" Color="Color.Primary" Size="Size.Large" />
                                 <MudText Typo="Typo.subtitle2" Class="font-weight-bold mt-2">Package Node</MudText>
-                                <MudChip T="string" Size="Size.Small" Color="Color.Primary" Class="my-1">Biru / Ungu</MudChip>
+                                <MudChip T="string" Size="Size.Small" Color="Color.Primary" Class="my-1">Blue / Purple</MudChip>
                                 <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mt-1">
-                                    Berkas paket utama SSIS (<code>.dtsx</code>).
+                                    Main SSIS package file (<code>.dtsx</code>).
                                 </MudText>
                             </MudPaper>
                         </MudItem>
@@ -692,7 +692,7 @@ else
                             <MudPaper Class="pa-3 text-center h-100" Elevation="2" Style="border-top: 5px solid #06b6d4;">
                                 <MudIcon Icon="@Icons.Material.Filled.Checklist" Color="Color.Info" Size="Size.Large" />
                                 <MudText Typo="Typo.subtitle2" Class="font-weight-bold mt-2">Task Node</MudText>
-                                <MudChip T="string" Size="Size.Small" Color="Color.Info" Class="my-1">Cyan / Abu-abu</MudChip>
+                                <MudChip T="string" Size="Size.Small" Color="Color.Info" Class="my-1">Cyan / Gray</MudChip>
                                 <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mt-1">
                                     Control Flow Tasks (Data Flow, Execute SQL, Exec Pkg).
                                 </MudText>
@@ -703,7 +703,7 @@ else
                             <MudPaper Class="pa-3 text-center h-100" Elevation="2" Style="border-top: 5px solid #f59e0b;">
                                 <MudIcon Icon="@Icons.Material.Filled.AltRoute" Color="Color.Warning" Size="Size.Large" />
                                 <MudText Typo="Typo.subtitle2" Class="font-weight-bold mt-2">Transform Node</MudText>
-                                <MudChip T="string" Size="Size.Small" Color="Color.Warning" Class="my-1">Oranye / Kuning</MudChip>
+                                <MudChip T="string" Size="Size.Small" Color="Color.Warning" Class="my-1">Orange / Yellow</MudChip>
                                 <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mt-1">
                                     Data Flow Components (Derived Column, Sort, Lookup).
                                 </MudText>
@@ -714,7 +714,7 @@ else
                             <MudPaper Class="pa-3 text-center h-100" Elevation="2" Style="border-top: 5px solid #ec4899;">
                                 <MudIcon Icon="@Icons.Material.Filled.Storage" Color="Color.Secondary" Size="Size.Large" />
                                 <MudText Typo="Typo.subtitle2" Class="font-weight-bold mt-2">Database / Target Table</MudText>
-                                <MudChip T="string" Size="Size.Small" Color="Color.Secondary" Class="my-1">Merah Muda / Rose</MudChip>
+                                <MudChip T="string" Size="Size.Small" Color="Color.Secondary" Class="my-1">Pink / Rose</MudChip>
                                 <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mt-1">
                                     Source Database Table or Target Data Warehouse.
                                 </MudText>

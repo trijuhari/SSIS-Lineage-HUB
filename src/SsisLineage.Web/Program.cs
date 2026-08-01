@@ -18,7 +18,6 @@ builder.Services.AddSingleton<RecentProjectsService>();
 builder.Services.AddScoped<IFolderPicker, WebFolderPicker>();  // uses webkitdirectory + server-side path resolver
 builder.Services.AddScoped<LineageUserSession>();
 builder.Services.AddScoped<LineageService>();
-builder.Services.AddScoped<LanguageService>();
 
 var app = builder.Build();
 

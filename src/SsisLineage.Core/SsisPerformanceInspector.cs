@@ -97,8 +97,8 @@ namespace SsisLineage.Core
                         PackageName = pkgName,
                         TaskOrComponentId = comp.Id,
                         TaskOrComponentName = comp.Name,
-                        Description = $"Komponen '{comp.Name}' bertipe '{comp.Type}' merupakan Blocking Transformation. Komponen ini menahan seluruh baris data di dalam RAM sebelum dapat melanjutkan ke pipeline berikutnya, menyebabkan kebocoran memori (memory spooling) dan menurunkan throughput secara signifikan.",
-                        Remediation = "Hapus komponen SSIS Sort/Aggregate. Sebagai gantinya, tambahkan klausa SQL 'ORDER BY' atau 'GROUP BY' langsung pada query OLE DB Source database, lalu set properti 'IsSorted = True' pada output source.",
+                        Description = $"Component '{comp.Name}' of type '{comp.Type}' is a Blocking Transformation. It buffers all data rows in RAM before sending them to the downstream pipeline, causing memory spooling and significantly reducing throughput.",
+                        Remediation = "Remove the SSIS Sort/Aggregate component. Instead, push the sorting/aggregation to the database layer using 'ORDER BY' or 'GROUP BY' in the OLE DB Source query, and set 'IsSorted = True' on the output.",
                         Snippet = $"Type: {comp.Type} | Task: {taskName}"
                     });
                 }
@@ -123,8 +123,8 @@ namespace SsisLineage.Core
                         PackageName = pkgName,
                         TaskOrComponentId = comp.Id,
                         TaskOrComponentName = comp.Name,
-                        Description = $"Komponen '{comp.Name}' menggunakan wildcard 'SELECT *'. Hal ini menarik seluruh kolom dari database yang tidak diperlukan, menambah beban memori buffer SSIS, serta berisiko memecahkan paket jika skema tabel sumber berubah.",
-                        Remediation = "Sebutkan nama-nama kolom yang dibutuhkan secara eksplisit dalam query SQL (contoh: SELECT CustomerId, FullName, Email FROM ...).",
+                        Description = $"Component '{comp.Name}' uses a 'SELECT *' wildcard. This extracts all columns from the database unnecessarily, increasing SSIS memory buffer pressure and risking package failure if the source schema changes.",
+                        Remediation = "Explicitly list the required column names in the SQL query (e.g., SELECT CustomerId, FullName, Email FROM ...).",
                         Snippet = sql.Length > 120 ? sql.Substring(0, 120) + "..." : sql
                     });
                 }
@@ -151,8 +151,8 @@ namespace SsisLineage.Core
                         PackageName = pkgName,
                         TaskOrComponentId = comp.Id,
                         TaskOrComponentName = comp.Name,
-                        Description = $"Ditemukan kredensial/kata sandi yang ditulis secara mentah (hardcoded) pada komponen '{comp.Name}'. Hal ini melanggar standar keamanan ISO 27001 / SOC2 dan menyulitkan deployment lintas environment (Dev/Staging/Prod).",
-                        Remediation = "Gunakan SSIS Project Parameters atau SSISDB Environment Reference untuk menginjeksikan kata sandi secara dinamis dari vault aman.",
+                        Description = $"Found hardcoded credentials/passwords in component '{comp.Name}'. This violates ISO 27001 / SOC2 security standards and complicates cross-environment deployments (Dev/Staging/Prod).",
+                        Remediation = "Use SSIS Project Parameters or SSISDB Environment References to inject passwords dynamically from a secure vault.",
                         Snippet = Regex.Replace(combined, @"(?i)(Password|Pwd)\s*=\s*[^;\s]+", "$1=********")
                     });
                 }
@@ -181,8 +181,8 @@ namespace SsisLineage.Core
                             PackageName = pkgName,
                             TaskOrComponentId = comp.Id,
                             TaskOrComponentName = comp.Name,
-                            Description = $"Komponen '{comp.Name}' memiliki {kvp.Value} cabang aliran data (fan-out) sekaligus. Hal ini memicu fragmentasi memori buffer dan persaingan thread pada engine SSIS Data Flow.",
-                            Remediation = "Pertimbangkan untuk menyederhanakan alur data dengan membaginya ke dalam sub-task terpisah atau menggunakan tabel staging sementara sebelum pemecahan cabang alur.",
+                            Description = $"Component '{comp.Name}' has {kvp.Value} simultaneous outgoing data flow paths (fan-out). This triggers memory buffer fragmentation and thread contention in the SSIS Data Flow engine.",
+                            Remediation = "Consider simplifying the data flow by splitting it into separate sub-tasks or using temporary staging tables before splitting the paths.",
                             Snippet = $"Outgoing Data Paths: {kvp.Value} branches"
                         });
                     }
@@ -212,8 +212,8 @@ namespace SsisLineage.Core
                         PackageName = pkgName,
                         TaskOrComponentId = comp.Id,
                         TaskOrComponentName = comp.Name,
-                        Description = $"Komponen '{comp.Name}' terdaftar di dalam paket namun tidak memiliki koneksi aliran data (orphan). Komponen ini berpotensi menjadi 'dead code' yang mengotori paket.",
-                        Remediation = "Periksa kembali paket SSIS Anda. Jika komponen ini tidak lagi digunakan, hapus dari canvas untuk menjaga kebersihan paket.",
+                        Description = $"Component '{comp.Name}' is registered in the package but has no data flow connections (orphan). This component could be 'dead code' cluttering the package.",
+                        Remediation = "Review your SSIS package. If this component is no longer used, remove it from the canvas to keep the package clean.",
                         Snippet = $"Type: {comp.Type}"
                     });
                 }

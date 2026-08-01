@@ -1,8 +1,8 @@
 @page "/ssis-inspector"
 @using SsisLineage.Core
 @using SsisLineage.Core.Models
-@using SsisLineage.UI.Services
 @inject LineageService LineageService
+@implements IDisposable
 
 <PageTitle>SSIS Performance Inspector — SSIS Lineage Hub</PageTitle>
 
@@ -182,8 +182,12 @@ else
 
     protected override async Task OnInitializedAsync()
     {
-        await LoadInspection();
+                await LoadInspection();
     }
+
+    public void Dispose()
+    {
+            }
 
     private async Task LoadInspection()
     {
