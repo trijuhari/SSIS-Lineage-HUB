@@ -125,6 +125,27 @@ jobs:
           # cd dbt_project && dbt deps && dbt test --target dev
 ";
                 AddOrReplaceEntry(archive, ".github/workflows/ci-cd.yml", githubActionsContent);
+
+                // Add Original SSIS .dtsx packages
+                foreach (var pkg in graph.Packages)
+                {
+                    if (!string.IsNullOrEmpty(pkg.Path) && File.Exists(pkg.Path))
+                    {
+                        var fileName = Path.GetFileName(pkg.Path);
+                        var entryName = $"legacy_ssis_packages/{fileName}";
+                        
+                        var existingEntry = archive.GetEntry(entryName);
+                        if (existingEntry != null)
+                        {
+                            existingEntry.Delete();
+                        }
+                        
+                        var entry = archive.CreateEntry(entryName, CompressionLevel.Optimal);
+                        using var entryStream = entry.Open();
+                        using var fs = File.OpenRead(pkg.Path);
+                        fs.CopyTo(entryStream);
+                    }
+                }
             }
 
             return ms.ToArray();

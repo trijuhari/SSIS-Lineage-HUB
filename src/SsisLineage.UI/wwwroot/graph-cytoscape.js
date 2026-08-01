@@ -775,20 +775,43 @@ window.cyLineage = (function () {
         // then restore the invisible-node stylesheet immediately after.
         if (mode === 'object') {
             cy.nodes('[kind]').forEach(n => {
-                const isStart = n.data('isStart');
+                const d = n.data();
+                const isStart = d.isStart;
+                const bg = isDark ? '#1e293b' : '#ffffff';
+                const stroke = isStart ? '#f59e0b' : (isDark ? '#334155' : '#cbd5e1');
+                const strokeW = isStart ? 3 : 1;
+                const color = isDark ? '#f8fafc' : '#0f172a';
+                const subColor = isDark ? '#94a3b8' : '#64748b';
+                
+                const label = (d.label || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+                const subtitle = (d.subtitle || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const meta = (d.meta || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const badgeCount = d.outCount > 0 ? d.outCount : '';
+
+                const svg = `
+<svg xmlns="http://www.w3.org/2000/svg" width="290" height="104" viewBox="0 0 290 104">
+    <rect x="2" y="2" width="286" height="100" rx="8" fill="${bg}" stroke="${stroke}" stroke-width="${strokeW}" />
+    ${isStart ? '<rect x="2" y="2" width="286" height="100" rx="8" fill="rgba(245, 158, 11, 0.1)" />' : ''}
+    <g transform="translate(16, 16)">
+        <path fill="${d.color || '#475569'}" d="${ICON_PATHS[d.icon] || ICON_PATHS.task}" transform="scale(1.2)"/>
+    </g>
+    <text x="56" y="32" font-family="sans-serif" font-weight="bold" font-size="14" fill="${color}">${label.length > 30 ? label.substring(0, 30) + '...' : label}</text>
+    <text x="56" y="50" font-family="sans-serif" font-size="12" fill="${subColor}">${subtitle}</text>
+    ${meta ? `<rect x="16" y="64" width="258" height="26" rx="4" fill="${isDark ? '#0f172a' : '#f1f5f9'}" />
+              <text x="24" y="81" font-family="sans-serif" font-size="11" fill="${subColor}">${meta.length > 40 ? meta.substring(0, 40) + '...' : meta}</text>` : ''}
+    ${badgeCount ? `<circle cx="264" cy="30" r="10" fill="#3b82f6" />
+                    <text x="264" y="34" font-family="sans-serif" font-size="10" font-weight="bold" fill="#fff" text-anchor="middle">${badgeCount}</text>` : ''}
+    ${isStart ? `<rect x="2" y="-10" width="80" height="20" rx="4" fill="#f59e0b" />
+                 <text x="42" y="3" font-family="sans-serif" font-size="10" font-weight="bold" fill="#fff" text-anchor="middle">ENTRY POINT</text>` : ''}
+</svg>`;
+                const dataUriSvg = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+                
                 n.style({
-                    'background-opacity': 1,
-                    'background-color': isStart ? '#d97706' : (n.data('color') || '#475569'),
-                    'border-width': isStart ? 3 : 1,
-                    'border-color': isStart ? '#f59e0b' : (isDark ? '#475569' : '#94a3b8'),
-                    'label': n.data('label'),
-                    'color': '#ffffff',
-                    'font-size': 12,
-                    'font-weight': 600,
-                    'text-valign': 'center',
-                    'text-halign': 'center',
-                    'text-wrap': 'ellipsis',
-                    'text-max-width': 260
+                    'background-opacity': 0,
+                    'border-width': 0,
+                    'background-image': dataUriSvg,
+                    'background-width': '100%',
+                    'background-height': '100%'
                 });
             });
         }
@@ -820,10 +843,9 @@ window.cyLineage = (function () {
             ?? tryExport(0.25)                          // last-resort (quarter resolution)
             ?? null;
 
-        // Restore transparent-card stylesheet so the live graph is unchanged
         if (mode === 'object') {
             cy.nodes('[kind]').forEach(n => {
-                n.removeStyle('background-opacity background-color border-width border-color label color font-size font-weight text-valign text-halign text-wrap text-max-width');
+                n.removeStyle('background-opacity border-width background-image background-width background-height');
             });
         }
 

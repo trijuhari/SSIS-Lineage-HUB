@@ -142,11 +142,50 @@
                    OnClick="DownloadProjectWorkspace" Size="Size.Large" Class="ml-2">
             Export Full Project (ZIP)
         </MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Dark" StartIcon="@Icons.Material.Filled.RocketLaunch"
+                   OnClick="OpenGitDeployDialog" Size="Size.Large" Class="ml-2">
+            Deploy to Git
+        </MudButton>
     </div>
+
+    @if (_showGitDialog)
+    {
+        <MudPaper Class="pa-4 mt-4 w-100" Elevation="0" Style="border: 2px dashed var(--mud-palette-info); border-radius: 8px; background: rgba(14, 165, 233, 0.05);">
+            <MudText Typo="Typo.h6" Class="mb-3 d-flex align-center gap-2">
+                <MudIcon Icon="@Icons.Material.Filled.RocketLaunch" Color="Color.Info" />
+                Deploy to Git (Auto Pull-Request)
+            </MudText>
+            <MudGrid>
+                <MudItem xs="12" md="5">
+                    <MudTextField @bind-Value="_gitRepoUrl" Label="GitHub Repository URL" Variant="Variant.Outlined" Placeholder="https://github.com/user/repo.git" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12" md="4">
+                    <MudTextField @bind-Value="_gitPat" Label="Personal Access Token (PAT)" Variant="Variant.Outlined" InputType="InputType.Password" Margin="Margin.Dense" />
+                </MudItem>
+                <MudItem xs="12" md="3">
+                    <MudTextField @bind-Value="_gitBranch" Label="Branch Name" Variant="Variant.Outlined" Margin="Margin.Dense" />
+                </MudItem>
+            </MudGrid>
+            <div class="d-flex align-center gap-3 mt-4">
+                <MudButton Variant="Variant.Filled" Color="Color.Info" OnClick="DeployToGit" Disabled="_isDeploying">
+                    @if (_isDeploying)
+                    {
+                        <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true"/>
+                        <MudText Class="ms-2">Pushing to Repo...</MudText>
+                    }
+                    else
+                    {
+                        <MudText>Push & Create PR</MudText>
+                    }
+                </MudButton>
+                <MudButton Variant="Variant.Text" OnClick="() => _showGitDialog = false">Cancel</MudButton>
+            </div>
+        </MudPaper>
+    }
 
     @if (_effortDays > 0)
     {
-        <MudPaper Elevation="0" Class="pa-3 mt-4" Style="background: rgba(34, 197, 94, 0.1); border: 1px solid var(--mud-palette-success); border-radius: 8px;">
+        <MudPaper Elevation="0" Class="pa-3 mt-4 w-100" Style="background: rgba(34, 197, 94, 0.1); border: 1px solid var(--mud-palette-success); border-radius: 8px;">
             <div class="d-flex align-center justify-space-between">
                 <div class="d-flex align-center gap-3">
                     <MudIcon Icon="@Icons.Material.Filled.Analytics" Color="Color.Success" />
@@ -255,6 +294,12 @@ else if (_reportData == null)
     private string _effortSize = "";
     private int _effortDays = 0;
     private int _totalComponents = 0;
+
+    private bool _showGitDialog;
+    private bool _isDeploying;
+    private string _gitRepoUrl = "";
+    private string _gitPat = "";
+    private string _gitBranch = "migration/ssis-to-airflow";
 
     protected override void OnInitialized()
     {
@@ -378,4 +423,49 @@ else if (_reportData == null)
         "yaml" => Color.Warning,
         _ => Color.Success
     };
+
+    private void OpenGitDeployDialog()
+    {
+        _showGitDialog = true;
+    }
+
+    private async Task DeployToGit()
+    {
+        if (_reportData?.Graph == null || string.IsNullOrWhiteSpace(_gitRepoUrl) || string.IsNullOrWhiteSpace(_gitPat))
+        {
+            Snackbar.Add("Please enter Repository URL and Token.", Severity.Warning);
+            return;
+        }
+
+        _isDeploying = true;
+        StateHasChanged();
+
+        try
+        {
+            var templatePath = System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "wwwroot", "templates", "data_engineering_project_template.zip");
+            var zipBytes = ProjectExportService.ExportToTemplateZip(_reportData.Graph, templatePath);
+            
+            var options = new GitDeploymentOptions
+            {
+                RepositoryUrl = _gitRepoUrl,
+                PersonalAccessToken = _gitPat,
+                BranchName = string.IsNullOrWhiteSpace(_gitBranch) ? "migration/ssis-to-airflow" : _gitBranch,
+                CreatePullRequest = true
+            };
+
+            var prUrl = await GitIntegrationService.DeployToGitAsync(zipBytes, options);
+            
+            Snackbar.Add($"Deployment successful! {prUrl}", Severity.Success);
+            _showGitDialog = false;
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Deployment failed: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _isDeploying = false;
+            StateHasChanged();
+        }
+    }
 }
