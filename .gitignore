@@ -33,3 +33,6 @@ src/SsisLineage.UI/wwwroot/_graphtest.html
 # Local release artifacts
 publish/
 SsisLineage-v*-win-x64.zip
+
+# Rahasia Pribadi
+.project_pitch.md
