@@ -53,6 +53,15 @@ chmod +x run.sh
 
 Open your browser to `http://localhost:5057` to explore the portal!
 
+### 🧪 Validating Migration Output (Linux / macOS)
+After exporting your modernized Modern Data Stack (MDS) project from the web interface as a ZIP file, you can instantly validate the generated Airflow DAGs using our included test harness. This script will spin up a local Docker Airflow environment and run `pytest` to ensure all generated Python code is syntactically correct and deployable:
+
+```bash
+# Make the script executable and provide the path to your exported ZIP file
+chmod +x test-migration.sh
+./test-migration.sh ~/Downloads/Modern_Data_Engineering_Project.zip
+```
+
 ### Setup & Running on Windows (Desktop Application)
 To resolve the native SQL Server DTS assemblies, use the following steps:
 

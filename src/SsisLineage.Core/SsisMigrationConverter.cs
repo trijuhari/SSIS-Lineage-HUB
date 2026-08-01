@@ -614,7 +614,11 @@ sb.AppendLine();
                 sb.AppendLine("    # Set up task dependencies");
                 if (taskNames.Count > 0)
                 {
-                    sb.AppendLine($"    start_pipeline >> {taskNames.First()}");
+                    var firstTask = tasks.First();
+                    var fName = CleanIdentifier(firstTask.Name).ToLowerInvariant();
+                    var fType = firstTask.Type?.ToLowerInvariant() ?? "";
+                    var fRef = (fType.Contains("data flow") || fType.Contains("pipeline")) ? $"{fName}_extract" : fName;
+                    sb.AppendLine($"    start_pipeline >> {fRef}");
                     
                     var execEdges = graph.ExecutionEdges
                         .Where(e => tasks.Any(t => t.Id == e.FromTaskId) && tasks.Any(t => t.Id == e.ToTaskId))
