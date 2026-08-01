@@ -19,8 +19,11 @@ echo "=========================================="
 echo "[1/4] 🧹 Membersihkan direktori dan container test lama..."
 # Menghentikan container lama jika masih berjalan
 if [ -f "$PROJECT_DIR/docker-compose.yml" ]; then
-    (cd $PROJECT_DIR && docker compose down -v) || true
+    (cd $PROJECT_DIR && docker compose down -v 2>/dev/null) || true
 fi
+# Hapus paksa container berdasarkan nama jika masih nyangkut
+docker rm -f webserver scheduler postgres ssis_migration_test-airflow-init-1 2>/dev/null || true
+
 # Menghapus paksa folder menggunakan docker agar tidak kena 'Permission denied' dari __pycache__ root
 docker run --rm -v /tmp:/target alpine rm -rf /target/ssis_migration_test 2>/dev/null || true
 
