@@ -523,7 +523,19 @@ else
                         </CardHeaderContent>
                     </MudCardHeader>
                     <MudCardContent Class="pt-0 pb-3 px-4">
-                        <MudText Typo="Typo.body2" Style="color: var(--mud-palette-text-primary); line-height: 1.6;">@_detail.BusinessNarrative</MudText>
+                        @foreach (var part in SplitNarrative(_detail.BusinessNarrative))
+                        {
+                            if (part.IsCode)
+                            {
+                                <div class="my-3">
+                                    <SqlQueryViewer Sql="@part.Text.Trim()" Title="Parsed Query" />
+                                </div>
+                            }
+                            else if (!string.IsNullOrWhiteSpace(part.Text))
+                            {
+                                <MudText Typo="Typo.body2" Class="d-inline" Style="color: var(--mud-palette-text-primary); line-height: 1.6;">@part.Text</MudText>
+                            }
+                        }
                     </MudCardContent>
                 </MudCard>
             }
@@ -1520,6 +1532,21 @@ else
         _detail = d;
         _detailSearch = "";
         await InvokeAsync(StateHasChanged);
+    }
+
+    private List<(bool IsCode, string Text)> SplitNarrative(string narrative)
+    {
+        var result = new List<(bool IsCode, string Text)>();
+        if (string.IsNullOrEmpty(narrative)) return result;
+
+        var parts = narrative.Split('`');
+        for (int i = 0; i < parts.Length; i++)
+        {
+            if (string.IsNullOrWhiteSpace(parts[i])) continue;
+            // Even indices are normal text, odd indices are code (inside backticks)
+            result.Add((i % 2 != 0, parts[i]));
+        }
+        return result;
     }
 
     public void Dispose()
