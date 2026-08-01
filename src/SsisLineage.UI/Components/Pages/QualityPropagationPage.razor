@@ -48,9 +48,15 @@
                                      Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Biotech" />
                 </MudItem>
                 <MudItem xs="12" md="4">
-                    <MudTextField @bind-Value="_tag.IssueDescription" Label="Quality Issue Description"
-                                  Placeholder="15% NULLs, Duplicate Primary Keys, Invalid Date Format"
-                                  Variant="Variant.Outlined" Margin="Margin.Dense" />
+                    <MudSelect T="string" @bind-Value="_tag.IssueDescription" Label="Quality Issue Description" Variant="Variant.Outlined" Margin="Margin.Dense">
+                        <MudSelectItem Value="@("15% NULL Values & Duplicate CustomerId")">15% NULL Values & Duplicate CustomerId</MudSelectItem>
+                        <MudSelectItem Value="@("Format nilai tidak valid / Nulls detected")">Format nilai tidak valid / Nulls detected</MudSelectItem>
+                        <MudSelectItem Value="@("Duplicate Primary Keys")">Duplicate Primary Keys</MudSelectItem>
+                        <MudSelectItem Value="@("Missing Foreign Keys")">Missing Foreign Keys</MudSelectItem>
+                        <MudSelectItem Value="@("Invalid Date Format")">Invalid Date Format</MudSelectItem>
+                        <MudSelectItem Value="@("Data Type Mismatch")">Data Type Mismatch</MudSelectItem>
+                        <MudSelectItem Value="@("Orphaned Records")">Orphaned Records</MudSelectItem>
+                    </MudSelect>
                 </MudItem>
                 <MudItem xs="6" md="3">
                     <MudSelect @bind-Value="_tag.Severity" Label="Severity Level" Variant="Variant.Outlined" Margin="Margin.Dense">

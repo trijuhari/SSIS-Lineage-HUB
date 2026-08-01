@@ -382,6 +382,11 @@ else
                         <MudToggleItem Value="@("object")">Objects</MudToggleItem>
                         <MudToggleItem Value="@("column")">Columns</MudToggleItem>
                     </MudToggleGroup>
+                    <MudTextField @bind-Value="graphFilterColumn" @bind-Value:after="ApplyGraphFilterAsync"
+                                  Placeholder="@(_graphMode == "column" ? "Search column or table..." : "Search component...")" Adornment="Adornment.Start"
+                                  AdornmentIcon="@Icons.Material.Filled.Search" IconSize="Size.Small"
+                                  Dense="true" Margin="Margin.Dense" Variant="Variant.Outlined"
+                                  Clearable="true" Style="min-width:200px" />
                     @if (_graphMode == "object")
                     {
                         <MudSelect T="string" @bind-Value="graphFilterPackageId" @bind-Value:after="ApplyGraphFilterAsync"
@@ -402,12 +407,26 @@ else
                         </MudSelect>
                         <MudButton OnClick="ClearGraphFilters" Variant="Variant.Outlined" Size="Size.Small"
                                    StartIcon="@Icons.Material.Filled.FilterAltOff">Clear</MudButton>
+                        <MudTooltip Text="Group Data Flow components inside their parent Task" Placement="Placement.Top">
+                            <MudToggleIconButton @bind-Toggled="_groupComponents" @bind-Toggled:after="RenderGraphAsync"
+                                                 Icon="@Icons.Material.Filled.AccountTree" Color="Color.Default"
+                                                 ToggledIcon="@Icons.Material.Filled.AccountTree" ToggledColor="Color.Primary"
+                                                 Title="Toggle Compound Tasks" />
+                        </MudTooltip>
                         <MudSelect T="string" Value="@_selectedLayout" ValueChanged="ChangeGraphLayout"
                                    Label="Layout" Dense="true" Margin="Margin.Dense" Variant="Variant.Outlined" Style="min-width:130px">
                             <MudSelectItem T="string" Value="@("dagre")">Hierarchical</MudSelectItem>
                             <MudSelectItem T="string" Value="@("cose")">Force-Directed</MudSelectItem>
                             <MudSelectItem T="string" Value="@("concentric")">Concentric</MudSelectItem>
                             <MudSelectItem T="string" Value="@("grid")">Grid Matrix</MudSelectItem>
+                        </MudSelect>
+                    }
+                    else if (_graphMode == "column")
+                    {
+                        <MudSelect T="string" @bind-Value="graphFilterFocusScope" @bind-Value:after="ApplyGraphFilterAsync"
+                                   Dense="true" Margin="Margin.Dense" Variant="Variant.Outlined" Style="min-width:110px">
+                            <MudSelectItem T="string" Value="@("column")">Column</MudSelectItem>
+                            <MudSelectItem T="string" Value="@("table")">Table</MudSelectItem>
                         </MudSelect>
                     }
                     <MudButton id="open-legend-guide-btn" OnClick="OpenLegendGuide" Variant="Variant.Outlined" Color="Color.Info" Size="Size.Small"
@@ -786,7 +805,10 @@ else
     private bool _lastRenderedDark = false;
     private string graphFilterPackageId = "";
     private string graphFilterTaskId = "";
+    private string graphFilterColumn = "";
+    private string graphFilterFocusScope = "column";
     private string _graphMode = "object";
+    private bool _groupComponents = false;
 
     private sealed record Metric(string Key, string Label, string Icon, string Section);
 
@@ -972,7 +994,7 @@ else
         if (reportData == null) return;
         _objRef ??= DotNetObjectReference.Create(this);
         await JS.InvokeVoidAsync("cyLineage.render", "graph-diagram", reportData.Graph,
-            new { packageId = graphFilterPackageId, taskId = graphFilterTaskId, startPackage }, _objRef, IsDarkMode, _graphMode);
+            new { packageId = graphFilterPackageId, taskId = graphFilterTaskId, startPackage, groupComponents = _groupComponents, focus = graphFilterColumn, focusScope = graphFilterFocusScope }, _objRef, IsDarkMode, _graphMode);
     }
 
     private string _selectedLayout = "dagre";

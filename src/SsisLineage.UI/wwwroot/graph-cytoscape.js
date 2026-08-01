@@ -20,6 +20,12 @@ window.cyLineage = (function () {
     let isDark = false;         // kept in module scope so exportPng/toggleFullscreen can read it
     let homePositions = null;   // post-layout node positions, for resetLayout() after manual drags
     let columnClickHandler = null; // optional drill-down hook (e.g. VS Code webview); inert otherwise
+    let _currentGraph = null;
+    let _currentFilter = null;
+    let _currentElementId = null;
+    let _expandedTasks = new Set();
+    let _collapsedTables = new Set();
+    let _groupComponents = false;
 
     const safe = t => (t ? String(t).replace(/\s+/g, ' ').trim() : '');
     const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -143,12 +149,20 @@ window.cyLineage = (function () {
         const addNode = (id, label, kind, meta) => {
             if (!id || ids.has(id)) return;
             ids.add(id);
+            
+            const isFocusMatch = focus && (
+                safe(label).toLowerCase().includes(focus) || 
+                safe(meta.subtitle).toLowerCase().includes(focus) || 
+                safe(meta.meta).toLowerCase().includes(focus)
+            );
+
             nodes.push({
                 data: {
                     id, kind, state: '', outCount: 0,
                     label: label || id, subtitle: meta.subtitle || '', meta: meta.meta || '',
                     icon: meta.icon, color: COLORS[meta.icon] || COLORS.task,
-                    isStart: !!meta.isStart
+                    isStart: !!meta.isStart,
+                    focus: isFocusMatch
                 }
             });
         };
@@ -165,27 +179,55 @@ window.cyLineage = (function () {
         tasks.forEach(t => {
             const tm = taskMeta(safe(t.type));
             tm.meta = safe(t.packageName) ? `in ${safe(t.packageName)}` : safe(t.description);
+            if (_groupComponents) {
+                tm.meta = _expandedTasks.has(safe(t.id)) ? '[-] Click to collapse' : '[+] Click to expand';
+            }
             addNode(safe(t.id), safe(t.name), 'task', tm);
         });
         components.forEach(c => {
             const ct = safe(c.type);
             const icon = ct.includes('Source') ? 'source' : ct.includes('Destination') ? 'destination' : ct.includes('Lookup') ? 'lookup' : 'transform';
             const meta = safe(c.sqlQueryOrTable) ? trunc(c.sqlQueryOrTable, 42) : safe(c.connectionManager);
-            addNode(safe(c.id), safe(c.name), 'component', { icon, subtitle: ct || 'Component', meta });
+            
+            if (_groupComponents && !_expandedTasks.has(safe(c.taskId))) {
+                // Do not add component if task is collapsed
+            } else {
+                addNode(safe(c.id), safe(c.name), 'component', { icon, subtitle: ct || 'Component', meta });
+            }
         });
 
         const edgeMap = new Map();
-        const addEdge = (s, t, rel) => {
+        const addEdge = (s, t, rel, meta = null) => {
             if (!s || !t || s === t || !ids.has(s) || !ids.has(t)) return;
             const key = `${rel}|${s}|${t}`;
             const e = edgeMap.get(key);
-            if (e) e.data.count++;
-            else edgeMap.set(key, { data: { id: key, source: s, target: t, rel, count: 1, cpd: '0 0', cpw: '0.5 0.5' } });
+            if (e) {
+                e.data.count++;
+            } else {
+                let classes = '';
+                let label = '';
+                if (meta) {
+                    if (meta.constraint === 'Failure') classes = 'ce-failure';
+                    else if (meta.constraint === 'Completion') classes = 'ce-completion';
+                    
+                    if (meta.expression) {
+                        classes += ' ce-expr';
+                        label = 'ƒ(x)';
+                    }
+                }
+                edgeMap.set(key, { data: { id: key, source: s, target: t, rel, count: 1, label, cpd: '0 0', cpw: '0.5 0.5' }, classes });
+            }
         };
         tasks.forEach(t => addEdge(safe(t.packageId), safe(t.id), 'contains'));
         components.forEach(c => addEdge(safe(c.taskId), safe(c.id), 'contains'));
         const pkgIdSet = new Set(packages.map(p => safe(p.id)));
-        executionEdges.forEach(e => addEdge(safe(e.fromTaskId), safe(e.toTaskId), pkgIdSet.has(safe(e.toTaskId)) ? 'invokes' : 'execution'));
+        
+        executionEdges.forEach(e => {
+            const rel = pkgIdSet.has(safe(e.toTaskId)) ? 'invokes' : 'execution';
+            const meta = { constraint: safe(e.precedenceConstraintValue || e.PrecedenceConstraintValue), expression: safe(e.expression || e.Expression) };
+            addEdge(safe(e.fromTaskId), safe(e.toTaskId), rel, meta);
+        });
+        
         dataFlowEdges.forEach(e => addEdge(safe(e.fromComponentId), safe(e.toComponentId), 'data'));
 
         const outCount = new Map();
@@ -361,32 +403,55 @@ window.cyLineage = (function () {
                 elements.push({ data: { id: key, ckind: 'table', label: hdrLabel, focus: tableFocus } });
 
                 // header child — wrap and grow height to fit the full table name
+                const isCollapsed = _collapsedTables.has(key);
                 const hw = wrapLabel(hdrLabel, 12, 700, HDR_TEXT_W, 3);
-                const hdrH = Math.max(HDR_NODE_H, hw.lines * LINE_H + 12);
+                const hdrH = Math.max(HDR_NODE_H, hw.lines * LINE_H + 12) + (isCollapsed ? 18 : 0);
+                const hdrText = hw.text + (isCollapsed ? '\n[+] Expand' : '');
+                
                 elements.push({
-                    data: { id: `${key}::__hdr`, parent: key, ckind: 'hdr', label: hw.text, tip: tbl.tip || '', h: hdrH },
+                    data: { id: `${key}::__hdr`, parent: key, ckind: 'hdr', label: hdrText, tip: tbl.tip || '', h: hdrH, tableId: key },
                     position: { x, y: top + hdrH / 2 }, grabbable: false, selectable: false
                 });
 
                 // column rows — variable height per wrapped label, stacked by accumulated y
                 let rowY = top + hdrH + HDR_GAP;
-                cols.forEach(c => {
-                    const cw = wrapLabel(c, 11, 400, COL_TEXT_W, 4);
-                    const rowH = Math.max(ROW_NODE_H, cw.lines * LINE_H + 6);
-                    const tip = `${hdrLabel}.${c}`;
-                    const colFocus = !!focus && focusScope === 'column' && tip.toLowerCase() === focus;
-                    elements.push({
-                        data: { id: `${key}::${c}`, parent: key, ckind: 'col', label: cw.text, table: key, tip, h: rowH, focus: colFocus },
-                        position: { x, y: rowY + rowH / 2 }
+                if (!isCollapsed) {
+                    cols.forEach(c => {
+                        const cw = wrapLabel(c, 11, 400, COL_TEXT_W, 4);
+                        const rowH = Math.max(ROW_NODE_H, cw.lines * LINE_H + 6);
+                        const tip = `${hdrLabel}.${c}`;
+                        const colFocus = !!focus && focusScope === 'column' && tip.toLowerCase() === focus;
+                        elements.push({
+                            data: { id: `${key}::${c}`, parent: key, ckind: 'col', label: cw.text, table: key, tip, h: rowH, focus: colFocus },
+                            position: { x, y: rowY + rowH / 2 }
+                        });
+                        rowY += rowH + ROW_GAP;
                     });
-                    rowY += rowH + ROW_GAP;
-                });
-
+                }
+                
                 y = rowY + TABLE_GAP;
             });
         });
 
-        edges.forEach(e => elements.push({ data: { id: `ce:${e.sId}>${e.tId}`, source: e.sId, target: e.tId, cpd: '0 0', cpw: '0.5 0.5' }, classes: 'celink' }));
+        const addedEdges = new Set();
+        edges.forEach(e => {
+            let srcId = e.sId;
+            let tgtId = e.tId;
+            
+            if (_collapsedTables.has(e.sKey)) {
+                srcId = `${e.sKey}::__hdr`;
+            }
+            if (_collapsedTables.has(e.tKey)) {
+                tgtId = `${e.tKey}::__hdr`;
+            }
+            
+            const edgeId = `ce:${srcId}>${tgtId}`;
+            if (!addedEdges.has(edgeId)) {
+                addedEdges.add(edgeId);
+                elements.push({ data: { id: edgeId, source: srcId, target: tgtId, cpd: '0 0', cpw: '0.5 0.5' }, classes: 'celink' });
+            }
+        });
+        
         return { elements, empty: false };
     }
 
@@ -422,6 +487,9 @@ window.cyLineage = (function () {
             },
             { selector: 'edge[rel="contains"]', style: { 'line-color': '#94a3b8', 'line-style': 'dashed', 'width': 1, 'target-arrow-shape': 'none', 'opacity': 0.45 } },
             { selector: 'edge[rel="execution"]', style: { 'line-color': '#38bdf8', 'target-arrow-color': '#38bdf8' } },
+            { selector: 'edge.ce-failure', style: { 'line-color': '#ef4444', 'target-arrow-color': '#ef4444' } },
+            { selector: 'edge.ce-completion', style: { 'line-color': '#94a3b8', 'target-arrow-color': '#94a3b8' } },
+            { selector: 'edge.ce-expr', style: { 'line-style': 'dashed', 'label': 'data(label)', 'color': '#f59e0b', 'font-size': 12, 'text-background-color': '#1e293b', 'text-background-opacity': 1, 'text-background-padding': 2 } },
             { selector: 'edge[rel="invokes"]', style: { 'line-color': '#a78bfa', 'target-arrow-color': '#a78bfa', 'line-style': 'dashed' } },
             { selector: 'edge[rel="data"]', style: { 'line-color': '#22c55e', 'target-arrow-color': '#22c55e', 'width': 3 } },
             { selector: 'edge.celink', style: { 'line-color': celink, 'target-arrow-color': celink, 'width': 1.4, 'arrow-scale': 0.7, 'opacity': 0.45 } },
@@ -433,6 +501,8 @@ window.cyLineage = (function () {
             },
             // start package — amber canvas border (supplements the HTML card badge)
             { selector: 'node.start-pkg', style: { 'border-width': 3, 'border-color': '#f59e0b', 'border-opacity': 0.9 } },
+            // searched object node
+            { selector: 'node[kind][?focus]', style: { 'border-width': 5, 'border-color': '#f59e0b', 'border-opacity': 1, 'background-opacity': 0.2, 'background-color': '#f59e0b' } },
             // object highlight (edges only — cards dim via html data flag)
             { selector: 'edge.faded', style: { 'opacity': 0.08 } },
             { selector: 'edge.hl', style: { 'width': 4, 'opacity': 1 } },
@@ -676,6 +746,12 @@ window.cyLineage = (function () {
         dotNetRef = ref;
         isDark = !!isDarkArg;   // store in module scope for use by exportPng / toggleFullscreen
         mode = graphMode === 'column' ? 'column' : 'object';
+        
+        _currentGraph = graph;
+        _currentFilter = filter;
+        _currentElementId = elementId;
+        _groupComponents = !!(filter && filter.groupComponents);
+
         const container = document.getElementById(elementId);
         if (!container || !graph) return;
         if (cy) { try { cy.destroy(); } catch (e) { /* ignore */ } cy = null; }
@@ -714,12 +790,30 @@ window.cyLineage = (function () {
         cy.on('tap', 'node', evt => {
             const n = evt.target, d = n.data();
             if (mode === 'column') {
+                if (d.ckind === 'hdr') {
+                    const tableId = d.tableId;
+                    if (_collapsedTables.has(tableId)) _collapsedTables.delete(tableId);
+                    else _collapsedTables.add(tableId);
+                    setTimeout(() => {
+                        render(_currentElementId, _currentGraph, _currentFilter, dotNetRef, isDark, mode);
+                    }, 10);
+                    return;
+                }
                 if (d.ckind === 'col') {
                     highlightColumnPath(n);
                     if (columnClickHandler) columnClickHandler(d.tip || d.label);
                 }
                 return;
             }
+            
+            if (mode === 'object' && d.kind === 'task' && _groupComponents) {
+                if (_expandedTasks.has(d.id)) _expandedTasks.delete(d.id);
+                else _expandedTasks.add(d.id);
+                setTimeout(() => {
+                    render(_currentElementId, _currentGraph, _currentFilter, dotNetRef, isDark, mode);
+                }, 10);
+            }
+            
             highlightObject(n);
             if (dotNetRef) dotNetRef.invokeMethodAsync('OnGraphNodeClick', d.id, d.kind);
         });
