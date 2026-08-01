@@ -76,11 +76,7 @@ powershell -ExecutionPolicy Bypass -File setup-ssis-refs.ps1
 dotnet run --project src/SsisLineage.Desktop -c Release
 ```
 
-### ☁️ Cloud Deployment (Free Hosting)
-You can deploy the web version of this application 100% for free using the included `Dockerfile`. 
-For step-by-step instructions on deploying to zero-cost providers like Render or Koyeb, see our **[Free Deployment Guide](docs/FREE_DEPLOYMENT_GUIDE.md)**.
 
----
 
 ## 🛠 What gets parsed
 
