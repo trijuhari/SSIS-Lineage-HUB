@@ -103,20 +103,6 @@ namespace SsisLineage.Core
                 {
                     schemaYaml.AppendLine($"      - name: {col}");
                     schemaYaml.AppendLine($"        description: \"Mapped from source column\"");
-                    
-                    var testList = new List<string>();
-                    var colLower = col.ToLowerInvariant();
-                    if (colLower.EndsWith("_id") || colLower.EndsWith("id") || colLower == "id") 
-                        testList.Add("not_null");
-                    if (colLower == "id" || colLower.StartsWith("pk_")) 
-                        testList.Add("unique");
-                        
-                    if (testList.Any())
-                    {
-                        schemaYaml.AppendLine("        tests:");
-                        foreach(var t in testList.Distinct())
-                            schemaYaml.AppendLine($"          - {t}");
-                    }
                 }
 
                 // Generate Model SQL (.sql)
@@ -259,6 +245,54 @@ namespace SsisLineage.Core
                 {
                     sb.AppendLine("df_transformed = df_src");
                 }
+                sb.AppendLine();
+
+                sb.AppendLine("# ---------------------------------------------------------");
+                sb.AppendLine("# Auto-Generated Data Quality Checks (Great Expectations)");
+                sb.AppendLine("# ---------------------------------------------------------");
+                sb.AppendLine("try:");
+                sb.AppendLine("    import great_expectations as ge");
+                sb.AppendLine("    print(\"Running Data Quality checks with Great Expectations...\")");
+                sb.AppendLine("    # Convert Spark DataFrame to Great Expectations SparkDFDataset");
+                sb.AppendLine("    df_ge = ge.dataset.SparkDFDataset(df_transformed)");
+                sb.AppendLine("    ");
+                sb.AppendLine("    # 1. Basic row count expectations");
+                sb.AppendLine("    df_ge.expect_table_row_count_to_be_between(min_value=1)");
+                sb.AppendLine("    ");
+                
+                var targetCols = pkgMappings.Select(m => m.TargetColumnName)
+                                            .Distinct()
+                                            .Where(c => !string.IsNullOrEmpty(c))
+                                            .ToList();
+                if (targetCols.Any())
+                {
+                    sb.AppendLine("    # 2. Column-level expectations based on schema heuristics");
+                    foreach (var col in targetCols.Take(5)) // max 5 to prevent huge scripts
+                    {
+                        var colLower = col.ToLowerInvariant();
+                        if (colLower.EndsWith("_id") || colLower.EndsWith("id") || colLower == "id" || colLower.StartsWith("pk_"))
+                        {
+                            sb.AppendLine($"    df_ge.expect_column_values_to_not_be_null(column='{col}')");
+                            if (colLower.StartsWith("pk_") || colLower == "id")
+                                sb.AppendLine($"    df_ge.expect_column_values_to_be_unique(column='{col}')");
+                        }
+                        if (colLower.EndsWith("_status") || colLower == "status")
+                        {
+                            sb.AppendLine($"    df_ge.expect_column_values_to_be_in_set(column='{col}', value_set=['active', 'inactive', 'pending', 'completed', 'failed'])");
+                        }
+                    }
+                }
+                
+                sb.AppendLine("    ");
+                sb.AppendLine("    # Validate");
+                sb.AppendLine("    results = df_ge.validate()");
+                sb.AppendLine("    if not results['success']:");
+                sb.AppendLine("        print(\"WARNING: Data Quality validation failed on PySpark dataset!\")");
+                sb.AppendLine("    else:");
+                sb.AppendLine("        print(\"Data Quality checks passed successfully.\")");
+                sb.AppendLine("except ImportError:");
+                sb.AppendLine("    print(\"great_expectations not installed. Skipping Data Quality checks.\")");
+                sb.AppendLine("# ---------------------------------------------------------");
                 sb.AppendLine();
 
                 sb.AppendLine("# 3. Load Step (Delta Lake / Target)");
@@ -475,6 +509,55 @@ namespace SsisLineage.Core
                 sb.AppendLine("    print(f\"Extracted {len(df)} rows.\")");
                 sb.AppendLine();
                 
+                sb.AppendLine("    # ---------------------------------------------------------");
+                sb.AppendLine("    # Auto-Generated Data Quality Checks (Great Expectations)");
+                sb.AppendLine("    # ---------------------------------------------------------");
+                sb.AppendLine("    try:");
+                sb.AppendLine("        import great_expectations as ge");
+                sb.AppendLine("        print(\"Running Data Quality checks...\")");
+                sb.AppendLine("        df_ge = ge.from_pandas(df)");
+                sb.AppendLine("        ");
+                sb.AppendLine("        # 1. Basic row count expectations");
+                sb.AppendLine("        df_ge.expect_table_row_count_to_be_between(min_value=1)");
+                sb.AppendLine("        ");
+                
+                var targetCols = graph.ColumnMappings.Where(m => m.PackageId == pkg.Id)
+                                                     .Select(m => m.SourceColumnName)
+                                                     .Distinct()
+                                                     .Where(c => !string.IsNullOrEmpty(c))
+                                                     .ToList();
+                if (targetCols.Any())
+                {
+                    sb.AppendLine("        # 2. Column-level expectations based on schema heuristics");
+                    foreach (var col in targetCols.Take(5)) // max 5 to prevent huge scripts
+                    {
+                        var colLower = col.ToLowerInvariant();
+                        if (colLower.EndsWith("_id") || colLower.EndsWith("id") || colLower == "id" || colLower.StartsWith("pk_"))
+                        {
+                            sb.AppendLine($"        df_ge.expect_column_values_to_not_be_null(column='{col}')");
+                            if (colLower.StartsWith("pk_") || colLower == "id")
+                                sb.AppendLine($"        df_ge.expect_column_values_to_be_unique(column='{col}')");
+                        }
+                        if (colLower.EndsWith("_status") || colLower == "status")
+                        {
+                            sb.AppendLine($"        df_ge.expect_column_values_to_be_in_set(column='{col}', value_set=['active', 'inactive', 'pending', 'completed', 'failed'])");
+                        }
+                    }
+                }
+                
+                sb.AppendLine("        ");
+                sb.AppendLine("        # Optional: Save validation results or fail pipeline on DQ error");
+                sb.AppendLine("        results = df_ge.validate()");
+                sb.AppendLine("        if not results['success']:");
+                sb.AppendLine("            print(\"WARNING: Data Quality validation failed on extracted dataset!\")");
+                sb.AppendLine("            # raise ValueError(\"Data Quality Checks Failed\") # Uncomment to enforce strict DQ gate");
+                sb.AppendLine("        else:");
+                sb.AppendLine("            print(\"Data Quality checks passed successfully.\")");
+                sb.AppendLine("    except ImportError:");
+                sb.AppendLine("        print(\"great_expectations not installed. Skipping Data Quality checks.\")");
+                sb.AppendLine("    # ---------------------------------------------------------");
+                sb.AppendLine();
+
                 var targetTable = destComp != null && !string.IsNullOrEmpty(destComp.SqlQueryOrTable)
                     ? CleanIdentifier(destComp.SqlQueryOrTable)
                     : "fact_target";
