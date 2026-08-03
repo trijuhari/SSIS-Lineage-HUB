@@ -123,9 +123,22 @@ namespace SsisLineage.Core
                 sb.AppendLine("WITH source_data AS (");
                 sb.AppendLine($"    -- Extracted from Landing Zone (Populated by Python)");
                 sb.AppendLine($"    SELECT * FROM dbo.{landingTable}");
-                sb.AppendLine("),");
+                sb.AppendLine(")");
+                
+                var lookups = pkgComponents.Where(c => c.Type != null && c.Type.Contains("Lookup", StringComparison.OrdinalIgnoreCase)).ToList();
+                for (int i = 0; i < lookups.Count; i++)
+                {
+                    var lkp = lookups[i];
+                    if (!string.IsNullOrEmpty(lkp.SqlQueryOrTable))
+                    {
+                        sb.AppendLine($",\nlookup_{i} AS (");
+                        sb.AppendLine($"    {lkp.SqlQueryOrTable}");
+                        sb.AppendLine(")");
+                    }
+                }
+                
                 sb.AppendLine();
-                sb.AppendLine("transformed AS (");
+                sb.AppendLine(",\ntransformed AS (");
                 sb.AppendLine("    SELECT");
 
                 if (pkgMappings.Any())
@@ -134,8 +147,28 @@ namespace SsisLineage.Core
                     foreach (var m in pkgMappings.DistinctBy(x => x.TargetColumnName))
                     {
                         var expr = !string.IsNullOrEmpty(m.SourceExpression)
-                            ? m.SourceExpression
+                            ? TranslateSsisExpressionToSql(m.SourceExpression)
                             : $"source_data.{m.SourceColumnName}";
+                        
+                        // Heuristic casting for simple column mappings
+                        if (string.IsNullOrEmpty(m.SourceExpression))
+                        {
+                            var targetNameLower = m.TargetColumnName.ToLowerInvariant();
+                            if (targetNameLower.Contains("quantity") || targetNameLower.Contains("count"))
+                            {
+                                expr = $"CAST({expr} AS INT)";
+                            }
+                            else if (targetNameLower.Contains("amount") || targetNameLower.Contains("price") || targetNameLower.Contains("total"))
+                            {
+                                expr = $"CAST({expr} AS DECIMAL(18,2))";
+                            }
+                            else if (targetNameLower.Contains("date"))
+                            {
+                                expr = $"CAST({expr} AS DATETIME)";
+                            }
+                        }
+                        
+                        // Default regex to ensure proper qualification, though heuristic logic shouldn't mess this up
                         expr = Regex.Replace(expr, @"\b[a-zA-Z_]\w*\.([a-zA-Z_]\w*)", "source_data.$1");
                         mapLines.Add($"        {expr} AS {m.TargetColumnName}");
                     }
@@ -147,6 +180,10 @@ namespace SsisLineage.Core
                 }
 
                 sb.AppendLine("    FROM source_data");
+                for (int i = 0; i < lookups.Count; i++)
+                {
+                     sb.AppendLine($"    LEFT JOIN lookup_{i} ON 1=1 /* TODO: Replace with actual Join Condition */");
+                }
                 sb.AppendLine(")");
                 sb.AppendLine();
                 sb.AppendLine("SELECT * FROM transformed");
@@ -227,7 +264,8 @@ namespace SsisLineage.Core
                     {
                         if (!string.IsNullOrEmpty(m.SourceExpression))
                         {
-                            selectExprs.Add($"    F.expr(\"{m.SourceExpression.Replace("\"", "'")}\").alias(\"{m.TargetColumnName}\")");
+                            var translatedExpr = TranslateSsisExpressionToSql(m.SourceExpression).Replace("\"", "'");
+                            selectExprs.Add($"    F.expr(\"{translatedExpr}\").alias(\"{m.TargetColumnName}\")");
                         }
                         else
                         {
@@ -383,7 +421,7 @@ namespace SsisLineage.Core
                     {
                         var m = pkgMappings.FirstOrDefault(x => x.TargetColumnName == col);
                         var srcExpr = m != null && !string.IsNullOrEmpty(m.SourceExpression)
-                            ? m.SourceExpression
+                            ? TranslateSsisExpressionToSql(m.SourceExpression)
                             : (m != null && !string.IsNullOrEmpty(m.SourceColumnName) ? $"src.{m.SourceColumnName}" : col);
                         selectExprs.Add($"        {srcExpr} AS {col}");
                     }
@@ -826,6 +864,38 @@ namespace SsisLineage.Core
                     return $"[{identifier}].";
                 return m.Value;
             });
+        }
+        /// <summary>
+        /// Translates SSIS expressions to ANSI SQL syntax
+        /// </summary>
+        private static string TranslateSsisExpressionToSql(string ssisExpr)
+        {
+            if (string.IsNullOrEmpty(ssisExpr)) return ssisExpr;
+            
+            // 1. Ternary Operator: Condition ? TrueVal : FalseVal -> CASE WHEN Condition THEN TrueVal ELSE FalseVal END
+            if (ssisExpr.Contains("?") && ssisExpr.Contains(":"))
+            {
+                var match = Regex.Match(ssisExpr, @"(.*)\?(.*):(.*)");
+                if (match.Success)
+                {
+                    ssisExpr = $"CASE WHEN {match.Groups[1].Value.Trim()} THEN {match.Groups[2].Value.Trim()} ELSE {match.Groups[3].Value.Trim()} END";
+                }
+            }
+            
+            // 2. Typecasts (DT_WSTR, 50) -> CAST(... AS VARCHAR(50))
+            ssisExpr = Regex.Replace(ssisExpr, @"\(DT_WSTR,\s*\d+\)", ""); // Just strip them for now to avoid complexity
+            ssisExpr = Regex.Replace(ssisExpr, @"\(DT_I4\)", "");
+            
+            // 3. Equality operators == to =
+            ssisExpr = ssisExpr.Replace("==", "=");
+            
+            // 4. SSIS Variables @[User::VarName] or @[$Package::VarName] -> {{ var('VarName') }}
+            ssisExpr = Regex.Replace(ssisExpr, @"@\[(?:User|\$Package)::([^\]]+)\]", "{{ var('$1') }}");
+            
+            // 5. ISNULL -> IS NULL for conditions
+            ssisExpr = Regex.Replace(ssisExpr, @"ISNULL\(([^)]+)\)", "$1 IS NULL");
+            
+            return ssisExpr;
         }
     }
 }
