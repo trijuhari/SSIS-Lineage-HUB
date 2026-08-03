@@ -597,7 +597,15 @@ namespace SsisLineage.Core
                 sb.AppendLine();
                 sb.AppendLine("        # Drop & recreate landing table");
                 sb.AppendLine("        cursor.execute(f\"IF OBJECT_ID('dbo.{target_table}', 'U') IS NOT NULL DROP TABLE dbo.{target_table}\")");
-                sb.AppendLine("        cols_ddl = ', '.join([f'[{c}] NVARCHAR(MAX)' for c in df.columns])");
+                sb.AppendLine("        ");
+                sb.AppendLine("        def map_dtype(dt):");
+                sb.AppendLine("            dt_str = str(dt).lower()");
+                sb.AppendLine("            if 'int' in dt_str: return 'INT'");
+                sb.AppendLine("            if 'float' in dt_str: return 'DECIMAL(18,2)'");
+                sb.AppendLine("            if 'datetime' in dt_str: return 'DATETIME'");
+                sb.AppendLine("            return 'NVARCHAR(MAX)'");
+                sb.AppendLine("            ");
+                sb.AppendLine("        cols_ddl = ', '.join([f'[{c}] {map_dtype(df[c].dtype)}' for c in df.columns])");
                 sb.AppendLine("        cursor.execute(f'CREATE TABLE dbo.{target_table} ({cols_ddl})')");
                 sb.AppendLine();
                 sb.AppendLine("        # Bulk insert");
