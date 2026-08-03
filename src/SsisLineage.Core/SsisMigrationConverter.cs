@@ -113,21 +113,13 @@ namespace SsisLineage.Core
 
                 var sources = pkgComponents.Where(c => c.Type.Contains("Source", StringComparison.OrdinalIgnoreCase)).ToList();
                 var destinations = pkgComponents.Where(c => c.Type.Contains("Destination", StringComparison.OrdinalIgnoreCase)).ToList();
+                var landingTable = destinations.FirstOrDefault() != null && !string.IsNullOrEmpty(destinations.First().SqlQueryOrTable)
+                    ? CleanIdentifier(destinations.First().SqlQueryOrTable)
+                    : "fact_target";
 
                 sb.AppendLine("WITH source_data AS (");
-                if (sources.Any() && !string.IsNullOrEmpty(sources.First().SqlQueryOrTable))
-                {
-                    sb.AppendLine("    -- Extracted from SSIS OLE DB Source Query");
-                    var srcQuery = sources.First().SqlQueryOrTable.Trim();
-                    foreach (var line in srcQuery.Split('\n'))
-                    {
-                        sb.AppendLine("    " + line);
-                    }
-                }
-                else
-                {
-                    sb.AppendLine("    SELECT * FROM {{ source('raw_staging', 'source_table') }}");
-                }
+                sb.AppendLine($"    -- Extracted from Landing Zone (Populated by Python)");
+                sb.AppendLine($"    SELECT * FROM dbo.{landingTable}");
                 sb.AppendLine("),");
                 sb.AppendLine();
                 sb.AppendLine("transformed AS (");
