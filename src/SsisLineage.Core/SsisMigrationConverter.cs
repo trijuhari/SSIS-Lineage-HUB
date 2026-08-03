@@ -256,28 +256,15 @@ namespace SsisLineage.Core
                 sb.AppendLine("    df_ge.expect_table_row_count_to_be_between(min_value=1)");
                 sb.AppendLine("    ");
                 
-                var targetCols = pkgMappings.Select(m => m.TargetColumnName)
-                                            .Distinct()
-                                            .Where(c => !string.IsNullOrEmpty(c))
-                                            .ToList();
-                if (targetCols.Any())
-                {
-                    sb.AppendLine("    # 2. Column-level expectations based on schema heuristics");
-                    foreach (var col in targetCols.Take(5)) // max 5 to prevent huge scripts
-                    {
-                        var colLower = col.ToLowerInvariant();
-                        if (colLower.EndsWith("_id") || colLower.EndsWith("id") || colLower == "id" || colLower.StartsWith("pk_"))
-                        {
-                            sb.AppendLine($"    df_ge.expect_column_values_to_not_be_null(column='{col}')");
-                            if (colLower.StartsWith("pk_") || colLower == "id")
-                                sb.AppendLine($"    df_ge.expect_column_values_to_be_unique(column='{col}')");
-                        }
-                        if (colLower.EndsWith("_status") || colLower == "status")
-                        {
-                            sb.AppendLine($"    df_ge.expect_column_values_to_be_in_set(column='{col}', value_set=['active', 'inactive', 'pending', 'completed', 'failed'])");
-                        }
-                    }
-                }
+                sb.AppendLine("    # 2. Column-level expectations based on schema heuristics");
+                sb.AppendLine("    for col in df_transformed.columns:");
+                sb.AppendLine("        col_lower = col.lower()");
+                sb.AppendLine("        if col_lower.endswith('_id') or col_lower.endswith('id') or col_lower == 'id' or col_lower.startswith('pk_'):");
+                sb.AppendLine("            df_ge.expect_column_values_to_not_be_null(column=col)");
+                sb.AppendLine("            if col_lower.startswith('pk_') or col_lower == 'id':");
+                sb.AppendLine("                df_ge.expect_column_values_to_be_unique(column=col)");
+                sb.AppendLine("        if col_lower.endswith('_status') or col_lower == 'status':");
+                sb.AppendLine("            df_ge.expect_column_values_to_be_in_set(column=col, value_set=['active', 'inactive', 'pending', 'completed', 'failed'])");
                 
                 sb.AppendLine("    ");
                 sb.AppendLine("    # Validate");
@@ -521,29 +508,15 @@ namespace SsisLineage.Core
                 sb.AppendLine("        df_ge.expect_table_row_count_to_be_between(min_value=1)");
                 sb.AppendLine("        ");
                 
-                var targetCols = graph.ColumnMappings.Where(m => m.PackageId == pkg.Id)
-                                                     .Select(m => !string.IsNullOrEmpty(m.SourceColumnName) ? m.SourceColumnName : m.TargetColumnName)
-                                                     .Distinct()
-                                                     .Where(c => !string.IsNullOrEmpty(c))
-                                                     .ToList();
-                if (targetCols.Any())
-                {
-                    sb.AppendLine("        # 2. Column-level expectations based on schema heuristics");
-                    foreach (var col in targetCols.Take(5)) // max 5 to prevent huge scripts
-                    {
-                        var colLower = col.ToLowerInvariant();
-                        if (colLower.EndsWith("_id") || colLower.EndsWith("id") || colLower == "id" || colLower.StartsWith("pk_"))
-                        {
-                            sb.AppendLine($"        df_ge.expect_column_values_to_not_be_null(column='{col}')");
-                            if (colLower.StartsWith("pk_") || colLower == "id")
-                                sb.AppendLine($"        df_ge.expect_column_values_to_be_unique(column='{col}')");
-                        }
-                        if (colLower.EndsWith("_status") || colLower == "status")
-                        {
-                            sb.AppendLine($"        df_ge.expect_column_values_to_be_in_set(column='{col}', value_set=['active', 'inactive', 'pending', 'completed', 'failed'])");
-                        }
-                    }
-                }
+                sb.AppendLine("        # 2. Column-level expectations based on schema heuristics");
+                sb.AppendLine("        for col in df.columns:");
+                sb.AppendLine("            col_lower = col.lower()");
+                sb.AppendLine("            if col_lower.endswith('_id') or col_lower.endswith('id') or col_lower == 'id' or col_lower.startswith('pk_'):");
+                sb.AppendLine("                df_ge.expect_column_values_to_not_be_null(column=col)");
+                sb.AppendLine("                if col_lower.startswith('pk_') or col_lower == 'id':");
+                sb.AppendLine("                    df_ge.expect_column_values_to_be_unique(column=col)");
+                sb.AppendLine("            if col_lower.endswith('_status') or col_lower == 'status':");
+                sb.AppendLine("                df_ge.expect_column_values_to_be_in_set(column=col, value_set=['active', 'inactive', 'pending', 'completed', 'failed'])");
                 
                 sb.AppendLine("        ");
                 sb.AppendLine("        # Optional: Save validation results or fail pipeline on DQ error");
