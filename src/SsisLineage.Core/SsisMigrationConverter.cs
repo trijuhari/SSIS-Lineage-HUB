@@ -594,6 +594,7 @@ namespace SsisLineage.Core
                 sb.AppendLine("        df.to_parquet(output_file, index=False)");
                 sb.AppendLine("    except Exception as e:");
                 sb.AppendLine("        print(f\"Failed to load to database: {e}\")");
+                sb.AppendLine("        raise");
                 sb.AppendLine();
                 sb.AppendLine("    print(\"Extraction and load completed successfully.\")");
                 sb.AppendLine();
