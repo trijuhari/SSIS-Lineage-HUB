@@ -113,9 +113,12 @@ namespace SsisLineage.Core
 
                 var sources = pkgComponents.Where(c => c.Type.Contains("Source", StringComparison.OrdinalIgnoreCase)).ToList();
                 var destinations = pkgComponents.Where(c => c.Type.Contains("Destination", StringComparison.OrdinalIgnoreCase)).ToList();
-                var landingTable = destinations.FirstOrDefault() != null && !string.IsNullOrEmpty(destinations.First().SqlQueryOrTable)
-                    ? CleanIdentifier(destinations.First().SqlQueryOrTable)
+                // Use same naming convention as Python generator: strip brackets, replace dots with underscores
+                var rawLandingTable = destinations.FirstOrDefault() != null && !string.IsNullOrEmpty(destinations.First().SqlQueryOrTable)
+                    ? destinations.First().SqlQueryOrTable
                     : "fact_target";
+                var landingTable = Regex.Replace(rawLandingTable, @"[\[\]]", "").Replace(".", "_").Trim();
+                if (string.IsNullOrEmpty(landingTable)) landingTable = "fact_target";
 
                 sb.AppendLine("WITH source_data AS (");
                 sb.AppendLine($"    -- Extracted from Landing Zone (Populated by Python)");
@@ -449,7 +452,7 @@ namespace SsisLineage.Core
                 var sb = new StringBuilder();
                 sb.AppendLine("# Standard Python Extraction Script");
                 sb.AppendLine($"# Migrated from SSIS Package: {pkg.Name}");
-                sb.AppendLine("# Extract from SQL Server and Load to Landing Zone (Parquet)");
+                sb.AppendLine("# Extract from SQL Server Source → Load to SQL Server Landing Zone → dbt Transform");
                 sb.AppendLine();
                 sb.AppendLine("import pyodbc");
                 sb.AppendLine("import pandas as pd");
@@ -485,9 +488,9 @@ namespace SsisLineage.Core
                 sb.AppendLine("    # Define source extraction query");
                 if (sourceComp != null && !string.IsNullOrEmpty(sourceComp.SqlQueryOrTable))
                 {
-                    var sqlSingleLine = sourceComp.SqlQueryOrTable.Replace("\r\n", " ").Replace("\n", " ").Replace("\"", "\\\"");
+                    var safeSql = EscapeSqlQuery(sourceComp.SqlQueryOrTable.Trim());
                     sb.AppendLine($"    extract_query = \"\"\"");
-                    sb.AppendLine($"        {sourceComp.SqlQueryOrTable.Trim()}");
+                    sb.AppendLine($"        {safeSql}");
                     sb.AppendLine($"    \"\"\"");
                 }
                 else
@@ -551,47 +554,52 @@ namespace SsisLineage.Core
                 sb.AppendLine("    # ---------------------------------------------------------");
                 sb.AppendLine();
 
-                var targetTable = destComp != null && !string.IsNullOrEmpty(destComp.SqlQueryOrTable)
-                    ? CleanIdentifier(destComp.SqlQueryOrTable)
+                // Build target table name: strip schema prefix (e.g. "stg.RawCustomers" → "stg_RawCustomers")
+                var rawTarget = destComp != null && !string.IsNullOrEmpty(destComp.SqlQueryOrTable)
+                    ? destComp.SqlQueryOrTable
                     : "fact_target";
+                // Remove surrounding brackets and replace dots with underscores for pandas to_sql naming
+                var targetTable = Regex.Replace(rawTarget, @"[\[\]]", "").Replace(".", "_").Trim();
+                if (string.IsNullOrEmpty(targetTable)) targetTable = "fact_target";
                     
                 sb.AppendLine("    # ---------------------------------------------------------");
-                sb.AppendLine("    # Load to Target Database for End-to-End Validation");
+                sb.AppendLine("    # Load to Target Database (pyodbc — no SQLAlchemy conflict)");
                 sb.AppendLine("    # ---------------------------------------------------------");
                 sb.AppendLine("    try:");
-                sb.AppendLine("        from sqlalchemy import create_engine");
-                sb.AppendLine("        ");
-                sb.AppendLine("        # TODO: Use environment variables or secret manager for credentials");
-                sb.AppendLine("        target_conn_str = 'mssql+pyodbc://sa:YourPassword123!@172.17.0.1:1433/SsisDemoDB?driver=ODBC+Driver+18+for+SQL+Server&TrustServerCertificate=yes'");
-                sb.AppendLine("        engine = create_engine(target_conn_str)");
-                sb.AppendLine("        ");
+                sb.AppendLine("        target_conn_str = (");
+                sb.AppendLine("            r'DRIVER={ODBC Driver 18 for SQL Server};'");
+                sb.AppendLine("            r'SERVER=172.17.0.1,1433;'");
+                sb.AppendLine("            r'DATABASE=SsisDemoDB;'");
+                sb.AppendLine("            r'UID=sa;'");
+                sb.AppendLine("            r'PWD=YourPassword123!;'");
+                sb.AppendLine("            r'TrustServerCertificate=yes;'");
+                sb.AppendLine("        )");
+                sb.AppendLine("        target_conn = pyodbc.connect(target_conn_str)");
+                sb.AppendLine("        cursor = target_conn.cursor()");
+                sb.AppendLine();
                 sb.AppendLine($"        target_table = '{targetTable}'");
-                sb.AppendLine("        print(f\"Loading data into target database table: {target_table}...\")");
-                sb.AppendLine("        ");
-                sb.AppendLine("        # Load data to SQL table");
-                sb.AppendLine("        df.to_sql(target_table, engine, if_exists='replace', index=False)");
-                sb.AppendLine("        print(f\"Successfully loaded {len(df)} rows into {target_table}.\")");
-                sb.AppendLine("        ");
-                sb.AppendLine("        # Record reconciliation log for Parallel Run Tracker");
-                sb.AppendLine("        print(\"Recording reconciliation log...\")");
-                sb.AppendLine("        recon_log = pd.DataFrame({");
-                sb.AppendLine("            'RunDate': [datetime.now()],");
-                sb.AppendLine("            'TableName': [target_table],");
-                sb.AppendLine("            'SsisRows': [len(df)], # Mapped to extracted rows for parallel comparison");
-                sb.AppendLine("            'DbtRows': [0], # To be updated by modern stack run");
-                sb.AppendLine("            'Mismatches': [0]");
-                sb.AppendLine("        })");
-                sb.AppendLine("        recon_log.to_sql('ValidationLogs', engine, if_exists='append', index=False)");
-                sb.AppendLine("        print(\"Reconciliation log updated.\")");
-                sb.AppendLine("        ");
-                sb.AppendLine("    except ImportError:");
-                sb.AppendLine("        print(\"sqlalchemy not installed. Falling back to parquet export.\")");
-                sb.AppendLine("        landing_zone = './data_landing_zone'");
-                sb.AppendLine("        os.makedirs(landing_zone, exist_ok=True)");
-                sb.AppendLine("        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')");
-                sb.AppendLine($"        output_file = f\"{{landing_zone}}/{targetTable}_{{timestamp}}.parquet\"");
-                sb.AppendLine("        print(f\"Saving data to {output_file}...\")");
-                sb.AppendLine("        df.to_parquet(output_file, index=False)");
+                sb.AppendLine("        print(f\"Loading {len(df)} rows into [\" + target_table + \"]...\")");
+                sb.AppendLine();
+                sb.AppendLine("        # Drop & recreate landing table");
+                sb.AppendLine("        cursor.execute(f\"IF OBJECT_ID('dbo.{target_table}', 'U') IS NOT NULL DROP TABLE dbo.{target_table}\")");
+                sb.AppendLine("        cols_ddl = ', '.join([f'[{c}] NVARCHAR(MAX)' for c in df.columns])");
+                sb.AppendLine("        cursor.execute(f'CREATE TABLE dbo.{target_table} ({cols_ddl})')");
+                sb.AppendLine();
+                sb.AppendLine("        # Bulk insert");
+                sb.AppendLine("        placeholders = ', '.join(['?' for _ in df.columns])");
+                sb.AppendLine("        rows = [tuple(str(v) if v is not None else None for v in row) for row in df.itertuples(index=False)]");
+                sb.AppendLine("        cursor.executemany(f'INSERT INTO dbo.{target_table} VALUES ({placeholders})', rows)");
+                sb.AppendLine();
+                sb.AppendLine("        # Reconciliation log");
+                sb.AppendLine("        cursor.execute(\"\"\"");
+                sb.AppendLine("            IF OBJECT_ID('dbo.ValidationLogs', 'U') IS NULL");
+                sb.AppendLine("            CREATE TABLE dbo.ValidationLogs (RunDate DATETIME, TableName NVARCHAR(100), SsisRows INT, DbtRows INT, Mismatches INT)");
+                sb.AppendLine("        \"\"\")");
+                sb.AppendLine("        cursor.execute('INSERT INTO dbo.ValidationLogs VALUES (GETDATE(), ?, ?, 0, 0)', target_table, len(df))");
+                sb.AppendLine("        target_conn.commit()");
+                sb.AppendLine("        cursor.close()");
+                sb.AppendLine("        target_conn.close()");
+                sb.AppendLine("        print(f\"Successfully loaded {len(df)} rows into {target_table}. Reconciliation log updated.\")");
                 sb.AppendLine("    except Exception as e:");
                 sb.AppendLine("        print(f\"Failed to load to database: {e}\")");
                 sb.AppendLine("        raise");
@@ -717,7 +725,7 @@ namespace SsisLineage.Core
                     }
                     sb.AppendLine();
                 }
-sb.AppendLine();
+                sb.AppendLine();
                 sb.AppendLine("    # Set up task dependencies");
                 if (taskNames.Count > 0)
                 {
@@ -810,6 +818,34 @@ sb.AppendLine();
             if (string.IsNullOrEmpty(name)) return "unnamed";
             var clean = Regex.Replace(name, @"[^\w]", "_");
             return Regex.Replace(clean, @"_+", "_").Trim('_');
+        }
+
+        // SQL Server reserved keywords that must be escaped with [brackets] when used as identifiers
+        private static readonly HashSet<string> _sqlReservedKeywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            "external", "user", "order", "table", "select", "from", "where", "group",
+            "key", "index", "view", "schema", "database", "file", "function",
+            "procedure", "trigger", "constraint", "column", "row", "value", "values",
+            "primary", "foreign", "check", "default", "null", "not", "and", "or"
+        };
+
+        /// <summary>
+        /// Escapes schema and table names in a SQL query that clash with SQL Server reserved keywords.
+        /// e.g. "FROM external.CrmCustomers" -> "FROM [external].CrmCustomers"
+        /// </summary>
+        private static string EscapeSqlQuery(string sql)
+        {
+            if (string.IsNullOrEmpty(sql)) return sql;
+
+            // Match schema.table or standalone identifiers in FROM / JOIN clauses
+            // Pattern: word boundary + keyword + dot (schema reference)
+            return Regex.Replace(sql, @"\b([A-Za-z_][A-Za-z0-9_]*)\.", m =>
+            {
+                var identifier = m.Groups[1].Value;
+                if (_sqlReservedKeywords.Contains(identifier))
+                    return $"[{identifier}].";
+                return m.Value;
+            });
         }
     }
 }
