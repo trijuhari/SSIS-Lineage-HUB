@@ -467,7 +467,7 @@ namespace SsisLineage.Core
                 sb.AppendLine("warnings.filterwarnings('ignore', category=UserWarning)");
                 sb.AppendLine();
                 sb.AppendLine("def extract_and_load():");
-                sb.AppendLine("    print(f\"[{datetime.now()}] Starting extraction for {pkg.Name}...\")");
+                sb.AppendLine($"    print(f\"[{{datetime.now()}}] Starting extraction for {pkg.Name}...\")");
                 sb.AppendLine();
                 sb.AppendLine("    # TODO: Use environment variables or secret manager for credentials");
                 sb.AppendLine("    conn_str = (");
