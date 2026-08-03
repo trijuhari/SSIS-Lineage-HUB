@@ -111,6 +111,24 @@ namespace SsisLineage.Core
                 sb.AppendLine($"-- Converted from SSIS Package: {pkg.Name}");
                 sb.AppendLine();
 
+                var aggregates = pkgComponents.Where(c => c.Type != null && c.Type.Contains("Aggregate", StringComparison.OrdinalIgnoreCase)).ToList();
+                var conditionalSplits = pkgComponents.Where(c => c.Type != null && c.Type.Contains("Conditional Split", StringComparison.OrdinalIgnoreCase)).ToList();
+                var unions = pkgComponents.Where(c => c.Type != null && c.Type.Contains("Union All", StringComparison.OrdinalIgnoreCase)).ToList();
+                var scripts = pkgComponents.Where(c => c.Type != null && c.Type.Contains("Script Component", StringComparison.OrdinalIgnoreCase)).ToList();
+
+                if (aggregates.Any() || conditionalSplits.Any() || unions.Any() || scripts.Any())
+                {
+                    sb.AppendLine("/* ============================================================================");
+                    sb.AppendLine("   WARNING: This SSIS Package contains advanced transformations that require");
+                    sb.AppendLine("   manual review or specific Python routing in the Modern Data Stack.");
+                    if (aggregates.Any()) sb.AppendLine("   - Aggregate Component found: Ensure GROUP BY is correctly implemented.");
+                    if (conditionalSplits.Any()) sb.AppendLine("   - Conditional Split found: Implement WHERE clauses or multi-CTE routing.");
+                    if (unions.Any()) sb.AppendLine("   - Union All found: Verify UNION ALL logic across multiple sources.");
+                    if (scripts.Any()) sb.AppendLine("   - Script Component found: Shift logic to Python (Pandas/PySpark) extract layer.");
+                    sb.AppendLine("============================================================================ */");
+                    sb.AppendLine();
+                }
+
                 var sources = pkgComponents.Where(c => c.Type.Contains("Source", StringComparison.OrdinalIgnoreCase)).ToList();
                 var destinations = pkgComponents.Where(c => c.Type.Contains("Destination", StringComparison.OrdinalIgnoreCase)).ToList();
                 // Use same naming convention as Python generator: strip brackets, replace dots with underscores
@@ -577,6 +595,17 @@ namespace SsisLineage.Core
                 var targetTable = Regex.Replace(rawTarget, @"[\[\]]", "").Replace(".", "_").Trim();
                 if (string.IsNullOrEmpty(targetTable)) targetTable = "fact_target";
                     
+                var scripts = pkgComponents.Where(c => c.Type != null && c.Type.Contains("Script Component", StringComparison.OrdinalIgnoreCase)).ToList();
+                if (scripts.Any())
+                {
+                    sb.AppendLine("    # ---------------------------------------------------------");
+                    sb.AppendLine("    # TODO: MANUAL PYTHON TRANSLATION REQUIRED");
+                    sb.AppendLine("    # This package contains a Script Component (C#/VB.NET).");
+                    sb.AppendLine("    # Please implement the row-by-row logic using Pandas apply() or custom UDFs here.");
+                    sb.AppendLine("    # ---------------------------------------------------------");
+                    sb.AppendLine();
+                }
+
                 sb.AppendLine("    # ---------------------------------------------------------");
                 sb.AppendLine("    # Load to Target Database (pyodbc — no SQLAlchemy conflict)");
                 sb.AppendLine("    # ---------------------------------------------------------");
