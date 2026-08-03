@@ -88,7 +88,7 @@ namespace SsisLineage.Core
             foreach (var pkg in packages)
             {
                 var pkgComponents = graph.Components.Where(c => c.PackageId == pkg.Id).ToList();
-                var pkgMappings = graph.ColumnMappings.Where(m => m.PackageId == pkg.Id).ToList();
+                var pkgMappings = graph.ColumnMappings.Where(m => m.PackageId == pkg.Id && (m.OperationType == null || !m.OperationType.StartsWith("SQL_PROC_"))).ToList();
 
                 var modelName = CleanIdentifier(pkg.Name).ToLowerInvariant();
                 if (modelName.StartsWith("pkg_")) modelName = modelName.Substring(4);
