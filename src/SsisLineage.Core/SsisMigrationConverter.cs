@@ -136,6 +136,7 @@ namespace SsisLineage.Core
                         var expr = !string.IsNullOrEmpty(m.SourceExpression)
                             ? m.SourceExpression
                             : $"source_data.{m.SourceColumnName}";
+                        expr = Regex.Replace(expr, @"\b[a-zA-Z_]\w*\.([a-zA-Z_]\w*)", "source_data.$1");
                         mapLines.Add($"        {expr} AS {m.TargetColumnName}");
                     }
                     sb.AppendLine(string.Join(",\n", mapLines));
