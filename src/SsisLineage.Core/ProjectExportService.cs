@@ -51,6 +51,41 @@ namespace SsisLineage.Core
                     AddOrReplaceEntry(archive, $"dags/dbt_project/models/{file.FileName}", file.Content);
                 }
 
+                // Add dbt_project.yml and profiles.yml
+                var dbtProjectYaml = @"name: 'ssis_migration_dbt'
+version: '1.0.0'
+config-version: 2
+profile: 'ssis_migration_dbt'
+model-paths: [""models""]
+analysis-paths: [""analyses""]
+test-paths: [""tests""]
+seed-paths: [""seeds""]
+macro-paths: [""macros""]
+snapshot-paths: [""snapshots""]
+clean-targets:
+  - ""target""
+  - ""dbt_packages""
+models:
+  ssis_migration_dbt:
+    +materialized: table";
+                AddOrReplaceEntry(archive, "dags/dbt_project/dbt_project.yml", dbtProjectYaml);
+
+                var profilesYaml = @"ssis_migration_dbt:
+  target: dev
+  outputs:
+    dev:
+      type: sqlserver
+      driver: 'ODBC Driver 18 for SQL Server'
+      server: '172.17.0.1'
+      port: 1433
+      database: SsisDemoDB
+      schema: dbo
+      user: sa
+      password: 'YourPassword123!'
+      encrypt: true
+      trust_cert: true";
+                AddOrReplaceEntry(archive, "dags/dbt_project/profiles.yml", profilesYaml);
+
                 // Add a custom README explaining the migration
                 var readmeContent = 
 @"# SSIS Migrated Modern Data Engineering Project

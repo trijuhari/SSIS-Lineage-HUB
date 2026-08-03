@@ -693,7 +693,7 @@ namespace SsisLineage.Core
                         sb.AppendLine();
                         sb.AppendLine($"    {taskId}_dbt = BashOperator(");
                         sb.AppendLine($"        task_id='{taskId}_transform_dbt',");
-                        sb.AppendLine($"        bash_command='cd /opt/airflow/dags/dbt_project && dbt run --select {dbtModelName}',");
+                        sb.AppendLine($"        bash_command='cd /opt/airflow/dags/dbt_project && dbt run --profiles-dir . --select {dbtModelName}',");
                         sb.AppendLine($"    )");
                         sb.AppendLine();
                         sb.AppendLine($"    {taskId}_extract >> {taskId}_dbt");
