@@ -464,10 +464,11 @@ namespace SsisLineage.Core
                 sb.AppendLine("    # TODO: Use environment variables or secret manager for credentials");
                 sb.AppendLine("    conn_str = (");
                 sb.AppendLine("        r'DRIVER={ODBC Driver 18 for SQL Server};'");
-                sb.AppendLine("        r'SERVER=localhost,1433;'");
+                sb.AppendLine("        r'SERVER=172.17.0.1,1433;'");
                 sb.AppendLine("        r'DATABASE=SsisDemoDB;'");
                 sb.AppendLine("        r'UID=sa;'");
-                sb.AppendLine("        r'PWD=YourPassword123!'");
+                sb.AppendLine("        r'PWD=YourPassword123!;'");
+                sb.AppendLine("        r'TrustServerCertificate=yes;'");
                 sb.AppendLine("    )");
                 sb.AppendLine();
                 sb.AppendLine("    try:");
@@ -475,7 +476,7 @@ namespace SsisLineage.Core
                 sb.AppendLine("        print(\"Successfully connected to the source database.\")");
                 sb.AppendLine("    except Exception as e:");
                 sb.AppendLine("        print(f\"Database connection failed: {e}\")");
-                sb.AppendLine("        return");
+                sb.AppendLine("        raise");
                 sb.AppendLine();
 
                 var sourceComp = pkgComponents.FirstOrDefault(c => c.Type.Contains("Source", StringComparison.OrdinalIgnoreCase));

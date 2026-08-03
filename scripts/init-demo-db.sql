@@ -12,11 +12,20 @@ USE SsisDemoDB;
 GO
 
 -- ── Schemas ───────────────────────────────────────────────
+IF NOT EXISTS (SELECT * FROM sys.schemas WHERE name = 'external') EXEC('CREATE SCHEMA [external]');
 IF NOT EXISTS (SELECT * FROM sys.schemas WHERE name = 'stg') EXEC('CREATE SCHEMA stg');
 IF NOT EXISTS (SELECT * FROM sys.schemas WHERE name = 'dw')  EXEC('CREATE SCHEMA dw');
 GO
 
 -- ── Tables ────────────────────────────────────────────────
+IF OBJECT_ID('external.CrmCustomers', 'U') IS NOT NULL DROP TABLE [external].CrmCustomers;
+CREATE TABLE [external].CrmCustomers (
+    CustomerId INT PRIMARY KEY,
+    FullName VARCHAR(100),
+    EmailAddress VARCHAR(150),
+    PhoneNumber VARCHAR(20)
+);
+
 IF OBJECT_ID('stg.RawCustomers', 'U') IS NOT NULL DROP TABLE stg.RawCustomers;
 CREATE TABLE stg.RawCustomers (
     CustomerId INT PRIMARY KEY,
@@ -75,14 +84,42 @@ BEGIN
 END
 GO
 
--- ── Insert Sample Data ────────────────────────────────────
-INSERT INTO stg.RawCustomers (CustomerId, FullName, EmailAddress) VALUES
-(101, 'Budi Santoso', 'budi@example.com'),
-(102, 'Siti Aminah', 'siti@example.com');
+-- ── Insert Sample Data (Large Dataset Generation) ─────────
+SET NOCOUNT ON;
+DECLARE @i INT = 1;
+DECLARE @max INT = 2500; -- Men-generate 2500 data pelanggan & pinjaman
 
-INSERT INTO dbo.MasterPinjaman (IdPinjaman, IdAnggota, OsPokok, JumlahPinjaman) VALUES
-(5001, 101, 2500000.00, 5000000.00),
-(5002, 102, 1000000.00, 3000000.00);
+PRINT 'Generating 2500 sample records... This might take a few seconds.'
+
+WHILE @i <= @max
+BEGIN
+    INSERT INTO [external].CrmCustomers (CustomerId, FullName, EmailAddress, PhoneNumber)
+    VALUES (
+        @i,
+        'Pelanggan ' + CAST(@i AS VARCHAR),
+        'pelanggan' + CAST(@i AS VARCHAR) + '@demo-enterprise.com',
+        '0812' + RIGHT('0000000' + CAST(CAST(RAND()*10000000 AS INT) AS VARCHAR), 7)
+    );
+
+    INSERT INTO stg.RawCustomers (CustomerId, FullName, EmailAddress)
+    VALUES (
+        @i,
+        'Pelanggan ' + CAST(@i AS VARCHAR),
+        'pelanggan' + CAST(@i AS VARCHAR) + '@demo-enterprise.com'
+    );
+
+    INSERT INTO dbo.MasterPinjaman (IdPinjaman, IdAnggota, OsPokok, JumlahPinjaman, StatusPinjaman)
+    VALUES (
+        5000 + @i,
+        @i,
+        ROUND(RAND() * 5000000, 2),
+        ROUND((RAND() * 5000000) + 5000000, 2),
+        CASE WHEN RAND() > 0.15 THEN 'ACTIVE' ELSE 'PAID' END
+    );
+
+    SET @i = @i + 1;
+END
+SET NOCOUNT OFF;
 
 EXEC dbo.sp_ProcessLoanLineage;
 GO
