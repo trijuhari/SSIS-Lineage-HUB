@@ -873,13 +873,25 @@ namespace SsisLineage.Core
             if (string.IsNullOrEmpty(ssisExpr)) return ssisExpr;
             
             // 1. Ternary Operator: Condition ? TrueVal : FalseVal -> CASE WHEN Condition THEN TrueVal ELSE FalseVal END
-            if (ssisExpr.Contains("?") && ssisExpr.Contains(":"))
+            // Process from right to left to handle nested ternaries gracefully
+            var ternaryRegex = new Regex(@"([^?:]+)\?([^?:]+):([^?:]+)", RegexOptions.RightToLeft);
+            while (ternaryRegex.IsMatch(ssisExpr))
             {
-                var match = Regex.Match(ssisExpr, @"(.*)\?(.*):(.*)");
-                if (match.Success)
+                ssisExpr = ternaryRegex.Replace(ssisExpr, match => 
                 {
-                    ssisExpr = $"CASE WHEN {match.Groups[1].Value.Trim()} THEN {match.Groups[2].Value.Trim()} ELSE {match.Groups[3].Value.Trim()} END";
-                }
+                    var cond = match.Groups[1].Value.Trim();
+                    var tVal = match.Groups[2].Value.Trim();
+                    var fVal = match.Groups[3].Value.Trim();
+                    
+                    bool strippedLeft = false, strippedRight = false;
+                    if (cond.StartsWith("(") && !cond.EndsWith(")")) { cond = cond.Substring(1).Trim(); strippedLeft = true; }
+                    if (fVal.EndsWith(")") && !fVal.StartsWith("(")) { fVal = fVal.Substring(0, fVal.Length - 1).Trim(); strippedRight = true; }
+                    
+                    var res = $"CASE WHEN {cond} THEN {tVal} ELSE {fVal} END";
+                    if (strippedLeft) res = "(" + res;
+                    if (strippedRight) res = res + ")";
+                    return res;
+                }, 1);
             }
             
             // 2. Typecasts (DT_WSTR, 50) -> CAST(... AS VARCHAR(50))
