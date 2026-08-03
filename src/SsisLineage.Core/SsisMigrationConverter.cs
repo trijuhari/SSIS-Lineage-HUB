@@ -488,7 +488,10 @@ namespace SsisLineage.Core
                 sb.AppendLine("    # Define source extraction query");
                 if (sourceComp != null && !string.IsNullOrEmpty(sourceComp.SqlQueryOrTable))
                 {
-                    var safeSql = EscapeSqlQuery(sourceComp.SqlQueryOrTable.Trim());
+                    var rawSql = sourceComp.SqlQueryOrTable.Trim();
+                    // Normalize staging table references (e.g. stg.RawCustomers or [stg].[RawCustomers] -> dbo.stg_RawCustomers)
+                    rawSql = Regex.Replace(rawSql, @"\[?stg\]?\.\[?(\w+)\]?", "dbo.stg_$1", RegexOptions.IgnoreCase);
+                    var safeSql = EscapeSqlQuery(rawSql);
                     sb.AppendLine($"    extract_query = \"\"\"");
                     sb.AppendLine($"        {safeSql}");
                     sb.AppendLine($"    \"\"\"");
@@ -518,7 +521,7 @@ namespace SsisLineage.Core
                 sb.AppendLine("        ");
                 
                 var targetCols = graph.ColumnMappings.Where(m => m.PackageId == pkg.Id)
-                                                     .Select(m => m.SourceColumnName)
+                                                     .Select(m => !string.IsNullOrEmpty(m.SourceColumnName) ? m.SourceColumnName : m.TargetColumnName)
                                                      .Distinct()
                                                      .Where(c => !string.IsNullOrEmpty(c))
                                                      .ToList();
@@ -588,7 +591,10 @@ namespace SsisLineage.Core
                 sb.AppendLine("        # Bulk insert");
                 sb.AppendLine("        placeholders = ', '.join(['?' for _ in df.columns])");
                 sb.AppendLine("        rows = [tuple(str(v) if v is not None else None for v in row) for row in df.itertuples(index=False)]");
-                sb.AppendLine("        cursor.executemany(f'INSERT INTO dbo.{target_table} VALUES ({placeholders})', rows)");
+                sb.AppendLine("        if len(rows) > 0:");
+                sb.AppendLine("            cursor.executemany(f'INSERT INTO dbo.{target_table} VALUES ({placeholders})', rows)");
+                sb.AppendLine("        else:");
+                sb.AppendLine("            print(\"No rows to insert.\")");
                 sb.AppendLine();
                 sb.AppendLine("        # Reconciliation log");
                 sb.AppendLine("        cursor.execute(\"\"\"");
