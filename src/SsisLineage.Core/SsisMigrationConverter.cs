@@ -131,9 +131,16 @@ namespace SsisLineage.Core
 
                 var sources = pkgComponents.Where(c => c.Type.Contains("Source", StringComparison.OrdinalIgnoreCase)).ToList();
                 var destinations = pkgComponents.Where(c => c.Type.Contains("Destination", StringComparison.OrdinalIgnoreCase)).ToList();
-                // Use same naming convention as Python generator: strip brackets, replace dots with underscores
-                var rawLandingTable = destinations.FirstOrDefault() != null && !string.IsNullOrEmpty(destinations.First().SqlQueryOrTable)
-                    ? destinations.First().SqlQueryOrTable
+                // Bug #5 fix: prefer staging destination (stg_/staging prefix) over arbitrary first destination
+                // when multiple destinations exist (e.g. packages with error/audit outputs)
+                var primaryDestination = destinations
+                    .FirstOrDefault(d => !string.IsNullOrEmpty(d.SqlQueryOrTable) &&
+                        (d.SqlQueryOrTable.Contains("stg_", StringComparison.OrdinalIgnoreCase) ||
+                         d.SqlQueryOrTable.Contains("staging", StringComparison.OrdinalIgnoreCase)))
+                    ?? destinations.FirstOrDefault(d => !string.IsNullOrEmpty(d.SqlQueryOrTable))
+                    ?? destinations.FirstOrDefault();
+                var rawLandingTable = primaryDestination != null && !string.IsNullOrEmpty(primaryDestination.SqlQueryOrTable)
+                    ? primaryDestination.SqlQueryOrTable
                     : "fact_target";
                 var landingTable = Regex.Replace(rawLandingTable, @"[\[\]]", "").Replace(".", "_").Trim();
                 if (string.IsNullOrEmpty(landingTable)) landingTable = "fact_target";
@@ -144,21 +151,38 @@ namespace SsisLineage.Core
                 sb.AppendLine(")");
                 
                 // Build a lookup alias map: component name → CTE index (lookup_0, lookup_1 …)
+                // Bug #1 fix: track only lookups that actually have a SQL/table to emit as a CTE,
+                // so we never generate a JOIN to a CTE that doesn't exist.
                 var lookups = pkgComponents.Where(c => c.Type != null && c.Type.Contains("Lookup", StringComparison.OrdinalIgnoreCase)).ToList();
                 var lookupAliasMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-                for (int i = 0; i < lookups.Count; i++)
+                var emittedLookupIndices = new HashSet<int>(); // only lookups that have a CTE
+                int cteIdx = 0;
+                foreach (var lkp in lookups)
                 {
-                    var lkp = lookups[i];
-                    if (!string.IsNullOrEmpty(lkp.Name))
-                        lookupAliasMap[lkp.Name] = i;
-
+                    // Bug #6 fix: sanitize multi-line SQL in lookup CTE to single-line with consistent indent
                     if (!string.IsNullOrEmpty(lkp.SqlQueryOrTable))
                     {
-                        sb.AppendLine($",\nlookup_{i} AS (");
-                        sb.AppendLine($"    {lkp.SqlQueryOrTable}");
+                        var lkpSql = lkp.SqlQueryOrTable.Trim()
+                            .Replace("\r\n", " ").Replace("\n", " ").Replace("\r", " ");
+                        // Collapse multiple spaces into one
+                        lkpSql = Regex.Replace(lkpSql, @"\s{2,}", " ");
+
+                        sb.AppendLine($",\nlookup_{cteIdx} AS (");
+                        sb.AppendLine($"    {lkpSql}");
                         sb.AppendLine(")");
+
+                        if (!string.IsNullOrEmpty(lkp.Name))
+                            lookupAliasMap[lkp.Name] = cteIdx;
+                        emittedLookupIndices.Add(cteIdx);
+                        cteIdx++;
+                    }
+                    else
+                    {
+                        // Lookup has no SQL/table (e.g. in-memory/cache) — skip CTE but warn
+                        sb.AppendLine($"-- NOTE: Lookup '{lkp.Name}' has no SQL source — skipped from CTE (manual implementation required)");
                     }
                 }
+                var totalLookupCtes = cteIdx; // number of CTEs actually emitted
 
                 sb.AppendLine();
                 sb.AppendLine(",\ntransformed AS (");
@@ -166,29 +190,57 @@ namespace SsisLineage.Core
 
                 var sqlKeywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
                     "CAST", "AS", "INT", "DECIMAL", "DATETIME", "NVARCHAR", "VARCHAR",
+                    "CHAR", "BIT", "FLOAT", "BIGINT", "SMALLINT", "TINYINT",
                     "CASE", "WHEN", "THEN", "ELSE", "END", "NULL", "NOT", "AND", "OR",
                     "IS", "IN", "LIKE", "BETWEEN", "EXISTS", "DISTINCT", "SELECT", "FROM",
                     "WHERE", "JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "ON", "GROUP", "BY",
-                    "ORDER", "HAVING", "TOP", "WITH", "UNION", "ALL"
+                    "ORDER", "HAVING", "TOP", "WITH", "UNION", "ALL", "TRUE", "FALSE",
+                    "1", "0", "source_data" // prevent double-prefixing
                 };
 
                 if (pkgMappings.Any())
                 {
                     var mapLines = new List<string>();
+                    // Bug #7 fix: track duplicate target columns and emit a warning comment
+                    var seenTargets = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                    foreach (var m in pkgMappings)
+                    {
+                        seenTargets.TryGetValue(m.TargetColumnName, out var count);
+                        seenTargets[m.TargetColumnName] = count + 1;
+                    }
+                    var duplicateTargets = seenTargets.Where(kv => kv.Value > 1).Select(kv => kv.Key).ToHashSet(StringComparer.OrdinalIgnoreCase);
+                    if (duplicateTargets.Any())
+                        sb.AppendLine($"    -- WARNING: Duplicate target columns detected (keeping first): {string.Join(", ", duplicateTargets)}");
+
                     foreach (var m in pkgMappings.DistinctBy(x => x.TargetColumnName))
                     {
                         string expr;
 
                         if (!string.IsNullOrEmpty(m.SourceExpression))
                         {
-                            // Derived Column from SSIS — translate expression and qualify bare column refs
-                            // with source_data prefix so the SQL is valid
+                            // Bug #2 fix: Derived Column from SSIS — translate expression and qualify bare column
+                            // refs with source_data prefix, but skip SQL string literals (quoted values)
                             var translated = TranslateSsisExpressionToSql(m.SourceExpression);
-                            expr = Regex.Replace(translated, @"(?<![.\w])([a-zA-Z_]\w*)(?!\s*\(|\s*\.)(?=\s*[\*\+\-\/><=,\s)\n]|$)", m2 =>
+                            // First, mask string literals so they're not touched by the identifier regex
+                            var literals = new List<string>();
+                            var masked = Regex.Replace(translated, @"""[^""]*""", lit =>
+                            {
+                                literals.Add(lit.Value);
+                                return $"__LIT{literals.Count - 1}__";
+                            });
+                            // Now qualify bare identifiers (not keywords, not already qualified)
+                            masked = Regex.Replace(masked, @"(?<![.\w])([a-zA-Z_]\w*)(?!\s*[\(.])", m2 =>
                             {
                                 var word = m2.Groups[1].Value;
-                                return sqlKeywords.Contains(word) ? m2.Value : $"source_data.{word}";
+                                if (sqlKeywords.Contains(word)) return m2.Value;
+                                // Skip __LITn__ placeholders
+                                if (word.StartsWith("__LIT")) return m2.Value;
+                                return $"source_data.{word}";
                             });
+                            // Restore string literals
+                            for (int li = 0; li < literals.Count; li++)
+                                masked = masked.Replace($"__LIT{li}__", literals[li]);
+                            expr = masked;
                         }
                         else
                         {
@@ -221,16 +273,39 @@ namespace SsisLineage.Core
                 }
 
                 sb.AppendLine("    FROM source_data");
-                for (int i = 0; i < lookups.Count; i++)
+                // Bug #1 fix: only JOIN lookups that have an emitted CTE
+                for (int i = 0; i < totalLookupCtes; i++)
                 {
-                    // Auto-detect join key: column names ending in Code/Key/Id/No are typical SSIS lookup joins
-                    var joinKeyCandidates = pkgMappings
-                        .Where(m => string.IsNullOrEmpty(m.SourceExpression) && !string.IsNullOrEmpty(m.SourceColumnName))
+                    // Bug #4 fix: smarter join key detection
+                    // Prefer columns that appear in source-side mappings (not from a lookup) and
+                    // match common join key naming patterns. Avoid picking a lookup-output column as the key.
+                    var lookupSourceCols = pkgMappings
+                        .Where(m => string.IsNullOrEmpty(m.SourceExpression) &&
+                                    !string.IsNullOrEmpty(m.SourceComponentName) &&
+                                    lookupAliasMap.ContainsKey(m.SourceComponentName))
                         .Select(m => m.SourceColumnName)
-                        .Distinct()
+                        .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+                    // Join candidates: non-derived, non-lookup-output columns with key-like names
+                    var joinKeyCandidates = pkgMappings
+                        .Where(m => string.IsNullOrEmpty(m.SourceExpression) &&
+                                    !string.IsNullOrEmpty(m.SourceColumnName) &&
+                                    !lookupSourceCols.Contains(m.SourceColumnName))
+                        .Select(m => m.SourceColumnName)
+                        .Distinct(StringComparer.OrdinalIgnoreCase)
                         .Where(col => {
                             var lower = col.ToLowerInvariant();
-                            return lower.EndsWith("code") || lower.EndsWith("key") || lower.EndsWith("id") || lower.EndsWith("no");
+                            // More specific patterns first: prefer exact "Code" suffix matches over generic "id"
+                            return lower.EndsWith("code") || lower.EndsWith("key") ||
+                                   lower.EndsWith("id")   || lower.EndsWith("no");
+                        })
+                        // Sort: more specific suffixes (code, key) ranked before generic (id, no)
+                        .OrderBy(col => {
+                            var lower = col.ToLowerInvariant();
+                            if (lower.EndsWith("code")) return 0;
+                            if (lower.EndsWith("key"))  return 1;
+                            if (lower.EndsWith("id"))   return 2;
+                            return 3;
                         })
                         .ToList();
 
@@ -973,17 +1048,25 @@ namespace SsisLineage.Core
                 }, 1);
             }
             
-            // 2. Typecasts (DT_WSTR, 50) -> CAST(... AS VARCHAR(50))
-            ssisExpr = Regex.Replace(ssisExpr, @"\(DT_WSTR,\s*\d+\)", ""); // Just strip them for now to avoid complexity
-            ssisExpr = Regex.Replace(ssisExpr, @"\(DT_I4\)", "");
+            // 2. Typecasts — strip SSIS type prefixes; a full CAST is added by the column heuristics layer
+            ssisExpr = Regex.Replace(ssisExpr, @"\(DT_WSTR,\s*(\d+)\)", ""); // strip (DT_WSTR, N)
+            ssisExpr = Regex.Replace(ssisExpr, @"\(DT_STR,\s*\d+,\s*\d+\)", ""); // strip (DT_STR, N, CP)
+            ssisExpr = Regex.Replace(ssisExpr, @"\(DT_I4\)", "");   // strip (DT_I4)
+            ssisExpr = Regex.Replace(ssisExpr, @"\(DT_I8\)", "");   // strip (DT_I8)
+            ssisExpr = Regex.Replace(ssisExpr, @"\(DT_R8\)", "");   // strip (DT_R8)
+            ssisExpr = Regex.Replace(ssisExpr, @"\(DT_BOOL\)", ""); // strip (DT_BOOL)
+            ssisExpr = Regex.Replace(ssisExpr, @"\(DT_DATE\)", ""); // strip (DT_DATE)
             
             // 3. Equality operators == to =
             ssisExpr = ssisExpr.Replace("==", "=");
             
             // 4. SSIS Variables @[User::VarName] or @[$Package::VarName] -> {{ var('VarName') }}
             ssisExpr = Regex.Replace(ssisExpr, @"@\[(?:User|\$Package)::([^\]]+)\]", "{{ var('$1') }}");
-            
-            // 5. ISNULL -> IS NULL for conditions
+
+            // 5. Bug #3 fix: ISNULL translation
+            // !ISNULL(col) must become col IS NOT NULL (not "! col IS NULL" which is invalid SQL)
+            ssisExpr = Regex.Replace(ssisExpr, @"!\s*ISNULL\(([^)]+)\)", "$1 IS NOT NULL");
+            // Remaining ISNULL(col) without negation → col IS NULL
             ssisExpr = Regex.Replace(ssisExpr, @"ISNULL\(([^)]+)\)", "$1 IS NULL");
             
             return ssisExpr;
