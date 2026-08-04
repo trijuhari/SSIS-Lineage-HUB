@@ -143,10 +143,15 @@ namespace SsisLineage.Core
                 sb.AppendLine($"    SELECT * FROM dbo.{landingTable}");
                 sb.AppendLine(")");
                 
+                // Build a lookup alias map: component name → CTE index (lookup_0, lookup_1 …)
                 var lookups = pkgComponents.Where(c => c.Type != null && c.Type.Contains("Lookup", StringComparison.OrdinalIgnoreCase)).ToList();
+                var lookupAliasMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
                 for (int i = 0; i < lookups.Count; i++)
                 {
                     var lkp = lookups[i];
+                    if (!string.IsNullOrEmpty(lkp.Name))
+                        lookupAliasMap[lkp.Name] = i;
+
                     if (!string.IsNullOrEmpty(lkp.SqlQueryOrTable))
                     {
                         sb.AppendLine($",\nlookup_{i} AS (");
@@ -154,40 +159,58 @@ namespace SsisLineage.Core
                         sb.AppendLine(")");
                     }
                 }
-                
+
                 sb.AppendLine();
                 sb.AppendLine(",\ntransformed AS (");
                 sb.AppendLine("    SELECT");
+
+                var sqlKeywords = new HashSet<string>(StringComparer.OrdinalIgnoreCase) {
+                    "CAST", "AS", "INT", "DECIMAL", "DATETIME", "NVARCHAR", "VARCHAR",
+                    "CASE", "WHEN", "THEN", "ELSE", "END", "NULL", "NOT", "AND", "OR",
+                    "IS", "IN", "LIKE", "BETWEEN", "EXISTS", "DISTINCT", "SELECT", "FROM",
+                    "WHERE", "JOIN", "LEFT", "RIGHT", "INNER", "OUTER", "ON", "GROUP", "BY",
+                    "ORDER", "HAVING", "TOP", "WITH", "UNION", "ALL"
+                };
 
                 if (pkgMappings.Any())
                 {
                     var mapLines = new List<string>();
                     foreach (var m in pkgMappings.DistinctBy(x => x.TargetColumnName))
                     {
-                        var expr = !string.IsNullOrEmpty(m.SourceExpression)
-                            ? TranslateSsisExpressionToSql(m.SourceExpression)
-                            : $"source_data.{m.SourceColumnName}";
-                        
-                        // Heuristic casting for simple column mappings
-                        if (string.IsNullOrEmpty(m.SourceExpression))
+                        string expr;
+
+                        if (!string.IsNullOrEmpty(m.SourceExpression))
                         {
+                            // Derived Column from SSIS — translate expression and qualify bare column refs
+                            // with source_data prefix so the SQL is valid
+                            var translated = TranslateSsisExpressionToSql(m.SourceExpression);
+                            expr = Regex.Replace(translated, @"(?<![.\w])([a-zA-Z_]\w*)(?!\s*\(|\s*\.)(?=\s*[\*\+\-\/><=,\s)\n]|$)", m2 =>
+                            {
+                                var word = m2.Groups[1].Value;
+                                return sqlKeywords.Contains(word) ? m2.Value : $"source_data.{word}";
+                            });
+                        }
+                        else
+                        {
+                            // Simple column pass-through — check if column comes from a Lookup component
+                            var srcPrefix = "source_data";
+                            if (!string.IsNullOrEmpty(m.SourceComponentName) &&
+                                lookupAliasMap.TryGetValue(m.SourceComponentName, out var lkpIdx))
+                            {
+                                srcPrefix = $"lookup_{lkpIdx}";
+                            }
+                            expr = $"{srcPrefix}.{m.SourceColumnName}";
+
+                            // Apply type heuristics
                             var targetNameLower = m.TargetColumnName.ToLowerInvariant();
                             if (targetNameLower.Contains("quantity") || targetNameLower.Contains("count"))
-                            {
                                 expr = $"CAST({expr} AS INT)";
-                            }
                             else if (targetNameLower.Contains("amount") || targetNameLower.Contains("price") || targetNameLower.Contains("total"))
-                            {
                                 expr = $"CAST({expr} AS DECIMAL(18,2))";
-                            }
                             else if (targetNameLower.Contains("date"))
-                            {
                                 expr = $"CAST({expr} AS DATETIME)";
-                            }
                         }
-                        
-                        // Default regex to ensure proper qualification, though heuristic logic shouldn't mess this up
-                        expr = Regex.Replace(expr, @"\b[a-zA-Z_]\w*\.([a-zA-Z_]\w*)", "source_data.$1");
+
                         mapLines.Add($"        {expr} AS {m.TargetColumnName}");
                     }
                     sb.AppendLine(string.Join(",\n", mapLines));
@@ -200,7 +223,26 @@ namespace SsisLineage.Core
                 sb.AppendLine("    FROM source_data");
                 for (int i = 0; i < lookups.Count; i++)
                 {
-                     sb.AppendLine($"    LEFT JOIN lookup_{i} ON 1=1 /* TODO: Replace with actual Join Condition */");
+                    // Auto-detect join key: column names ending in Code/Key/Id/No are typical SSIS lookup joins
+                    var joinKeyCandidates = pkgMappings
+                        .Where(m => string.IsNullOrEmpty(m.SourceExpression) && !string.IsNullOrEmpty(m.SourceColumnName))
+                        .Select(m => m.SourceColumnName)
+                        .Distinct()
+                        .Where(col => {
+                            var lower = col.ToLowerInvariant();
+                            return lower.EndsWith("code") || lower.EndsWith("key") || lower.EndsWith("id") || lower.EndsWith("no");
+                        })
+                        .ToList();
+
+                    if (joinKeyCandidates.Any())
+                    {
+                        var joinKey = joinKeyCandidates.First();
+                        sb.AppendLine($"    LEFT JOIN lookup_{i} ON source_data.{joinKey} = lookup_{i}.{joinKey}");
+                    }
+                    else
+                    {
+                        sb.AppendLine($"    LEFT JOIN lookup_{i} ON 1=1 /* TODO: Replace with actual Join Condition */");
+                    }
                 }
                 sb.AppendLine(")");
                 sb.AppendLine();
