@@ -36,6 +36,11 @@ namespace SsisLineage.Cli
                 return RunScan(args.Skip(1).ToArray());
             }
 
+            if (args[0].Equals("convert", StringComparison.OrdinalIgnoreCase))
+            {
+                return RunConvert(args.Skip(1).ToArray());
+            }
+
             if (args[0].Equals("diff", StringComparison.OrdinalIgnoreCase))
             {
                 return RunDiff(args.Skip(1).ToArray());
@@ -222,6 +227,80 @@ namespace SsisLineage.Cli
             catch (Exception ex)
             {
                 Console.WriteLine($"[Fatal Error] Diff failed: {ex.Message}");
+                return 2;
+            }
+        }
+
+        static int RunConvert(string[] convertArgs)
+        {
+            string? projectPath = null;
+            string? outputDir = null;
+
+            for (int i = 0; i < convertArgs.Length; i++)
+            {
+                if ((convertArgs[i] == "--project-path" || convertArgs[i] == "-p") && i + 1 < convertArgs.Length)
+                    projectPath = convertArgs[++i];
+                else if ((convertArgs[i] == "--output" || convertArgs[i] == "-o") && i + 1 < convertArgs.Length)
+                    outputDir = convertArgs[++i];
+            }
+
+            if (string.IsNullOrEmpty(projectPath) || string.IsNullOrEmpty(outputDir))
+            {
+                Console.WriteLine("[Error] convert requires --project-path <dir/file> and --output <dags_dir>");
+                return 2;
+            }
+
+            try
+            {
+                Console.WriteLine($"[*] Scanning project for migration: {projectPath}");
+                var scanResult = new LineageScanService().Scan(new LineageScanOptions
+                {
+                    ProjectPath = projectPath,
+                    StartPackage = "ALL",
+                    UseCache = false
+                });
+
+                var graph = scanResult.Graph;
+                Console.WriteLine($"[*] Found {graph.Packages.Count} packages, converting to Airflow, Python & dbt...");
+
+                var dbtResult = SsisMigrationConverter.ConvertProject(graph, MigrationTarget.DbtSql);
+                var pandasResult = SsisMigrationConverter.ConvertProject(graph, MigrationTarget.PythonPandas);
+                var airflowResult = SsisMigrationConverter.ConvertProject(graph, MigrationTarget.AirflowDag);
+
+                var dbtModelsDir = Path.Combine(outputDir, "dbt_project", "models");
+                var scriptsDir = Path.Combine(outputDir, "scripts");
+                Directory.CreateDirectory(dbtModelsDir);
+                Directory.CreateDirectory(scriptsDir);
+                Directory.CreateDirectory(outputDir);
+
+                foreach (var file in airflowResult.Files)
+                {
+                    var p = Path.Combine(outputDir, file.FileName);
+                    File.WriteAllText(p, file.Content);
+                    Console.WriteLine($"  [+] Created DAG: {p}");
+                }
+
+                foreach (var file in pandasResult.Files)
+                {
+                    var p = Path.Combine(scriptsDir, file.FileName);
+                    File.WriteAllText(p, file.Content);
+                    Console.WriteLine($"  [+] Created Python Script: {p}");
+                }
+
+                foreach (var file in dbtResult.Files)
+                {
+                    var p = Path.Combine(dbtModelsDir, file.FileName);
+                    File.WriteAllText(p, file.Content);
+                    Console.WriteLine($"  [+] Created dbt Model: {p}");
+                }
+
+                Console.WriteLine("[OK] Migration code generation complete!");
+                return 0;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Fatal Error] Migration failed: {ex.Message}");
+                Console.WriteLine(ex.StackTrace);
                 return 2;
             }
         }

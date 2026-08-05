@@ -147,7 +147,10 @@ namespace SsisLineage.Core
 
                 sb.AppendLine("WITH source_data AS (");
                 sb.AppendLine($"    -- Extracted from Landing Zone (Populated by Python)");
-                sb.AppendLine($"    SELECT * FROM dbo.{landingTable}");
+                // landingTable is already flattened to a plain identifier (e.g. dbo_stg_ECommerceOrders)
+                // by the dot→underscore transform above, so no schema prefix is needed here.
+                // The dbt profile schema (dbo) is applied automatically at run time.
+                sb.AppendLine($"    SELECT * FROM {landingTable}");
                 sb.AppendLine(")");
                 
                 // Build a lookup alias map: component name/id → CTE index (lookup_0, lookup_1 …)
@@ -238,6 +241,12 @@ namespace SsisLineage.Core
                     if (duplicateTargets.Any())
                         sb.AppendLine($"    -- WARNING: Duplicate target columns detected (keeping first): {string.Join(", ", duplicateTargets)}");
 
+                    // Build a lookup map of upstream derived column mappings by TargetColumnName (the column name output by Derived Column)
+                    var derivedColumnMap = pkgMappings
+                        .Where(m => !string.IsNullOrEmpty(m.SourceExpression))
+                        .GroupBy(m => m.TargetColumnName, StringComparer.OrdinalIgnoreCase)
+                        .ToDictionary(g => g.Key, g => g.First(), StringComparer.OrdinalIgnoreCase);
+
                     var effectiveMappings = pkgMappings
                         .OrderByDescending(m => !string.IsNullOrEmpty(m.SourceExpression))
                         .ThenByDescending(m => m.OperationType == "DERIVED_COLUMN")
@@ -246,12 +255,21 @@ namespace SsisLineage.Core
                     foreach (var m in effectiveMappings)
                     {
                         string expr;
+                        var sourceExpr = m.SourceExpression;
+                        var sourceCol = m.SourceColumnName;
 
-                        if (!string.IsNullOrEmpty(m.SourceExpression))
+                        // If m doesn't have a direct expression, check if its source column comes from an upstream Derived Column
+                        if (string.IsNullOrEmpty(sourceExpr) && !string.IsNullOrEmpty(sourceCol) &&
+                            derivedColumnMap.TryGetValue(sourceCol, out var upstreamDerived))
+                        {
+                            sourceExpr = upstreamDerived.SourceExpression;
+                        }
+
+                        if (!string.IsNullOrEmpty(sourceExpr))
                         {
                             // Bug #2 fix: Derived Column from SSIS — translate expression and qualify bare column
                             // refs with source_data prefix, but skip SQL string literals (quoted values)
-                            var translated = TranslateSsisExpressionToSql(m.SourceExpression);
+                            var translated = TranslateSsisExpressionToSql(sourceExpr);
                             // First, mask string literals so they're not touched by the identifier regex
                             var literals = new List<string>();
                             var masked = Regex.Replace(translated, @"""[^""]*""", lit =>
@@ -290,19 +308,18 @@ namespace SsisLineage.Core
                             {
                                 srcPrefix = $"lookup_{lkpIdxByName}";
                             }
-                            // Strategy 3: SourceComponentName contains "Lookup" keyword AND column exists in lookup SELECT list
-                            else if (!string.IsNullOrEmpty(m.SourceComponentName) &&
-                                     m.SourceComponentName.Contains("Lookup", StringComparison.OrdinalIgnoreCase) &&
-                                     lookupColumnIndex.TryGetValue(m.SourceColumnName, out var lkpIdxByCol))
+                            // Strategy 3: column exists in lookup SELECT list
+                            else if (!string.IsNullOrEmpty(sourceCol) &&
+                                     lookupColumnIndex.TryGetValue(sourceCol, out var lkpIdxByCol))
                             {
                                 srcPrefix = $"lookup_{lkpIdxByCol}";
                             }
 
-                            expr = $"{srcPrefix}.{m.SourceColumnName}";
+                            expr = $"{srcPrefix}.{sourceCol}";
 
                             // Apply type heuristics
                             var targetNameLower = m.TargetColumnName.ToLowerInvariant();
-                            if (targetNameLower.Contains("quantity") || targetNameLower.Contains("count"))
+                            if ((targetNameLower.Contains("quantity") || targetNameLower.EndsWith("_count") || targetNameLower.StartsWith("count_") || targetNameLower == "count" || targetNameLower.Contains("rowcount") || targetNameLower.Contains("itemcount")) && !targetNameLower.Contains("account") && !targetNameLower.Contains("number"))
                                 expr = $"CAST({expr} AS INT)";
                             else if (targetNameLower.Contains("amount") || targetNameLower.Contains("price") || targetNameLower.Contains("total"))
                                 expr = $"CAST({expr} AS DECIMAL(18,2))";
@@ -945,74 +962,55 @@ namespace SsisLineage.Core
                     sb.AppendLine();
                 }
                 sb.AppendLine();
-                sb.AppendLine("    # Set up task dependencies");
+                sb.AppendLine("    # Set up task dependencies (follows original SSIS PrecedenceConstraint order)");
                 if (taskNames.Count > 0)
                 {
-                    var firstTask = tasks.First();
-                    var fName = CleanIdentifier(firstTask.Name).ToLowerInvariant();
-                    var fType = firstTask.Type?.ToLowerInvariant() ?? "";
-                    var fRef = (fType.Contains("data flow") || fType.Contains("pipeline")) ? $"{fName}_extract" : fName;
-                    sb.AppendLine($"    start_pipeline >> {fRef}");
-                    
                     var execEdges = graph.ExecutionEdges
                         .Where(e => tasks.Any(t => t.Id == e.FromTaskId) && tasks.Any(t => t.Id == e.ToTaskId))
                         .ToList();
 
+                    // Helper: return the correct Airflow task variable reference for a task.
+                    // Data Flow tasks are split into two Airflow tasks (_extract and _dbt),
+                    // so we reference the entry point (_extract) when used as a downstream target
+                    // and the exit point (_dbt) when used as an upstream source.
+                    string EntryRef(TaskNode t) {
+                        var n = CleanIdentifier(t.Name).ToLowerInvariant();
+                        var tp = t.Type?.ToLowerInvariant() ?? "";
+                        return (tp.Contains("data flow") || tp.Contains("pipeline")) ? $"{n}_extract" : n;
+                    }
+                    string ExitRef(TaskNode t) {
+                        var n = CleanIdentifier(t.Name).ToLowerInvariant();
+                        var tp = t.Type?.ToLowerInvariant() ?? "";
+                        return (tp.Contains("data flow") || tp.Contains("pipeline")) ? $"{n}_dbt" : n;
+                    }
+
                     if (execEdges.Count > 0)
                     {
+                        // Use actual PrecedenceConstraint edges from the SSIS package
+                        var rootTasks = tasks.Where(t => !execEdges.Any(e => e.ToTaskId == t.Id)).ToList();
+                        foreach (var root in rootTasks)
+                            sb.AppendLine($"    start_pipeline >> {EntryRef(root)}");
+
                         foreach (var edge in execEdges)
                         {
                             var fromTask = tasks.FirstOrDefault(t => t.Id == edge.FromTaskId);
-                            var toTask = tasks.FirstOrDefault(t => t.Id == edge.ToTaskId);
+                            var toTask   = tasks.FirstOrDefault(t => t.Id == edge.ToTaskId);
                             if (fromTask != null && toTask != null)
-                            {
-                                var fromName = CleanIdentifier(fromTask.Name).ToLowerInvariant();
-                                var toName = CleanIdentifier(toTask.Name).ToLowerInvariant();
-                                
-                                var fromType = fromTask.Type?.ToLowerInvariant() ?? "";
-                                var toType = toTask.Type?.ToLowerInvariant() ?? "";
-                                
-                                var fromRef = (fromType.Contains("data flow") || fromType.Contains("pipeline")) ? $"{fromName}_dbt" : fromName;
-                                var toRef = (toType.Contains("data flow") || toType.Contains("pipeline")) ? $"{toName}_extract" : toName;
-                                
-                                sb.AppendLine($"    {fromRef} >> {toRef}");
-                            }
+                                sb.AppendLine($"    {ExitRef(fromTask)} >> {EntryRef(toTask)}");
                         }
-                        
-                        var lastTasks = tasks.Where(t => !execEdges.Any(e => e.FromTaskId == t.Id)).ToList();
-                        foreach (var lTask in lastTasks)
-                        {
-                            var lName = CleanIdentifier(lTask.Name).ToLowerInvariant();
-                            var lType = lTask.Type?.ToLowerInvariant() ?? "";
-                            var lRef = (lType.Contains("data flow") || lType.Contains("pipeline")) ? $"{lName}_dbt" : lName;
-                            
-                            sb.AppendLine($"    {lRef} >> end_pipeline");
-                        }
+
+                        var leafTasks = tasks.Where(t => !execEdges.Any(e => e.FromTaskId == t.Id)).ToList();
+                        foreach (var leaf in leafTasks)
+                            sb.AppendLine($"    {ExitRef(leaf)} >> end_pipeline");
                     }
                     else
                     {
+                        // No edges recorded — fall back to ExecutionSequence order.
+                        // Build a single linear chain: start >> task0 >> task1 >> ... >> end
+                        sb.AppendLine($"    start_pipeline >> {EntryRef(tasks[0])}");
                         for (int i = 0; i < tasks.Count - 1; i++)
-                        {
-                            var fromTask = tasks[i];
-                            var toTask = tasks[i + 1];
-                            
-                            var fromName = CleanIdentifier(fromTask.Name).ToLowerInvariant();
-                            var toName = CleanIdentifier(toTask.Name).ToLowerInvariant();
-                            
-                            var fromType = fromTask.Type?.ToLowerInvariant() ?? "";
-                            var toType = toTask.Type?.ToLowerInvariant() ?? "";
-                            
-                            var fromRef = (fromType.Contains("data flow") || fromType.Contains("pipeline")) ? $"{fromName}_dbt" : fromName;
-                            var toRef = (toType.Contains("data flow") || toType.Contains("pipeline")) ? $"{toName}_extract" : toName;
-                            
-                            sb.AppendLine($"    {fromRef} >> {toRef}");
-                        }
-                        
-                        var lastTask = tasks.Last();
-                        var lName = CleanIdentifier(lastTask.Name).ToLowerInvariant();
-                        var lType = lastTask.Type?.ToLowerInvariant() ?? "";
-                        var lRef = (lType.Contains("data flow") || lType.Contains("pipeline")) ? $"{lName}_dbt" : lName;
-                        sb.AppendLine($"    {lRef} >> end_pipeline");
+                            sb.AppendLine($"    {ExitRef(tasks[i])} >> {EntryRef(tasks[i + 1])}");
+                        sb.AppendLine($"    {ExitRef(tasks[tasks.Count - 1])} >> end_pipeline");
                     }
                 }
                 else
