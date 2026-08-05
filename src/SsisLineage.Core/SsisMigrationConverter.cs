@@ -1067,6 +1067,68 @@ namespace SsisLineage.Core
             });
         }
         /// <summary>
+        /// Translates a single SSIS ternary expression (A ? B : C, possibly nested) into
+        /// SQL CASE WHEN … THEN … ELSE … END form. Handles nested ternaries and single-quoted
+        /// string literals that contain '?' or ':' characters.
+        /// </summary>
+        private static string TranslateSsisTernaries(string expr)
+        {
+            if (string.IsNullOrEmpty(expr)) return expr;
+
+            // Locate the first '?' that is NOT inside a string literal or parenthesised sub-expression
+            int depth = 0;
+            bool inString = false;
+            int questionPos = -1;
+
+            for (int i = 0; i < expr.Length; i++)
+            {
+                char c = expr[i];
+                if (inString)
+                {
+                    if (c == '\'') inString = false; // end of SSIS string literal (single-quoted)
+                    continue;
+                }
+                if (c == '\'') { inString = true; continue; }
+                if (c == '(' || c == '[') { depth++; continue; }
+                if (c == ')' || c == ']') { depth--; continue; }
+                if (c == '?' && depth == 0) { questionPos = i; break; }
+            }
+
+            if (questionPos < 0) return expr; // no ternary at this depth
+
+            var condPart = expr.Substring(0, questionPos).Trim();
+
+            // Now find the matching ':' for this '?' (depth-aware, string-literal-aware)
+            depth = 0; inString = false;
+            int colonPos = -1;
+            for (int i = questionPos + 1; i < expr.Length; i++)
+            {
+                char c = expr[i];
+                if (inString)
+                {
+                    if (c == '\'') inString = false;
+                    continue;
+                }
+                if (c == '\'') { inString = true; continue; }
+                if (c == '(' || c == '[') { depth++; continue; }
+                if (c == ')' || c == ']') { depth--; continue; }
+                if (c == ':' && depth == 0) { colonPos = i; break; }
+            }
+
+            if (colonPos < 0) return expr; // malformed — no matching ':'
+
+            var truePart  = expr.Substring(questionPos + 1, colonPos - questionPos - 1).Trim();
+            var falsePart = expr.Substring(colonPos + 1).Trim();
+
+            // Recursively translate nested ternaries in each branch
+            condPart  = TranslateSsisTernaries(condPart);
+            truePart  = TranslateSsisTernaries(truePart);
+            falsePart = TranslateSsisTernaries(falsePart);
+
+            return $"CASE WHEN {condPart} THEN {truePart} ELSE {falsePart} END";
+        }
+
+        /// <summary>
         /// Translates SSIS expressions to ANSI SQL syntax
         /// </summary>
         private static string TranslateSsisExpressionToSql(string ssisExpr)
@@ -1074,26 +1136,9 @@ namespace SsisLineage.Core
             if (string.IsNullOrEmpty(ssisExpr)) return ssisExpr;
             
             // 1. Ternary Operator: Condition ? TrueVal : FalseVal -> CASE WHEN Condition THEN TrueVal ELSE FalseVal END
-            // Process from right to left to handle nested ternaries gracefully
-            var ternaryRegex = new Regex(@"([^?:]+)\?([^?:]+):([^?:]+)", RegexOptions.RightToLeft);
-            while (ternaryRegex.IsMatch(ssisExpr))
-            {
-                ssisExpr = ternaryRegex.Replace(ssisExpr, match => 
-                {
-                    var cond = match.Groups[1].Value.Trim();
-                    var tVal = match.Groups[2].Value.Trim();
-                    var fVal = match.Groups[3].Value.Trim();
-                    
-                    bool strippedLeft = false, strippedRight = false;
-                    if (cond.StartsWith("(") && !cond.EndsWith(")")) { cond = cond.Substring(1).Trim(); strippedLeft = true; }
-                    if (fVal.EndsWith(")") && !fVal.StartsWith("(")) { fVal = fVal.Substring(0, fVal.Length - 1).Trim(); strippedRight = true; }
-                    
-                    var res = $"CASE WHEN {cond} THEN {tVal} ELSE {fVal} END";
-                    if (strippedLeft) res = "(" + res;
-                    if (strippedRight) res = res + ")";
-                    return res;
-                }, 1);
-            }
+            // Uses a depth-aware scanner so nested ternaries like A >= 75 ? 'X' : (A >= 40 ? 'Y' : 'Z')
+            // and string literals containing ':' are handled correctly.
+            ssisExpr = TranslateSsisTernaries(ssisExpr);
             
             // 2. Typecasts — strip SSIS type prefixes; a full CAST is added by the column heuristics layer
             ssisExpr = Regex.Replace(ssisExpr, @"\(DT_WSTR,\s*(\d+)\)", ""); // strip (DT_WSTR, N)

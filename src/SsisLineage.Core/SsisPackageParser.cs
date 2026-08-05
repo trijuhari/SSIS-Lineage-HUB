@@ -154,7 +154,7 @@ namespace SsisLineage.Core
                 // types (e.g. Microsoft.SqlServer.Server.SqlContext) that were removed from
                 // System.Data in .NET 5+. Native loading therefore always fails on .NET 10.
                 // The XML parser below produces equivalent results — this is expected behaviour.
-                Console.WriteLine($"[Info] Using XML-based SSIS parser for {packageName} (DTS runtime not compatible with .NET 10 — this is normal). Results are equivalent.");
+                Console.WriteLine($"[Info] Using XML-based SSIS parser for {Path.GetFileName(packagePath)} (DTS runtime not compatible with .NET 10 — this is normal). Results are equivalent.");
                 ParsePackageXmlFallback(packagePath, parentPackageId);
             }
 #else
@@ -627,9 +627,11 @@ namespace SsisLineage.Core
 
                 var packageExecutableRefId = root.Attribute(dts + "refId")?.Value ?? "Package";
 
-                // Find top-level Executable elements under the package (skip nested container executables to prevent duplicates)
+                // Find all leaf Executable elements under the package.
+                // Include executables nested inside Sequence/ForEach/ForLoop containers by allowing
+                // any nesting depth, but exclude container executables themselves (they have child Executables).
                 var executables = doc.Descendants(dts + "Executable")
-                    .Where(x => x != root && !x.Ancestors(dts + "Executable").Any(a => a != root));
+                    .Where(x => x != root && !x.Elements(dts + "Executables").Any());
                 foreach (var exe in executables)
                 {
                     var rawExeId = GetExecutableId(exe, dts);
@@ -887,7 +889,10 @@ namespace SsisLineage.Core
                         .Where(x => x.Name.LocalName == "inputColumn");
                     foreach (var inCol in inputCols)
                     {
-                        var lineageId = inCol.Attribute("lineageId")?.Value ?? "";
+                        // SSIS XML stores the upstream lineage ID as "cachedLineageId" on inputColumn elements;
+                        // fall back to "lineageId" for older package schema variants.
+                        var lineageId = inCol.Attribute("cachedLineageId")?.Value
+                            ?? inCol.Attribute("lineageId")?.Value ?? "";
                         var colName = inCol.Attribute("cachedName")?.Value ?? inCol.Attribute("name")?.Value ?? "";
                         colName = ResolveColumnNameFromLineageId(exeNode, lineageId, colName);
                         var targetCol = GetTargetColumnName(inCol);
