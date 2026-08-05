@@ -150,11 +150,13 @@ namespace SsisLineage.Core
                 sb.AppendLine($"    SELECT * FROM dbo.{landingTable}");
                 sb.AppendLine(")");
                 
-                // Build a lookup alias map: component name → CTE index (lookup_0, lookup_1 …)
-                // Bug #1 fix: track only lookups that actually have a SQL/table to emit as a CTE,
-                // so we never generate a JOIN to a CTE that doesn't exist.
+                // Build a lookup alias map: component name/id → CTE index (lookup_0, lookup_1 …)
+                // Register by BOTH Name and Id so SourceComponentName can match either.
                 var lookups = pkgComponents.Where(c => c.Type != null && c.Type.Contains("Lookup", StringComparison.OrdinalIgnoreCase)).ToList();
                 var lookupAliasMap = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+                // Fallback: column name → CTE index, for columns that come from a lookup but
+                // whose SourceComponentName doesn't match the lookup's registered name.
+                var lookupColumnIndex = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
                 var emittedLookupIndices = new HashSet<int>(); // only lookups that have a CTE
                 int cteIdx = 0;
                 foreach (var lkp in lookups)
@@ -171,8 +173,32 @@ namespace SsisLineage.Core
                         sb.AppendLine($"    {lkpSql}");
                         sb.AppendLine(")");
 
+                        // Register by Name (primary key)
                         if (!string.IsNullOrEmpty(lkp.Name))
                             lookupAliasMap[lkp.Name] = cteIdx;
+                        // Register by Id (fallback — ResolveComponentName may return raw id)
+                        if (!string.IsNullOrEmpty(lkp.Id))
+                            lookupAliasMap[lkp.Id] = cteIdx;
+                        // Register by TaskId::Name pattern variants
+                        if (!string.IsNullOrEmpty(lkp.TaskId) && !string.IsNullOrEmpty(lkp.Name))
+                            lookupAliasMap[$"{lkp.TaskId}::{lkp.Name}"] = cteIdx;
+
+                        // Build column-name → cteIdx index from the lookup SQL
+                        // Parse "SELECT col1, col2, col3 FROM ..." to extract column names
+                        var selectMatch = Regex.Match(lkpSql, @"SELECT\s+(.+?)\s+FROM\b", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+                        if (selectMatch.Success)
+                        {
+                            var colList = selectMatch.Groups[1].Value;
+                            foreach (var colPart in colList.Split(','))
+                            {
+                                // Handle "col AS alias" or "[col]" patterns
+                                var colName = Regex.Match(colPart.Trim(), @"(?:AS\s+)?(\[?[a-zA-Z_]\w*\]?)\s*$", RegexOptions.IgnoreCase).Groups[1].Value
+                                    .Replace("[", "").Replace("]", "").Trim();
+                                if (!string.IsNullOrEmpty(colName))
+                                    lookupColumnIndex.TryAdd(colName, cteIdx);
+                            }
+                        }
+
                         emittedLookupIndices.Add(cteIdx);
                         cteIdx++;
                     }
@@ -212,7 +238,12 @@ namespace SsisLineage.Core
                     if (duplicateTargets.Any())
                         sb.AppendLine($"    -- WARNING: Duplicate target columns detected (keeping first): {string.Join(", ", duplicateTargets)}");
 
-                    foreach (var m in pkgMappings.DistinctBy(x => x.TargetColumnName))
+                    var effectiveMappings = pkgMappings
+                        .OrderByDescending(m => !string.IsNullOrEmpty(m.SourceExpression))
+                        .ThenByDescending(m => m.OperationType == "DERIVED_COLUMN")
+                        .DistinctBy(x => x.TargetColumnName);
+
+                    foreach (var m in effectiveMappings)
                     {
                         string expr;
 
@@ -244,13 +275,29 @@ namespace SsisLineage.Core
                         }
                         else
                         {
-                            // Simple column pass-through — check if column comes from a Lookup component
+                            // Simple column pass-through — determine if it comes from a Lookup CTE or source_data
                             var srcPrefix = "source_data";
-                            if (!string.IsNullOrEmpty(m.SourceComponentName) &&
-                                lookupAliasMap.TryGetValue(m.SourceComponentName, out var lkpIdx))
+
+                            // Strategy 1 (most reliable): match SourceComponentId against lookup component IDs
+                            if (!string.IsNullOrEmpty(m.SourceComponentId) &&
+                                lookupAliasMap.TryGetValue(m.SourceComponentId, out var lkpIdxById))
                             {
-                                srcPrefix = $"lookup_{lkpIdx}";
+                                srcPrefix = $"lookup_{lkpIdxById}";
                             }
+                            // Strategy 2: match SourceComponentName against lookupAliasMap (Name, Id, TaskId::Name variants)
+                            else if (!string.IsNullOrEmpty(m.SourceComponentName) &&
+                                     lookupAliasMap.TryGetValue(m.SourceComponentName, out var lkpIdxByName))
+                            {
+                                srcPrefix = $"lookup_{lkpIdxByName}";
+                            }
+                            // Strategy 3: SourceComponentName contains "Lookup" keyword AND column exists in lookup SELECT list
+                            else if (!string.IsNullOrEmpty(m.SourceComponentName) &&
+                                     m.SourceComponentName.Contains("Lookup", StringComparison.OrdinalIgnoreCase) &&
+                                     lookupColumnIndex.TryGetValue(m.SourceColumnName, out var lkpIdxByCol))
+                            {
+                                srcPrefix = $"lookup_{lkpIdxByCol}";
+                            }
+
                             expr = $"{srcPrefix}.{m.SourceColumnName}";
 
                             // Apply type heuristics

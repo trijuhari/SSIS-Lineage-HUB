@@ -92,15 +92,15 @@ namespace SsisLineage.Core
                 return;
             }
 
-            var packageName = Path.GetFileName(packagePath);
-            if (_visitedPackages.Contains(packageName))
+            var fullPath = Path.GetFullPath(packagePath);
+            if (_visitedPackages.Contains(fullPath))
             {
-                _graph.Warnings.Add($"Package cycle or duplicate visit skipped: {packageName}");
+                _graph.Warnings.Add($"Package cycle or duplicate visit skipped: {Path.GetFileName(packagePath)}");
                 return;
             }
-            _visitedPackages.Add(packageName);
+            _visitedPackages.Add(fullPath);
 
-            Console.WriteLine($"[*] Parsing package: {packageName}");
+            Console.WriteLine($"[*] Parsing package: {Path.GetFileName(packagePath)}");
 
 #if WINDOWS
             try
@@ -627,9 +627,9 @@ namespace SsisLineage.Core
 
                 var packageExecutableRefId = root.Attribute(dts + "refId")?.Value ?? "Package";
 
-                // Find child Executable elements. The root package is also an Executable, so skip it.
+                // Find top-level Executable elements under the package (skip nested container executables to prevent duplicates)
                 var executables = doc.Descendants(dts + "Executable")
-                    .Where(x => x != root);
+                    .Where(x => x != root && !x.Ancestors(dts + "Executable").Any(a => a != root));
                 foreach (var exe in executables)
                 {
                     var rawExeId = GetExecutableId(exe, dts);
@@ -810,9 +810,13 @@ namespace SsisLineage.Core
                 var doc = XDocument.Load(packageNode.Path);
                 XNamespace dts = "www.microsoft.com/SqlServer/Dts";
 
-                // Locate the executable node with taskRefId
+                // Locate the executable node with taskRefId (matching raw refId, qualified refId, or suffix)
                 var exeNode = doc.Descendants(dts + "Executable")
-                    .FirstOrDefault(x => GetExecutableId(x, dts) == taskRefId);
+                    .FirstOrDefault(x => {
+                        var id = GetExecutableId(x, dts);
+                        return id == taskRefId || QualifyId(packageNode.Id, id) == taskRefId ||
+                               id.EndsWith(taskRefId, StringComparison.OrdinalIgnoreCase);
+                    });
 
                 if (exeNode == null) return;
 
@@ -887,6 +891,8 @@ namespace SsisLineage.Core
                         var colName = inCol.Attribute("cachedName")?.Value ?? inCol.Attribute("name")?.Value ?? "";
                         colName = ResolveColumnNameFromLineageId(exeNode, lineageId, colName);
                         var targetCol = GetTargetColumnName(inCol);
+                        if (string.IsNullOrEmpty(targetCol)) continue; // Skip mapping if target column name is empty
+
                         var rawSourceCompId = ResolveComponentIdFromLineageId(exeNode, lineageId);
                         var sourceComponentId = QualifyId(taskNode.Id, rawSourceCompId);
                         var sourceCompNode = _graph.Components.FirstOrDefault(c => c.Id == sourceComponentId);
@@ -909,6 +915,42 @@ namespace SsisLineage.Core
                             TargetColumnName = targetCol,
                             OperationType = "XML_FALLBACK"
                         });
+                    }
+
+                    // ── Derived Column component: capture output expressions ──────────────────
+                    // outputColumn elements with an "expression" attribute represent computed columns
+                    // (e.g. NetLineTotal = (Quantity * UnitPrice) - DiscountAmount).
+                    // These are NOT captured by the inputColumn loop above (which only sees downstream
+                    // consumers), so we add them here as ColumnMaps with SourceExpression filled in.
+                    var normalizedType = compNode.Type ?? "";
+                    if (normalizedType.Contains("Derived Column", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var derivedOutputCols = comp.Descendants()
+                            .Where(x => x.Name.LocalName == "outputColumn" &&
+                                        !string.IsNullOrEmpty(x.Attribute("expression")?.Value));
+                        foreach (var outCol in derivedOutputCols)
+                        {
+                            var outColName = outCol.Attribute("name")?.Value ?? "";
+                            var ssisExpr   = outCol.Attribute("expression")?.Value ?? "";
+                            // Decode XML-encoded operators (e.g. &gt; → >, &amp; → &)
+                            ssisExpr = System.Net.WebUtility.HtmlDecode(ssisExpr);
+
+                            if (string.IsNullOrEmpty(outColName) || string.IsNullOrEmpty(ssisExpr)) continue;
+
+                            _graph.ColumnMappings.Add(new ColumnMap
+                            {
+                                PackageId           = packageNode.Id,
+                                TaskId              = taskNode.Id,
+                                SourceComponentId   = compId,
+                                SourceComponentName = compName, // "Derived Column"
+                                SourceColumnName    = outColName,
+                                SourceExpression    = ssisExpr,
+                                TargetComponentId   = compId,
+                                TargetComponentName = compName,
+                                TargetColumnName    = outColName,
+                                OperationType       = "DERIVED_COLUMN"
+                            });
+                        }
                     }
                 }
 
@@ -933,6 +975,7 @@ namespace SsisLineage.Core
             }
             catch (Exception ex)
             {
+                _graph.Warnings.Add($"XML fallback parsing failed for Data Flow '{taskNode.Name}': {ex.Message}");
                 Console.WriteLine($"[Warning] XML fallback parsing failed for Data Flow {taskNode.Name}: {ex.Message}");
             }
         }
@@ -1014,12 +1057,13 @@ namespace SsisLineage.Core
                 !trimmed.Substring(0, Math.Min(10, trimmed.Length)).Contains(' '))
             {
                 var parts = trimmed.Replace("[", "").Replace("]", "").Split('.');
+                if (parts.Length == 3) return (parts[1], parts[2]); // 3-part name: db.schema.table
                 if (parts.Length == 2) return (parts[0], parts[1]);
                 if (parts.Length == 1) return (null, parts[0]);
             }
 
             var match = System.Text.RegularExpressions.Regex.Match(
-                trimmed, @"\bFROM\s+\[?([a-zA-Z0-9_]+)\]?(?:\.\[?([a-zA-Z0-9_]+)\]?)?",
+                trimmed, @"\bFROM\s+(?:\[?[a-zA-Z0-9_]+\]?\.)?\[?([a-zA-Z0-9_]+)\]?(?:\.\[?([a-zA-Z0-9_]+)\]?)?",
                 System.Text.RegularExpressions.RegexOptions.IgnoreCase);
 
             if (match.Success)
