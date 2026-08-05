@@ -928,15 +928,18 @@ namespace SsisLineage.Core
                     // These are NOT captured by the inputColumn loop above (which only sees downstream
                     // consumers), so we add them here as ColumnMaps with SourceExpression filled in.
                     var normalizedType = compNode.Type ?? "";
-                    if (normalizedType.Contains("Derived Column", StringComparison.OrdinalIgnoreCase))
+                    if (normalizedType.Contains("Derived Column", StringComparison.OrdinalIgnoreCase) ||
+                        compType.Contains("DerivedColumn", StringComparison.OrdinalIgnoreCase) ||
+                        compName.Contains("Derived Column", StringComparison.OrdinalIgnoreCase))
                     {
                         var derivedOutputCols = comp.Descendants()
-                            .Where(x => x.Name.LocalName == "outputColumn" &&
-                                        !string.IsNullOrEmpty(x.Attribute("expression")?.Value));
+                            .Where(x => x.Name.LocalName == "outputColumn");
                         foreach (var outCol in derivedOutputCols)
                         {
-                            var outColName = outCol.Attribute("name")?.Value ?? "";
-                            var ssisExpr   = outCol.Attribute("expression")?.Value ?? "";
+                            var outColName = outCol.Attribute("name")?.Value ?? outCol.Attribute("cachedName")?.Value ?? "";
+                            var ssisExpr = outCol.Attributes().FirstOrDefault(a => a.Name.LocalName.Equals("expression", StringComparison.OrdinalIgnoreCase))?.Value
+                                           ?? outCol.Descendants().FirstOrDefault(p => p.Attribute("name")?.Value?.Equals("expression", StringComparison.OrdinalIgnoreCase) == true)?.Value
+                                           ?? "";
                             // Decode XML-encoded operators (e.g. &gt; → >, &amp; → &)
                             ssisExpr = System.Net.WebUtility.HtmlDecode(ssisExpr);
 

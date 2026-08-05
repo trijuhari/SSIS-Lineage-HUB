@@ -250,7 +250,8 @@ namespace SsisLineage.Core
                     var effectiveMappings = pkgMappings
                         .OrderByDescending(m => !string.IsNullOrEmpty(m.SourceExpression))
                         .ThenByDescending(m => m.OperationType == "DERIVED_COLUMN")
-                        .DistinctBy(x => x.TargetColumnName);
+                        .ThenByDescending(m => lookupAliasMap.ContainsKey(m.SourceComponentName ?? "") || lookupAliasMap.ContainsKey(m.SourceComponentId ?? ""))
+                        .DistinctBy(x => x.TargetColumnName, StringComparer.OrdinalIgnoreCase);
 
                     foreach (var m in effectiveMappings)
                     {
@@ -272,11 +273,13 @@ namespace SsisLineage.Core
                             var translated = TranslateSsisExpressionToSql(sourceExpr);
                             // First, mask string literals so they're not touched by the identifier regex
                             var literals = new List<string>();
-                            var masked = Regex.Replace(translated, @"""[^""]*""", lit =>
+                            var masked = Regex.Replace(translated, @"'[^']*'|""[^""]*""", lit =>
                             {
                                 literals.Add(lit.Value);
                                 return $"__LIT{literals.Count - 1}__";
                             });
+                            // Strip SSIS column brackets [ColName] -> ColName before prefixing
+                            masked = Regex.Replace(masked, @"\[([a-zA-Z_]\w*)\]", "$1");
                             // Now qualify bare identifiers (not keywords, not already qualified)
                             masked = Regex.Replace(masked, @"(?<![.\w])([a-zA-Z_]\w*)(?!\s*[\(.])", m2 =>
                             {
@@ -289,6 +292,8 @@ namespace SsisLineage.Core
                             // Restore string literals
                             for (int li = 0; li < literals.Count; li++)
                                 masked = masked.Replace($"__LIT{li}__", literals[li]);
+                            // Strip any remaining SSIS square brackets around expressions/identifiers
+                            masked = Regex.Replace(masked, @"\[([^\]]+)\]", "$1");
                             expr = masked;
                         }
                         else
@@ -818,9 +823,14 @@ namespace SsisLineage.Core
                 sb.AppendLine("        cols_ddl = ', '.join([f'[{c}] {map_dtype(df[c].dtype)}' for c in df.columns])");
                 sb.AppendLine("        cursor.execute(f'CREATE TABLE dbo.{target_table} ({cols_ddl})')");
                 sb.AppendLine();
-                sb.AppendLine("        # Bulk insert");
+                sb.AppendLine("        # Bulk insert with robust value type handling (NaT/NaN -> None, Datetime -> str)");
+                sb.AppendLine("        def clean_val(v):");
+                sb.AppendLine("            if pd.isna(v): return None");
+                sb.AppendLine("            if isinstance(v, (pd.Timestamp, datetime)): return v.strftime('%Y-%m-%d %H:%M:%S')");
+                sb.AppendLine("            return v");
+                sb.AppendLine();
                 sb.AppendLine("        placeholders = ', '.join(['?' for _ in df.columns])");
-                sb.AppendLine("        rows = [tuple(str(v) if v is not None else None for v in row) for row in df.itertuples(index=False)]");
+                sb.AppendLine("        rows = [tuple(clean_val(v) for v in row) for row in df.itertuples(index=False)]");
                 sb.AppendLine("        if len(rows) > 0:");
                 sb.AppendLine("            cursor.executemany(f'INSERT INTO dbo.{target_table} VALUES ({placeholders})', rows)");
                 sb.AppendLine("        else:");
@@ -1005,12 +1015,17 @@ namespace SsisLineage.Core
                     }
                     else
                     {
-                        // No edges recorded — fall back to ExecutionSequence order.
+                        // No edges recorded — fall back to sorted order (Execute SQL / Truncate tasks first).
                         // Build a single linear chain: start >> task0 >> task1 >> ... >> end
-                        sb.AppendLine($"    start_pipeline >> {EntryRef(tasks[0])}");
-                        for (int i = 0; i < tasks.Count - 1; i++)
-                            sb.AppendLine($"    {ExitRef(tasks[i])} >> {EntryRef(tasks[i + 1])}");
-                        sb.AppendLine($"    {ExitRef(tasks[tasks.Count - 1])} >> end_pipeline");
+                        var sortedTasks = tasks
+                            .OrderBy(t => (t.Type?.Contains("Execute SQL", StringComparison.OrdinalIgnoreCase) == true || t.Name.ToLowerInvariant().Contains("truncate")) ? 0 : 1)
+                            .ThenBy(t => t.ExecutionSequence)
+                            .ToList();
+
+                        sb.AppendLine($"    start_pipeline >> {EntryRef(sortedTasks[0])}");
+                        for (int i = 0; i < sortedTasks.Count - 1; i++)
+                            sb.AppendLine($"    {ExitRef(sortedTasks[i])} >> {EntryRef(sortedTasks[i + 1])}");
+                        sb.AppendLine($"    {ExitRef(sortedTasks[sortedTasks.Count - 1])} >> end_pipeline");
                     }
                 }
                 else

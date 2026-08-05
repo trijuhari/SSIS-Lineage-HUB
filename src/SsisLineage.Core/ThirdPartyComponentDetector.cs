@@ -69,7 +69,17 @@ namespace SsisLineage.Core
                 return $"Third-Party: {label}";
             }
 
-            return string.IsNullOrWhiteSpace(rawType) ? "Component" : rawType;
+            if (string.IsNullOrWhiteSpace(rawType)) return "Component";
+
+            var t = rawType;
+            if (t.Contains("DerivedColumn", StringComparison.OrdinalIgnoreCase)) return "Derived Column";
+            if (t.Contains("OLEDBSource", StringComparison.OrdinalIgnoreCase)) return "OLE DB Source";
+            if (t.Contains("OLEDBDestination", StringComparison.OrdinalIgnoreCase)) return "OLE DB Destination";
+            if (t.Contains("Lookup", StringComparison.OrdinalIgnoreCase)) return "Lookup";
+            if (t.Contains("Aggregate", StringComparison.OrdinalIgnoreCase)) return "Aggregate";
+            if (t.Contains("Sort", StringComparison.OrdinalIgnoreCase)) return "Sort";
+
+            return rawType;
         }
 
         private static bool IsMicrosoftComponentClassId(string classId)

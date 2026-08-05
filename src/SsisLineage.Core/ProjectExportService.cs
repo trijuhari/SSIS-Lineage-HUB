@@ -86,6 +86,24 @@ models:
       trust_cert: true";
                 AddOrReplaceEntry(archive, "dags/dbt_project/profiles.yml", profilesYaml);
 
+                var makefileContent = @"docker-spin-up:
+	docker compose up airflow-init && docker compose up --build -d
+
+clean-cache:
+	sudo rm -rf dags/dbt_project/target dags/dbt_project/dbt_packages logs/* temp/*
+
+perms: clean-cache
+	sudo mkdir -p logs plugins temp dags tests migrations data visualization && sudo chmod -R u=rwx,g=rwx,o=rwx logs plugins temp dags tests migrations data visualization
+
+up: perms docker-spin-up
+
+down:
+	docker compose down --volumes --rmi all
+
+restart: down up
+";
+                AddOrReplaceEntry(archive, "Makefile", makefileContent);
+
                 // Add a custom README explaining the migration
                 var readmeContent = 
 @"# SSIS Migrated Modern Data Engineering Project
