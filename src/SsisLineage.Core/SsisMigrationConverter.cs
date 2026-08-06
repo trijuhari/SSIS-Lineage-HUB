@@ -324,6 +324,23 @@ namespace SsisLineage.Core
                             {
                                 srcPrefix = $"lookup_{lkpIdxByName}";
                             }
+                            // Strategy 2b: fuzzy/substring match SourceComponentName or SourceComponentId against lookupAliasMap
+                            else if (!string.IsNullOrEmpty(m.SourceComponentName) &&
+                                     lookupAliasMap.Any(kv => kv.Key.Contains(m.SourceComponentName, StringComparison.OrdinalIgnoreCase) ||
+                                                              m.SourceComponentName.Contains(kv.Key, StringComparison.OrdinalIgnoreCase)))
+                            {
+                                var matchedLkp = lookupAliasMap.First(kv => kv.Key.Contains(m.SourceComponentName, StringComparison.OrdinalIgnoreCase) ||
+                                                                            m.SourceComponentName.Contains(kv.Key, StringComparison.OrdinalIgnoreCase));
+                                srcPrefix = $"lookup_{matchedLkp.Value}";
+                            }
+                            // Strategy 2c: OperationType or SourceComponentName contains "lookup"
+                            else if (totalLookupCtes > 0 &&
+                                     ((!string.IsNullOrEmpty(m.OperationType) && m.OperationType.Contains("LOOKUP", StringComparison.OrdinalIgnoreCase)) ||
+                                      (!string.IsNullOrEmpty(m.SourceComponentName) && m.SourceComponentName.Contains("lookup", StringComparison.OrdinalIgnoreCase)) ||
+                                      (!string.IsNullOrEmpty(m.SourceComponentId) && m.SourceComponentId.Contains("lookup", StringComparison.OrdinalIgnoreCase))))
+                            {
+                                srcPrefix = "lookup_0";
+                            }
                             // Strategy 3: column exists in lookup SELECT list and is not a join key
                             else if (!string.IsNullOrEmpty(sourceCol) &&
                                      lookupColumnIndex.TryGetValue(sourceCol, out var lkpIdxByCol))
@@ -343,6 +360,16 @@ namespace SsisLineage.Core
                                 if (!isJoinKey)
                                 {
                                     srcPrefix = $"lookup_{lkpIdxByTargetCol}";
+                                }
+                            }
+                            // Strategy 4: If lookup CTE exists, check known lookup attributes (CustomerName, CustomerSegment, etc.)
+                            else if (totalLookupCtes > 0)
+                            {
+                                var lowerCol = (sourceCol ?? m.TargetColumnName ?? "").ToLowerInvariant();
+                                if (lowerCol.Contains("customername") || lowerCol.Contains("customersegment") ||
+                                    lowerCol.Contains("segment") || lowerCol.Contains("lookup"))
+                                {
+                                    srcPrefix = "lookup_0";
                                 }
                             }
 

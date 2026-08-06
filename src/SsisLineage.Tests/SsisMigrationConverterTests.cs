@@ -230,4 +230,67 @@ public class SsisMigrationConverterTests
         Assert.True(dbtResult.IsValid);
         Assert.Contains("QUALITY GATE: All generated artifacts passed validation!", dbtResult.Summary);
     }
+
+    [Fact]
+    public void QualityGate_LookupColumnsAttributedToLookupCte_PassesValidation()
+    {
+        var graph = new LineageGraph();
+        var pkg = new PackageNode { Id = "pkg-01", Name = "Pkg_01_Extract_CustomerOrders", Path = "test.dtsx", ProjectPath = "." };
+        graph.Packages.Add(pkg);
+
+        graph.Components.Add(new ComponentNode
+        {
+            Id = "pkg-01::src",
+            Name = "OLE DB Source",
+            Type = "OLE DB Source",
+            PackageId = "pkg-01",
+            TaskId = "task-01",
+            SqlQueryOrTable = "dbo.stg_ECommerceOrders"
+        });
+
+        graph.Components.Add(new ComponentNode
+        {
+            Id = "pkg-01::lkp",
+            Name = "Lookup Customer Info",
+            Type = "Lookup",
+            PackageId = "pkg-01",
+            TaskId = "task-01",
+            SqlQueryOrTable = "SELECT CustomerId, CustomerName, CustomerSegment FROM dbo.Customers"
+        });
+
+        graph.ColumnMappings.Add(new ColumnMap
+        {
+            PackageId = "pkg-01",
+            TaskId = "task-01",
+            SourceComponentId = "pkg-01::lkp",
+            SourceComponentName = "Lookup Customer Info",
+            SourceColumnName = "CustomerName",
+            TargetColumnName = "CustomerName",
+            OperationType = "LOOKUP"
+        });
+
+        graph.ColumnMappings.Add(new ColumnMap
+        {
+            PackageId = "pkg-01",
+            TaskId = "task-01",
+            SourceComponentId = "pkg-01::lkp",
+            SourceComponentName = "Lookup Customer Info",
+            SourceColumnName = "CustomerSegment",
+            TargetColumnName = "CustomerSegment",
+            OperationType = "LOOKUP"
+        });
+
+        var result = SsisMigrationConverter.ConvertProject(graph, MigrationTarget.DbtSql);
+
+        Assert.True(result.IsValid);
+        Assert.Empty(result.ValidationErrors);
+        Assert.Contains("QUALITY GATE: All generated artifacts passed validation!", result.Summary);
+
+        var sqlFile = result.Files.FirstOrDefault(f => f.FileName.EndsWith(".sql"));
+        Assert.NotNull(sqlFile);
+        Assert.Contains("lookup_0.CustomerName", sqlFile.Content);
+        Assert.Contains("lookup_0.CustomerSegment", sqlFile.Content);
+        Assert.DoesNotContain("source_data.CustomerName", sqlFile.Content);
+        Assert.DoesNotContain("source_data.CustomerSegment", sqlFile.Content);
+    }
 }
