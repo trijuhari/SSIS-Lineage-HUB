@@ -172,6 +172,12 @@ namespace SsisLineage.Core
                         // Collapse multiple spaces into one
                         lkpSql = Regex.Replace(lkpSql, @"\s{2,}", " ");
 
+                        if (!lkpSql.StartsWith("SELECT", StringComparison.OrdinalIgnoreCase) &&
+                            !lkpSql.StartsWith("WITH", StringComparison.OrdinalIgnoreCase))
+                        {
+                            lkpSql = $"SELECT * FROM {lkpSql}";
+                        }
+
                         sb.AppendLine($",\nlookup_{cteIdx} AS (");
                         sb.AppendLine($"    {lkpSql}");
                         sb.AppendLine(")");

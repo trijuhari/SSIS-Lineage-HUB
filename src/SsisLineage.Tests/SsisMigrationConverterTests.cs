@@ -187,4 +187,45 @@ public class SsisMigrationConverterTests
         Assert.Contains("END", modelFile.Content);
         Assert.Contains("AS VipBonusTier", modelFile.Content);
     }
+
+    [Fact]
+    public void PlainTableName_WrappedInSelectStar()
+    {
+        var graph = new LineageGraph();
+        var pkg = new PackageNode { Id = "pkg-01", Name = "Pkg_01_Extract", Path = "test.dtsx", ProjectPath = "." };
+        graph.Packages.Add(pkg);
+
+        graph.Components.Add(new ComponentNode
+        {
+            Id = "pkg-01::src",
+            Name = "OLE DB Source",
+            Type = "OLE DB Source",
+            PackageId = "pkg-01",
+            TaskId = "task-01",
+            SqlQueryOrTable = "dbo.Orders"
+        });
+
+        graph.Components.Add(new ComponentNode
+        {
+            Id = "pkg-01::lkp",
+            Name = "Lookup Customers",
+            Type = "Lookup",
+            PackageId = "pkg-01",
+            TaskId = "task-01",
+            SqlQueryOrTable = "dbo.Customers"
+        });
+
+        // Test Python generation
+        var pyResult = SsisMigrationConverter.ConvertProject(graph, MigrationTarget.PythonPandas);
+        var pyFile = pyResult.Files.FirstOrDefault(f => f.FileName.EndsWith(".py"));
+        Assert.NotNull(pyFile);
+        Assert.Contains("SELECT * FROM dbo.Orders", pyFile.Content);
+        Assert.DoesNotContain("extract_query = \"\"\"\n        dbo.Orders", pyFile.Content);
+
+        // Test dbt generation
+        var dbtResult = SsisMigrationConverter.ConvertProject(graph, MigrationTarget.DbtSql);
+        var dbtFile = dbtResult.Files.FirstOrDefault(f => f.FileName.EndsWith(".sql"));
+        Assert.NotNull(dbtFile);
+        Assert.Contains("SELECT * FROM dbo.Customers", dbtFile.Content);
+    }
 }
