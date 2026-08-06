@@ -227,5 +227,7 @@ public class SsisMigrationConverterTests
         var dbtFile = dbtResult.Files.FirstOrDefault(f => f.FileName.EndsWith(".sql"));
         Assert.NotNull(dbtFile);
         Assert.Contains("SELECT * FROM dbo.Customers", dbtFile.Content);
+        Assert.True(dbtResult.IsValid);
+        Assert.Contains("QUALITY GATE: All generated artifacts passed validation!", dbtResult.Summary);
     }
 }

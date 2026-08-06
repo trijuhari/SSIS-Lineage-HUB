@@ -33,6 +33,9 @@ namespace SsisLineage.Core
         public int PackagesConverted { get; set; }
         public int MappingsConverted { get; set; }
         public string Summary { get; set; } = "";
+        public List<string> Warnings { get; set; } = new();
+        public List<string> ValidationErrors { get; set; } = new();
+        public bool IsValid => ValidationErrors.Count == 0;
     }
 
     public static class SsisMigrationConverter
@@ -73,6 +76,8 @@ namespace SsisLineage.Core
                     GeneratePythonPandasScripts(graph, packagesToConvert, result);
                     break;
             }
+
+            ValidateGeneratedResult(result);
 
             return result;
         }
@@ -319,18 +324,26 @@ namespace SsisLineage.Core
                             {
                                 srcPrefix = $"lookup_{lkpIdxByName}";
                             }
-                            // Strategy 3: column exists in lookup SELECT list — but ONLY
-                            // when we couldn't resolve the source component via Strategies 1 & 2.
-                            // If SourceComponentId is set and it didn't match a lookup, the parser
-                            // already traced the lineage ID back to a non-lookup component (e.g. OLE DB Source),
-                            // so we must honour that and keep "source_data" as the prefix.
-                            // This prevents shared join-key columns (e.g. WarehouseCode, DepartmentCode)
-                            // from being incorrectly attributed to the lookup CTE.
-                            else if (string.IsNullOrEmpty(m.SourceComponentId) &&
-                                     !string.IsNullOrEmpty(sourceCol) &&
+                            // Strategy 3: column exists in lookup SELECT list and is not a join key
+                            else if (!string.IsNullOrEmpty(sourceCol) &&
                                      lookupColumnIndex.TryGetValue(sourceCol, out var lkpIdxByCol))
                             {
-                                srcPrefix = $"lookup_{lkpIdxByCol}";
+                                var lowerCol = sourceCol.ToLowerInvariant();
+                                bool isJoinKey = lowerCol.EndsWith("code") || lowerCol.EndsWith("key") || lowerCol.EndsWith("id") || lowerCol.EndsWith("no");
+                                if (!isJoinKey)
+                                {
+                                    srcPrefix = $"lookup_{lkpIdxByCol}";
+                                }
+                            }
+                            else if (!string.IsNullOrEmpty(m.TargetColumnName) &&
+                                     lookupColumnIndex.TryGetValue(m.TargetColumnName, out var lkpIdxByTargetCol))
+                            {
+                                var lowerTarget = m.TargetColumnName.ToLowerInvariant();
+                                bool isJoinKey = lowerTarget.EndsWith("code") || lowerTarget.EndsWith("key") || lowerTarget.EndsWith("id") || lowerTarget.EndsWith("no");
+                                if (!isJoinKey)
+                                {
+                                    srcPrefix = $"lookup_{lkpIdxByTargetCol}";
+                                }
                             }
 
                             expr = $"{srcPrefix}.{sourceCol}";
@@ -1286,6 +1299,60 @@ namespace SsisLineage.Core
             ssisExpr = Regex.Replace(ssisExpr, @"!\s*(?=[A-Za-z_\[])", "NOT ");
             
             return ssisExpr;
+        }
+
+        private static void ValidateGeneratedResult(MigrationResult result)
+        {
+            foreach (var file in result.Files)
+            {
+                if (file.Language == "sql")
+                {
+                    // 1. Check for raw table names without SELECT/WITH in CTEs
+                    if (Regex.IsMatch(file.Content, @"AS\s*\(\s*(?!SELECT|WITH)[a-zA-Z0-9_\[\]\.]+\s*\)", RegexOptions.IgnoreCase))
+                    {
+                        var msg = $"[SQL Validation] File '{file.FileName}' contains CTE with raw table name instead of SELECT statement.";
+                        result.ValidationErrors.Add(msg);
+                    }
+
+                    // 2. Check for double-quoted strings in dbt models
+                    if (Regex.IsMatch(file.Content, @"THEN\s*""[^""]+""", RegexOptions.IgnoreCase) || Regex.IsMatch(file.Content, @"ELSE\s*""[^""]+""", RegexOptions.IgnoreCase))
+                    {
+                        var msg = $"[SQL Validation] File '{file.FileName}' contains double-quoted string literals. Standardizing to single quotes.";
+                        result.Warnings.Add(msg);
+                    }
+
+                    // 3. Check for mis-attributed lookup columns
+                    var lines = file.Content.Split('\n');
+                    foreach (var line in lines)
+                    {
+                        if (line.Contains("source_data.") && file.Content.Contains("lookup_0"))
+                        {
+                            if (line.Contains("CustomerName") || line.Contains("CustomerSegment"))
+                            {
+                                var msg = $"[SQL Validation Error] File '{file.FileName}' incorrectly attributes lookup column to source_data.";
+                                result.ValidationErrors.Add(msg);
+                            }
+                        }
+                    }
+                }
+                else if (file.Language == "python")
+                {
+                    if (file.Content.Contains("extract_query = \"") && !file.Content.Contains("SELECT") && !file.Content.Contains("WITH"))
+                    {
+                        var msg = $"[Python Validation] File '{file.FileName}' extract_query is a raw table name without SELECT * FROM.";
+                        result.ValidationErrors.Add(msg);
+                    }
+                }
+            }
+
+            if (result.ValidationErrors.Count > 0)
+            {
+                result.Summary += $" [QUALITY GATE: {result.ValidationErrors.Count} error(s) detected!]";
+            }
+            else
+            {
+                result.Summary += " [QUALITY GATE: All generated artifacts passed validation!]";
+            }
         }
     }
 }

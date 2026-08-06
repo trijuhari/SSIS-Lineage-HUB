@@ -175,4 +175,36 @@ public class SsisMigrationEndToEndTests
         Console.WriteLine(pyFile.Content);
         Console.WriteLine("=== END ===");
     }
+
+    [Fact]
+    public void ExportToTemplateZip_GeneratesValidDbtModelsInZip()
+    {
+        var projectDir = Path.Combine(
+            Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!,
+            "..", "..", "..", "..", "..", "sample-ssis-project-4");
+        projectDir = Path.GetFullPath(projectDir);
+
+        if (!Directory.Exists(projectDir))
+            return;
+
+        var parser = new SsisPackageParser(projectDir);
+        var pkgPath = Path.Combine(projectDir, "Pkg_01_Extract_CustomerOrders.dtsx");
+        var graph = parser.Parse(pkgPath);
+
+        var zipBytes = ProjectExportService.ExportToTemplateZip(graph, "");
+        Assert.NotEmpty(zipBytes);
+
+        using var ms = new MemoryStream(zipBytes);
+        using var archive = new System.IO.Compression.ZipArchive(ms, System.IO.Compression.ZipArchiveMode.Read);
+
+        var entry = archive.GetEntry("dags/dbt_project/models/stg_01_extract_customerorders.sql");
+        Assert.NotNull(entry);
+
+        using var reader = new StreamReader(entry.Open());
+        var content = reader.ReadToEnd();
+
+        Assert.Contains("lookup_0.CustomerName", content);
+        Assert.Contains("lookup_0.CustomerSegment", content);
+        Assert.DoesNotContain("source_data.CustomerName", content);
+    }
 }

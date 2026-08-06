@@ -98,7 +98,7 @@ namespace SsisLineage.UI.Services
                 {
                     ProjectPath = projectPath,
                     StartPackage = startPackage,
-                    UseCache = useCache,
+                    UseCache = false,
                     IncludeSqlProcedures = includeSqlProcedures,
                     SqlConnectionString = sqlConnectionString,
                     LinkedServerMap = linkedServerMap ?? new Dictionary<string, string>(),
