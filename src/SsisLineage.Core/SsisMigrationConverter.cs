@@ -822,18 +822,25 @@ namespace SsisLineage.Core
                 sb.AppendLine("        ");
                 sb.AppendLine("        def map_dtype(dt):");
                 sb.AppendLine("            dt_str = str(dt).lower()");
+                sb.AppendLine("            if 'bool' in dt_str: return 'BIT'");
                 sb.AppendLine("            if 'int' in dt_str: return 'INT'");
-                sb.AppendLine("            if 'float' in dt_str: return 'DECIMAL(18,2)'");
-                sb.AppendLine("            if 'datetime' in dt_str: return 'DATETIME'");
+                sb.AppendLine("            if 'float' in dt_str or 'decimal' in dt_str: return 'DECIMAL(18,2)'");
+                sb.AppendLine("            if 'datetime64' in dt_str: return 'DATETIME'");
+                sb.AppendLine("            if 'date' in dt_str: return 'DATE'");
+                sb.AppendLine("            if 'timedelta' in dt_str: return 'NVARCHAR(50)'");
                 sb.AppendLine("            return 'NVARCHAR(MAX)'");
                 sb.AppendLine("            ");
                 sb.AppendLine("        cols_ddl = ', '.join([f'[{c}] {map_dtype(df[c].dtype)}' for c in df.columns])");
                 sb.AppendLine("        cursor.execute(f'CREATE TABLE dbo.{target_table} ({cols_ddl})')");
                 sb.AppendLine();
                 sb.AppendLine("        # Bulk insert with robust value type handling (NaT/NaN -> None, Datetime -> str)");
+                sb.AppendLine("        import numpy as np");
                 sb.AppendLine("        def clean_val(v):");
                 sb.AppendLine("            if pd.isna(v): return None");
                 sb.AppendLine("            if isinstance(v, (pd.Timestamp, datetime)): return v.strftime('%Y-%m-%d %H:%M:%S')");
+                sb.AppendLine("            if isinstance(v, (np.integer,)): return int(v)");
+                sb.AppendLine("            if isinstance(v, (np.floating,)): return float(v)");
+                sb.AppendLine("            if isinstance(v, (np.bool_,)): return bool(v)");
                 sb.AppendLine("            return v");
                 sb.AppendLine();
                 sb.AppendLine("        placeholders = ', '.join(['?' for _ in df.columns])");
@@ -1088,8 +1095,8 @@ namespace SsisLineage.Core
         }
         /// <summary>
         /// Translates a single SSIS ternary expression (A ? B : C, possibly nested) into
-        /// SQL CASE WHEN … THEN … ELSE … END form. Handles nested ternaries and single-quoted
-        /// string literals that contain '?' or ':' characters.
+        /// SQL CASE WHEN … THEN … ELSE … END form. Handles nested ternaries and both
+        /// single-quoted and double-quoted string literals that contain '?' or ':' characters.
         /// </summary>
         private static string TranslateSsisTernaries(string expr)
         {
@@ -1097,18 +1104,25 @@ namespace SsisLineage.Core
 
             // Locate the first '?' that is NOT inside a string literal or parenthesised sub-expression
             int depth = 0;
-            bool inString = false;
+            bool inSingleQuote = false;
+            bool inDoubleQuote = false;
             int questionPos = -1;
 
             for (int i = 0; i < expr.Length; i++)
             {
                 char c = expr[i];
-                if (inString)
+                if (inSingleQuote)
                 {
-                    if (c == '\'') inString = false; // end of SSIS string literal (single-quoted)
+                    if (c == '\'') inSingleQuote = false;
                     continue;
                 }
-                if (c == '\'') { inString = true; continue; }
+                if (inDoubleQuote)
+                {
+                    if (c == '"') inDoubleQuote = false;
+                    continue;
+                }
+                if (c == '\'') { inSingleQuote = true; continue; }
+                if (c == '"') { inDoubleQuote = true; continue; }
                 if (c == '(' || c == '[') { depth++; continue; }
                 if (c == ')' || c == ']') { depth--; continue; }
                 if (c == '?' && depth == 0) { questionPos = i; break; }
@@ -1119,17 +1133,23 @@ namespace SsisLineage.Core
             var condPart = expr.Substring(0, questionPos).Trim();
 
             // Now find the matching ':' for this '?' (depth-aware, string-literal-aware)
-            depth = 0; inString = false;
+            depth = 0; inSingleQuote = false; inDoubleQuote = false;
             int colonPos = -1;
             for (int i = questionPos + 1; i < expr.Length; i++)
             {
                 char c = expr[i];
-                if (inString)
+                if (inSingleQuote)
                 {
-                    if (c == '\'') inString = false;
+                    if (c == '\'') inSingleQuote = false;
                     continue;
                 }
-                if (c == '\'') { inString = true; continue; }
+                if (inDoubleQuote)
+                {
+                    if (c == '"') inDoubleQuote = false;
+                    continue;
+                }
+                if (c == '\'') { inSingleQuote = true; continue; }
+                if (c == '"') { inDoubleQuote = true; continue; }
                 if (c == '(' || c == '[') { depth++; continue; }
                 if (c == ')' || c == ']') { depth--; continue; }
                 if (c == ':' && depth == 0) { colonPos = i; break; }
@@ -1140,6 +1160,11 @@ namespace SsisLineage.Core
             var truePart  = expr.Substring(questionPos + 1, colonPos - questionPos - 1).Trim();
             var falsePart = expr.Substring(colonPos + 1).Trim();
 
+            // Strip outer parentheses so nested ternaries like (A ? B : C) are correctly parsed
+            condPart  = StripOuterParens(condPart);
+            truePart  = StripOuterParens(truePart);
+            falsePart = StripOuterParens(falsePart);
+
             // Recursively translate nested ternaries in each branch
             condPart  = TranslateSsisTernaries(condPart);
             truePart  = TranslateSsisTernaries(truePart);
@@ -1149,11 +1174,43 @@ namespace SsisLineage.Core
         }
 
         /// <summary>
+        /// Strips balanced outer parentheses from an expression, e.g. "(A + B)" → "A + B".
+        /// Only strips if the entire expression is wrapped in matching parens.
+        /// </summary>
+        private static string StripOuterParens(string s)
+        {
+            s = s.Trim();
+            while (s.Length >= 2 && s[0] == '(' && s[^1] == ')')
+            {
+                // Verify the outer parens are truly balanced (not e.g. "(A) + (B)")
+                int depth = 0;
+                bool balanced = true;
+                for (int i = 0; i < s.Length; i++)
+                {
+                    if (s[i] == '(') depth++;
+                    else if (s[i] == ')') depth--;
+                    if (depth == 0 && i < s.Length - 1) { balanced = false; break; }
+                }
+                if (balanced)
+                    s = s.Substring(1, s.Length - 2).Trim();
+                else
+                    break;
+            }
+            return s;
+        }
+
+        /// <summary>
         /// Translates SSIS expressions to ANSI SQL syntax
         /// </summary>
         private static string TranslateSsisExpressionToSql(string ssisExpr)
         {
             if (string.IsNullOrEmpty(ssisExpr)) return ssisExpr;
+            
+            // 0. Convert SSIS double-quoted string literals to SQL single-quoted strings.
+            // SSIS uses "text" for strings; SQL uses 'text'. We must do this BEFORE the
+            // ternary parser so that the ternary scanner sees consistent quoting.
+            // Handle escaped double-quotes inside: "He said \"hi\"" → 'He said "hi"'
+            ssisExpr = Regex.Replace(ssisExpr, @"""([^""]*)""", "'$1'");
             
             // 1. Ternary Operator: Condition ? TrueVal : FalseVal -> CASE WHEN Condition THEN TrueVal ELSE FalseVal END
             // Uses a depth-aware scanner so nested ternaries like A >= 75 ? 'X' : (A >= 40 ? 'Y' : 'Z')
@@ -1163,23 +1220,56 @@ namespace SsisLineage.Core
             // 2. Typecasts — strip SSIS type prefixes; a full CAST is added by the column heuristics layer
             ssisExpr = Regex.Replace(ssisExpr, @"\(DT_WSTR,\s*(\d+)\)", ""); // strip (DT_WSTR, N)
             ssisExpr = Regex.Replace(ssisExpr, @"\(DT_STR,\s*\d+,\s*\d+\)", ""); // strip (DT_STR, N, CP)
-            ssisExpr = Regex.Replace(ssisExpr, @"\(DT_I4\)", "");   // strip (DT_I4)
-            ssisExpr = Regex.Replace(ssisExpr, @"\(DT_I8\)", "");   // strip (DT_I8)
-            ssisExpr = Regex.Replace(ssisExpr, @"\(DT_R8\)", "");   // strip (DT_R8)
-            ssisExpr = Regex.Replace(ssisExpr, @"\(DT_BOOL\)", ""); // strip (DT_BOOL)
-            ssisExpr = Regex.Replace(ssisExpr, @"\(DT_DATE\)", ""); // strip (DT_DATE)
+            ssisExpr = Regex.Replace(ssisExpr, @"\(DT_I4\)", "");     // strip (DT_I4)
+            ssisExpr = Regex.Replace(ssisExpr, @"\(DT_I8\)", "");     // strip (DT_I8)
+            ssisExpr = Regex.Replace(ssisExpr, @"\(DT_I2\)", "");     // strip (DT_I2)
+            ssisExpr = Regex.Replace(ssisExpr, @"\(DT_UI4\)", "");    // strip (DT_UI4)
+            ssisExpr = Regex.Replace(ssisExpr, @"\(DT_UI8\)", "");    // strip (DT_UI8)
+            ssisExpr = Regex.Replace(ssisExpr, @"\(DT_R4\)", "");     // strip (DT_R4)
+            ssisExpr = Regex.Replace(ssisExpr, @"\(DT_R8\)", "");     // strip (DT_R8)
+            ssisExpr = Regex.Replace(ssisExpr, @"\(DT_CY\)", "");     // strip (DT_CY) - currency
+            ssisExpr = Regex.Replace(ssisExpr, @"\(DT_BOOL\)", "");   // strip (DT_BOOL)
+            ssisExpr = Regex.Replace(ssisExpr, @"\(DT_DATE\)", "");   // strip (DT_DATE)
+            ssisExpr = Regex.Replace(ssisExpr, @"\(DT_DBDATE\)", ""); // strip (DT_DBDATE)
+            ssisExpr = Regex.Replace(ssisExpr, @"\(DT_DBTIMESTAMP\)", ""); // strip (DT_DBTIMESTAMP)
+            ssisExpr = Regex.Replace(ssisExpr, @"\(DT_DBTIMESTAMP2,\s*\d+\)", ""); // strip (DT_DBTIMESTAMP2, N)
+            ssisExpr = Regex.Replace(ssisExpr, @"\(DT_NUMERIC,\s*\d+,\s*\d+\)", ""); // strip (DT_NUMERIC, P, S)
+            ssisExpr = Regex.Replace(ssisExpr, @"\(DT_DECIMAL,\s*\d+\)", ""); // strip (DT_DECIMAL, S)
+            ssisExpr = Regex.Replace(ssisExpr, @"\(DT_GUID\)", "");   // strip (DT_GUID)
+            ssisExpr = Regex.Replace(ssisExpr, @"\(DT_BYTES,\s*\d+\)", ""); // strip (DT_BYTES, N)
             
-            // 3. Equality operators == to =
+            // 3. Logical operators: SSIS uses || for OR, && for AND (C-style)
+            // Must be done before equality operators to avoid breaking the pipe symbols.
+            ssisExpr = Regex.Replace(ssisExpr, @"\|\|", " OR ");
+            ssisExpr = Regex.Replace(ssisExpr, @"&&", " AND ");
+            
+            // 4. Equality operators == to =
             ssisExpr = ssisExpr.Replace("==", "=");
+            // Inequality operator != to <>
+            ssisExpr = ssisExpr.Replace("!=", "<>");
             
-            // 4. SSIS Variables @[User::VarName] or @[$Package::VarName] -> {{ var('VarName') }}
+            // 5. SSIS Variables @[User::VarName] or @[$Package::VarName] -> {{ var('VarName') }}
             ssisExpr = Regex.Replace(ssisExpr, @"@\[(?:User|\$Package)::([^\]]+)\]", "{{ var('$1') }}");
 
-            // 5. Bug #3 fix: ISNULL translation
+            // 6. SSIS functions → SQL equivalents
+            // GETDATE() already maps directly to SQL Server GETDATE()
+            // LEN() → LEN() (same in SQL Server)
+            // UPPER() / LOWER() → same in SQL
+            // TRIM() → LTRIM(RTRIM(...)) for wider SQL compat
+            ssisExpr = Regex.Replace(ssisExpr, @"\bTRIM\(([^)]+)\)", "LTRIM(RTRIM($1))", RegexOptions.IgnoreCase);
+            // SUBSTRING(str, start, len) → same in SQL Server, but SSIS is 1-based already
+            // REPLACE(str, old, new) → same in SQL Server
+            // FINDSTRING(str, search, occurrence) → CHARINDEX(search, str) in SQL Server
+            ssisExpr = Regex.Replace(ssisExpr, @"\bFINDSTRING\(([^,]+),\s*([^,]+),\s*([^)]+)\)", "CHARINDEX($2, $1)", RegexOptions.IgnoreCase);
+
+            // 7. Bug #3 fix: ISNULL translation
             // !ISNULL(col) must become col IS NOT NULL (not "! col IS NULL" which is invalid SQL)
             ssisExpr = Regex.Replace(ssisExpr, @"!\s*ISNULL\(([^)]+)\)", "$1 IS NOT NULL");
             // Remaining ISNULL(col) without negation → col IS NULL
-            ssisExpr = Regex.Replace(ssisExpr, @"ISNULL\(([^)]+)\)", "$1 IS NULL");
+            ssisExpr = Regex.Replace(ssisExpr, @"(?<!\w)ISNULL\(([^)]+)\)", "$1 IS NULL");
+            
+            // 8. Logical NOT: ! prefix → NOT (must run AFTER ISNULL handling to avoid corrupting !ISNULL)
+            ssisExpr = Regex.Replace(ssisExpr, @"!\s*(?=[A-Za-z_\[])", "NOT ");
             
             return ssisExpr;
         }
