@@ -233,6 +233,22 @@
                 @_result.Summary
             </MudAlert>
         }
+
+        @if (_result.ValidationErrors.Any())
+        {
+            <div class="mt-2 pa-3 mud-paper" style="background: rgba(239, 68, 68, 0.1); border: 1px solid var(--mud-palette-error); border-radius: 6px;">
+                <MudText Typo="Typo.subtitle2" Color="Color.Error" Class="font-weight-bold mb-1">
+                    <MudIcon Icon="@Icons.Material.Filled.BugReport" Size="Size.Small" Class="mr-1" />
+                    Detected Code Issues (Click 'Scan / Load Project' on Lineage Discovery page to resolve):
+                </MudText>
+                <ul class="pl-4 ma-0" style="font-size: 0.85rem; color: var(--mud-palette-text-primary);">
+                    @foreach (var err in _result.ValidationErrors)
+                    {
+                        <li>@err</li>
+                    }
+                </ul>
+            </div>
+        }
     }
 </MudPaper>
 
