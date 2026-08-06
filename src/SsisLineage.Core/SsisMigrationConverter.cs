@@ -728,6 +728,14 @@ namespace SsisLineage.Core
                     var rawSql = sourceComp.SqlQueryOrTable.Trim();
                     // Normalize staging table references (e.g. stg.RawCustomers or [stg].[RawCustomers] -> dbo.stg_RawCustomers)
                     rawSql = Regex.Replace(rawSql, @"\[?stg\]?\.\[?(\w+)\]?", "dbo.stg_$1", RegexOptions.IgnoreCase);
+
+                    // If it's a table/view name rather than a SELECT/WITH statement, wrap it in SELECT * FROM
+                    if (!rawSql.StartsWith("SELECT", StringComparison.OrdinalIgnoreCase) &&
+                        !rawSql.StartsWith("WITH", StringComparison.OrdinalIgnoreCase))
+                    {
+                        rawSql = $"SELECT * FROM {rawSql}";
+                    }
+
                     var safeSql = EscapeSqlQuery(rawSql);
                     sb.AppendLine($"    extract_query = \"\"\"");
                     sb.AppendLine($"        {safeSql}");
