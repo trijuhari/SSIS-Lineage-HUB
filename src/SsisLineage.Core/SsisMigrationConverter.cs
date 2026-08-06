@@ -313,8 +313,15 @@ namespace SsisLineage.Core
                             {
                                 srcPrefix = $"lookup_{lkpIdxByName}";
                             }
-                            // Strategy 3: column exists in lookup SELECT list
-                            else if (!string.IsNullOrEmpty(sourceCol) &&
+                            // Strategy 3: column exists in lookup SELECT list — but ONLY
+                            // when we couldn't resolve the source component via Strategies 1 & 2.
+                            // If SourceComponentId is set and it didn't match a lookup, the parser
+                            // already traced the lineage ID back to a non-lookup component (e.g. OLE DB Source),
+                            // so we must honour that and keep "source_data" as the prefix.
+                            // This prevents shared join-key columns (e.g. WarehouseCode, DepartmentCode)
+                            // from being incorrectly attributed to the lookup CTE.
+                            else if (string.IsNullOrEmpty(m.SourceComponentId) &&
+                                     !string.IsNullOrEmpty(sourceCol) &&
                                      lookupColumnIndex.TryGetValue(sourceCol, out var lkpIdxByCol))
                             {
                                 srcPrefix = $"lookup_{lkpIdxByCol}";
