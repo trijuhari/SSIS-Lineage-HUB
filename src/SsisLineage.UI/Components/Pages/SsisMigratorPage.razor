@@ -211,9 +211,28 @@
 
     @if (_result != null && _result.Files.Any())
     {
-        <div class="d-flex align-center gap-2">
+        <div class="d-flex align-center gap-2 mt-3 flex-wrap">
             <MudChip T="string" Color="Color.Dark" Variant="Variant.Outlined">@_result.Files.Count Files Generated</MudChip>
+            @if (_result.IsValid)
+            {
+                <MudChip T="string" Color="Color.Success" Variant="Variant.Filled" Icon="@Icons.Material.Filled.CheckCircle" Style="font-weight: bold;">
+                    QUALITY GATE: PASSED (100% Valid Code)
+                </MudChip>
+            }
+            else
+            {
+                <MudChip T="string" Color="Color.Error" Variant="Variant.Filled" Icon="@Icons.Material.Filled.Warning" Style="font-weight: bold;">
+                    QUALITY GATE: @_result.ValidationErrors.Count ERROR(S) DETECTED
+                </MudChip>
+            }
         </div>
+
+        @if (!string.IsNullOrEmpty(_result.Summary))
+        {
+            <MudAlert Severity="@(_result.IsValid ? Severity.Success : Severity.Warning)" Variant="Variant.Outlined" Class="mt-3">
+                @_result.Summary
+            </MudAlert>
+        }
     }
 </MudPaper>
 
