@@ -49,8 +49,7 @@
                                  HelperText="Specify a starting package (e.g. Master.dtsx) or 'all' to parse every package in the project."
                                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Description" />
 
-                <MudCheckBox @bind-Value="includeSqlProcedures" Color="Color.Primary" Dense="true" Class="mb-4"
-                             Label="Enrich data-flow with SQL Server procedure definitions" />
+
 
                 <MudButton OnClick="GenerateReportAsync" Disabled="isGenerating || isLoadingReport" Variant="Variant.Filled"
                            Color="Color.Primary" FullWidth="true" Size="Size.Large" Class="mt-4"
@@ -146,25 +145,6 @@ else
                 @if (_controlsExpanded)
                 {
                     <MudStack Spacing="3">
-                        <!-- Quick Sample Presets -->
-                        <div>
-                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mb-1 d-block" Style="font-weight: 700; letter-spacing: 0.5px;">
-                                QUICK SAMPLE PRESETS
-                            </MudText>
-                            <div class="d-flex gap-2">
-                                <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" Class="flex-1"
-                                           StartIcon="@Icons.Material.Filled.AutoAwesome" OnClick="UseAdventureWorksProject"
-                                           Style="text-transform:none; font-weight: 600; font-size: 0.78rem; border-radius: 8px;">
-                                    AdventureWorks ETL
-                                </MudButton>
-                                <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Secondary" Class="flex-1"
-                                           StartIcon="@Icons.Material.Filled.FolderZip" OnClick="UseSampleProject"
-                                           Style="text-transform:none; font-size: 0.78rem; border-radius: 8px;">
-                                    Standard Sample
-                                </MudButton>
-                            </div>
-                        </div>
-
                         <!-- Project Inputs -->
                         <div class="pa-3" style="background: rgba(24, 24, 27, 0.4); border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.05);">
                             <div class="d-flex align-center gap-2 mb-3">
@@ -187,60 +167,7 @@ else
                                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Description" />
                         </div>
 
-                        <!-- Expandable SQL Server Enrichment -->
-                        <MudExpansionPanels MultiExpansion="true" Elevation="0" Class="pa-0" Style="border-radius: 10px; overflow: hidden;">
-                            <MudExpansionPanel Text="SQL Server DB Enrichment (Optional)" Icon="@Icons.Material.Filled.Storage"
-                                               Style="background: rgba(24, 24, 27, 0.4); border: 1px solid rgba(255, 255, 255, 0.05);">
-                                <MudStack Spacing="2" Class="pt-2">
-                                    <MudCheckBox @bind-Value="includeSqlProcedures" Color="Color.Primary" Dense="true"
-                                                 Label="Enrich lineage via SQL Server (Procedures/Views)" />
 
-                                    <MudTextField @bind-Value="sqlConnectionString" Label="SQL Connection String"
-                                                  Placeholder="Server=localhost,1433;Database=SsisDemoDB;User Id=sa;Password=..."
-                                                  Variant="Variant.Outlined" Margin="Margin.Dense" Lines="2" Class="mt-1" />
-
-                                    <div class="d-flex align-center gap-2 mt-1">
-                                        <MudButton Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info" Class="flex-1"
-                                                   StartIcon="@Icons.Material.Filled.Storage" Style="text-transform:none; font-size: 0.75rem;"
-                                                   OnClick="FillDemoConnectionString">
-                                            Use Demo DB
-                                        </MudButton>
-                                        <MudButton Size="Size.Small" Variant="Variant.Filled" Color="Color.Primary" Class="flex-1"
-                                                   StartIcon="@Icons.Material.Filled.NetworkCheck" Style="text-transform:none; font-size: 0.75rem;"
-                                                   OnClick="TestSqlConnection" Disabled="_isTestingConn">
-                                            @(_isTestingConn ? "Testing..." : "Test Connection")
-                                        </MudButton>
-                                    </div>
-
-                                    @if (!string.IsNullOrEmpty(_connTestResult))
-                                    {
-                                        <MudAlert Severity="@(_connTestSuccess ? Severity.Success : Severity.Error)" Class="mt-2" Dense="true">
-                                            @_connTestResult
-                                        </MudAlert>
-                                    }
-                                </MudStack>
-                            </MudExpansionPanel>
-
-                            <MudExpansionPanel Text="Advanced Name Resolution" Icon="@Icons.Material.Filled.Tune" Class="mt-2"
-                                               Style="background: rgba(24, 24, 27, 0.4); border: 1px solid rgba(255, 255, 255, 0.05);">
-                                <MudStack Spacing="2" Class="pt-2">
-                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                        Configure linked server aliases and dynamic SQL variable values for stored procedure resolution.
-                                    </MudText>
-
-                                    <MudCheckBox @bind-Value="autoResolveLinkedServers" Color="Color.Primary" Dense="true"
-                                                 Label="Auto-map linked-servers via sys.servers" />
-
-                                    <MudTextField @bind-Value="linkedServerMapText" Label="Linked Server Name Map"
-                                                  Placeholder="LINKEDSRV=StagingServer; OTHERLINK=RealHost"
-                                                  Variant="Variant.Outlined" Margin="Margin.Dense" Lines="2" />
-
-                                    <MudTextField @bind-Value="sqlVariableValuesText" Label="Stored-Proc Variable Values"
-                                                  Placeholder="@@Server=LINKEDSRV; @@Database=StagingDb"
-                                                  Variant="Variant.Outlined" Margin="Margin.Dense" Lines="2" />
-                                </MudStack>
-                            </MudExpansionPanel>
-                        </MudExpansionPanels>
 
                         <!-- Primary Action Buttons -->
                         <div class="pt-2">

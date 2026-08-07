@@ -158,8 +158,8 @@ namespace SsisLineage.Core
                 && string.IsNullOrWhiteSpace(options.SqlConnectionString)
                 && new SsisConnectionManagerResolver(projectInfo.ProjectDirectory).TryResolveFirstSqlConnectionString() == null)
             {
-                throw new InvalidOperationException(
-                    "SQL procedure retrieval for data flow components was requested, but no SQL connection string was provided and none could be resolved from project .conmgr files.");
+                graph.Warnings.Add(
+                    "SQL procedure retrieval for data flow components was requested, but no SQL connection string was provided and none could be resolved from project .conmgr files. Proceeding with static XML lineage analysis.");
             }
 
             SqlProcedureEnricher.EnrichFromStoredProcedures(
