@@ -170,57 +170,53 @@ namespace SsisLineage.Core
                 foreach (var lkp in lookups)
                 {
                     // Bug #6 fix: sanitize multi-line SQL in lookup CTE to single-line with consistent indent
-                    if (!string.IsNullOrEmpty(lkp.SqlQueryOrTable))
+                    var lkpSqlRaw = string.IsNullOrEmpty(lkp.SqlQueryOrTable)
+                        ? $"SELECT * FROM ref_{Regex.Replace(lkp.Name ?? "Lookup", @"[^\w]", "_")}"
+                        : lkp.SqlQueryOrTable;
+
+                    var lkpSql = lkpSqlRaw.Trim()
+                        .Replace("\r\n", " ").Replace("\n", " ").Replace("\r", " ");
+                    // Collapse multiple spaces into one
+                    lkpSql = Regex.Replace(lkpSql, @"\s{2,}", " ");
+
+                    if (!lkpSql.StartsWith("SELECT", StringComparison.OrdinalIgnoreCase) &&
+                        !lkpSql.StartsWith("WITH", StringComparison.OrdinalIgnoreCase))
                     {
-                        var lkpSql = lkp.SqlQueryOrTable.Trim()
-                            .Replace("\r\n", " ").Replace("\n", " ").Replace("\r", " ");
-                        // Collapse multiple spaces into one
-                        lkpSql = Regex.Replace(lkpSql, @"\s{2,}", " ");
-
-                        if (!lkpSql.StartsWith("SELECT", StringComparison.OrdinalIgnoreCase) &&
-                            !lkpSql.StartsWith("WITH", StringComparison.OrdinalIgnoreCase))
-                        {
-                            lkpSql = $"SELECT * FROM {lkpSql}";
-                        }
-
-                        sb.AppendLine($",\nlookup_{cteIdx} AS (");
-                        sb.AppendLine($"    {lkpSql}");
-                        sb.AppendLine(")");
-
-                        // Register by Name (primary key)
-                        if (!string.IsNullOrEmpty(lkp.Name))
-                            lookupAliasMap[lkp.Name] = cteIdx;
-                        // Register by Id (fallback — ResolveComponentName may return raw id)
-                        if (!string.IsNullOrEmpty(lkp.Id))
-                            lookupAliasMap[lkp.Id] = cteIdx;
-                        // Register by TaskId::Name pattern variants
-                        if (!string.IsNullOrEmpty(lkp.TaskId) && !string.IsNullOrEmpty(lkp.Name))
-                            lookupAliasMap[$"{lkp.TaskId}::{lkp.Name}"] = cteIdx;
-
-                        // Build column-name → cteIdx index from the lookup SQL
-                        // Parse "SELECT col1, col2, col3 FROM ..." to extract column names
-                        var selectMatch = Regex.Match(lkpSql, @"SELECT\s+(.+?)\s+FROM\b", RegexOptions.IgnoreCase | RegexOptions.Singleline);
-                        if (selectMatch.Success)
-                        {
-                            var colList = selectMatch.Groups[1].Value;
-                            foreach (var colPart in colList.Split(','))
-                            {
-                                // Handle "col AS alias" or "[col]" patterns
-                                var colName = Regex.Match(colPart.Trim(), @"(?:AS\s+)?(\[?[a-zA-Z_]\w*\]?)\s*$", RegexOptions.IgnoreCase).Groups[1].Value
-                                    .Replace("[", "").Replace("]", "").Trim();
-                                if (!string.IsNullOrEmpty(colName))
-                                    lookupColumnIndex.TryAdd(colName, cteIdx);
-                            }
-                        }
-
-                        emittedLookupIndices.Add(cteIdx);
-                        cteIdx++;
+                        lkpSql = $"SELECT * FROM {lkpSql}";
                     }
-                    else
+
+                    sb.AppendLine($",\nlookup_{cteIdx} AS (");
+                    sb.AppendLine($"    {lkpSql}");
+                    sb.AppendLine(")");
+
+                    // Register by Name (primary key)
+                    if (!string.IsNullOrEmpty(lkp.Name))
+                        lookupAliasMap[lkp.Name] = cteIdx;
+                    // Register by Id (fallback — ResolveComponentName may return raw id)
+                    if (!string.IsNullOrEmpty(lkp.Id))
+                        lookupAliasMap[lkp.Id] = cteIdx;
+                    // Register by TaskId::Name pattern variants
+                    if (!string.IsNullOrEmpty(lkp.TaskId) && !string.IsNullOrEmpty(lkp.Name))
+                        lookupAliasMap[$"{lkp.TaskId}::{lkp.Name}"] = cteIdx;
+
+                    // Build column-name → cteIdx index from the lookup SQL
+                    // Parse "SELECT col1, col2, col3 FROM ..." to extract column names
+                    var selectMatch = Regex.Match(lkpSql, @"SELECT\s+(.+?)\s+FROM\b", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+                    if (selectMatch.Success)
                     {
-                        // Lookup has no SQL/table (e.g. in-memory/cache) — skip CTE but warn
-                        sb.AppendLine($"-- NOTE: Lookup '{lkp.Name}' has no SQL source — skipped from CTE (manual implementation required)");
+                        var colList = selectMatch.Groups[1].Value;
+                        foreach (var colPart in colList.Split(','))
+                        {
+                            // Handle "col AS alias" or "[col]" patterns
+                            var colName = Regex.Match(colPart.Trim(), @"(?:AS\s+)?(\[?[a-zA-Z_]\w*\]?)\s*$", RegexOptions.IgnoreCase).Groups[1].Value
+                                .Replace("[", "").Replace("]", "").Trim();
+                            if (!string.IsNullOrEmpty(colName))
+                                lookupColumnIndex.TryAdd(colName, cteIdx);
+                        }
                     }
+
+                    emittedLookupIndices.Add(cteIdx);
+                    cteIdx++;
                 }
                 var totalLookupCtes = cteIdx; // number of CTEs actually emitted
 

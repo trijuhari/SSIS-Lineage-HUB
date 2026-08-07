@@ -207,4 +207,24 @@ public class SsisMigrationEndToEndTests
         Assert.Contains("lookup_0.CustomerSegment", content);
         Assert.DoesNotContain("source_data.CustomerName", content);
     }
+
+    [Fact]
+    public void SampleProject4_FullProject_ValidationTest()
+    {
+        var projectDir = Path.Combine(
+            Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!,
+            "..", "..", "..", "..", "..", "sample-ssis-project-4");
+        projectDir = Path.GetFullPath(projectDir);
+
+        if (!Directory.Exists(projectDir))
+            return;
+
+        var parser = new SsisPackageParser(projectDir);
+        var pkgFiles = Directory.GetFiles(projectDir, "*.dtsx");
+        var graph = parser.ParseMultiple(pkgFiles);
+
+        var result = SsisMigrationConverter.ConvertProject(graph, MigrationTarget.DbtSql);
+
+        Assert.True(result.IsValid, $"Validation failed with errors: {string.Join("; ", result.ValidationErrors)}");
+    }
 }
