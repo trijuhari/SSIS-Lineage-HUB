@@ -353,26 +353,16 @@ namespace SsisLineage.Core
                             {
                                 srcPrefix = "lookup_0";
                             }
-                            // Strategy 3: column exists in lookup SELECT list and is not a join key
+                            // Strategy 3: column exists in lookup SELECT list
                             else if (!string.IsNullOrEmpty(sourceCol) &&
                                      lookupColumnIndex.TryGetValue(sourceCol, out var lkpIdxByCol))
                             {
-                                var lowerCol = sourceCol.ToLowerInvariant();
-                                bool isJoinKey = lowerCol.EndsWith("code") || lowerCol.EndsWith("key") || lowerCol.EndsWith("id") || lowerCol.EndsWith("no");
-                                if (!isJoinKey)
-                                {
-                                    srcPrefix = $"lookup_{lkpIdxByCol}";
-                                }
+                                srcPrefix = $"lookup_{lkpIdxByCol}";
                             }
                             else if (!string.IsNullOrEmpty(m.TargetColumnName) &&
                                      lookupColumnIndex.TryGetValue(m.TargetColumnName, out var lkpIdxByTargetCol))
                             {
-                                var lowerTarget = m.TargetColumnName.ToLowerInvariant();
-                                bool isJoinKey = lowerTarget.EndsWith("code") || lowerTarget.EndsWith("key") || lowerTarget.EndsWith("id") || lowerTarget.EndsWith("no");
-                                if (!isJoinKey)
-                                {
-                                    srcPrefix = $"lookup_{lkpIdxByTargetCol}";
-                                }
+                                srcPrefix = $"lookup_{lkpIdxByTargetCol}";
                             }
                             // Strategy 4: If lookup CTE exists, check known lookup attributes or dimension attributes (DateKey, FullDate, BranchKey, BranchName, RegionCode, etc.)
                             else if (totalLookupCtes > 0)
@@ -427,9 +417,7 @@ namespace SsisLineage.Core
                 // Bug #1 fix: only JOIN lookups that have an emitted CTE
                 for (int i = 0; i < totalLookupCtes; i++)
                 {
-                    // Bug #4 fix: smarter join key detection
-                    // Prefer columns that appear in source-side mappings (not from a lookup) and
-                    // match common join key naming patterns. Avoid picking a lookup-output column as the key.
+                    var lkpCols = lookupColumnIndex.Where(kv => kv.Value == i).Select(kv => kv.Key).ToList();
                     var lookupSourceCols = pkgMappings
                         .Where(m => string.IsNullOrEmpty(m.SourceExpression) &&
                                     !string.IsNullOrEmpty(m.SourceComponentName) &&
@@ -437,20 +425,36 @@ namespace SsisLineage.Core
                         .Select(m => m.SourceColumnName)
                         .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
-                    // Join candidates: non-derived, non-lookup-output columns with key-like names
-                    var joinKeyCandidates = pkgMappings
+                    var srcCols = pkgMappings
                         .Where(m => string.IsNullOrEmpty(m.SourceExpression) &&
                                     !string.IsNullOrEmpty(m.SourceColumnName) &&
                                     !lookupSourceCols.Contains(m.SourceColumnName))
                         .Select(m => m.SourceColumnName)
                         .Distinct(StringComparer.OrdinalIgnoreCase)
+                        .ToList();
+
+                    var commonKey = srcCols.FirstOrDefault(sc => lkpCols.Any(lc => string.Equals(sc, lc, StringComparison.OrdinalIgnoreCase)));
+                    if (!string.IsNullOrEmpty(commonKey))
+                    {
+                        sb.AppendLine($"    LEFT JOIN lookup_{i} ON source_data.{commonKey} = lookup_{i}.{commonKey}");
+                        continue;
+                    }
+
+                    var srcDateCol = srcCols.FirstOrDefault(sc => sc.EndsWith("Date", StringComparison.OrdinalIgnoreCase));
+                    var lkpDateCol = lkpCols.FirstOrDefault(lc => string.Equals(lc, "FullDate", StringComparison.OrdinalIgnoreCase) || string.Equals(lc, "DateKey", StringComparison.OrdinalIgnoreCase));
+                    if (!string.IsNullOrEmpty(srcDateCol) && !string.IsNullOrEmpty(lkpDateCol))
+                    {
+                        sb.AppendLine($"    LEFT JOIN lookup_{i} ON source_data.{srcDateCol} = lookup_{i}.{lkpDateCol}");
+                        continue;
+                    }
+
+                    // Join candidates fallback
+                    var joinKeyCandidates = srcCols
                         .Where(col => {
                             var lower = col.ToLowerInvariant();
-                            // More specific patterns first: prefer exact "Code" suffix matches over generic "id"
                             return lower.EndsWith("code") || lower.EndsWith("key") ||
                                    lower.EndsWith("id")   || lower.EndsWith("no");
                         })
-                        // Sort: more specific suffixes (code, key) ranked before generic (id, no)
                         .OrderBy(col => {
                             var lower = col.ToLowerInvariant();
                             if (lower.EndsWith("code")) return 0;

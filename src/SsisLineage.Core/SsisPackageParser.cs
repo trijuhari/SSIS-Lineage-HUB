@@ -527,6 +527,24 @@ namespace SsisLineage.Core
             return !string.IsNullOrEmpty(extracted) ? extracted : lineageId;
         }
 
+        private string ResolveComponentIdFromColumnName(XElement exeNode, string colName)
+        {
+            if (string.IsNullOrEmpty(colName)) return "";
+            var col = exeNode.Descendants()
+                .FirstOrDefault(x => x.Name.LocalName == "outputColumn" &&
+                    (string.Equals(x.Attribute("name")?.Value, colName, StringComparison.OrdinalIgnoreCase) ||
+                     string.Equals(x.Attribute("cachedName")?.Value, colName, StringComparison.OrdinalIgnoreCase)));
+            if (col != null)
+            {
+                var parentComp = col.Ancestors().FirstOrDefault(x => x.Name.LocalName == "component");
+                if (parentComp != null)
+                {
+                    return parentComp.Attribute("refId")?.Value ?? parentComp.Attribute("id")?.Value ?? "";
+                }
+            }
+            return "";
+        }
+
         private string ResolveColumnNameFromLineageId(XElement exeNode, string lineageId, string fallbackName)
         {
             if (string.IsNullOrEmpty(lineageId)) return fallbackName;
@@ -903,10 +921,18 @@ namespace SsisLineage.Core
                     foreach (var inCol in inputCols)
                     {
                         var lineageId = inCol.Attribute("lineageId")?.Value ?? inCol.Attribute("id")?.Value ?? "";
+                        var fallbackColName = inCol.Attribute("name")?.Value ?? inCol.Attribute("cachedName")?.Value ?? "";
+                        var sourceColName = ResolveColumnNameFromLineageId(exeNode, lineageId, fallbackColName);
+                        if (string.IsNullOrEmpty(sourceColName)) sourceColName = fallbackColName;
+
                         var sourceCompId = ResolveComponentIdFromLineageId(exeNode, lineageId);
+                        if (string.IsNullOrEmpty(sourceCompId) && !string.IsNullOrEmpty(sourceColName))
+                        {
+                            sourceCompId = ResolveComponentIdFromColumnName(exeNode, sourceColName);
+                        }
                         var sourceCompName = ResolveComponentName(sourceCompId, exeNode);
-                        var sourceColName = ResolveColumnNameFromLineageId(exeNode, lineageId, inCol.Attribute("name")?.Value ?? "");
                         var targetColName = GetTargetColumnName(inCol);
+                        if (string.IsNullOrEmpty(targetColName)) targetColName = sourceColName;
 
                         _graph.ColumnMappings.Add(new ColumnMap
                         {
