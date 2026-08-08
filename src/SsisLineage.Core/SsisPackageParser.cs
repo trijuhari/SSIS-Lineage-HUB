@@ -98,6 +98,7 @@ namespace SsisLineage.Core
                 _graph.Warnings.Add($"Package cycle or duplicate visit skipped: {Path.GetFileName(packagePath)}");
                 return;
             }
+
             _visitedPackages.Add(fullPath);
 
             Console.WriteLine($"[*] Parsing package: {Path.GetFileName(packagePath)}");
@@ -362,15 +363,15 @@ namespace SsisLineage.Core
                         foreach (IDTSCustomProperty100 prop in comp.CustomPropertyCollection)
                         {
                             var propValue = prop.Value?.ToString() ?? "";
-                            if (prop.Name == "SqlCommand" && !string.IsNullOrEmpty(propValue))
+                            if (propName(prop, "SqlCommand") && !string.IsNullOrEmpty(propValue))
                             {
                                 compNode.SqlQueryOrTable = ExpressionEvaluator.Evaluate(propValue, variables);
                             }
-                            else if (prop.Name == "OpenRowset" && !string.IsNullOrEmpty(propValue))
+                            else if (propName(prop, "OpenRowset") && !string.IsNullOrEmpty(propValue))
                             {
                                 compNode.SqlQueryOrTable = ExpressionEvaluator.Evaluate(propValue, variables);
                             }
-                            else if (prop.Name == "TableOrViewName" && !string.IsNullOrEmpty(propValue))
+                            else if (propName(prop, "TableOrViewName") && !string.IsNullOrEmpty(propValue))
                             {
                                 tableOrViewName = ExpressionEvaluator.Evaluate(propValue, variables);
                             }
@@ -406,6 +407,8 @@ namespace SsisLineage.Core
                 Console.WriteLine($"[Warning] Native Data Flow processing failed for {taskHost.Name}: {ex.Message}. Falling back to XML-based parsing for this Data Flow.");
                 ParseDataFlowXmlFallback(packageNode, taskNode, taskHost.ID);
             }
+
+            bool propName(IDTSCustomProperty100 p, string n) => string.Equals(p.Name, n, StringComparison.OrdinalIgnoreCase);
         }
 
 #endif
@@ -497,8 +500,412 @@ namespace SsisLineage.Core
                                      && (x.Attribute("id")?.Value == endpointId || x.Attribute("refId")?.Value == endpointId));
             if (comp != null)
             {
+                var parentComp = comp.Ancestors().FirstOrDefault(x => x.Name.LocalName == "component");
+                if (parentComp != null)
+                {
+                    return parentComp.Attribute("refId")?.Value ?? parentComp.Attribute("id")?.Value ?? "";
+                }
+            }
+            return StripPathEndpointSuffix(endpointId);
+        }
 
+        private string ResolveComponentIdFromLineageId(XElement exeNode, string lineageId)
+        {
+            if (string.IsNullOrEmpty(lineageId)) return "";
+            var col = exeNode.Descendants()
+                .FirstOrDefault(x => (x.Name.LocalName == "outputColumn" || x.Name.LocalName == "inputColumn" || x.Name.LocalName == "externalMetadataColumn")
+                                     && (x.Attribute("lineageId")?.Value == lineageId || x.Attribute("id")?.Value == lineageId));
+            if (col != null)
+            {
+                var parentComp = col.Ancestors().FirstOrDefault(x => x.Name.LocalName == "component");
+                if (parentComp != null)
+                {
+                    return parentComp.Attribute("refId")?.Value ?? parentComp.Attribute("id")?.Value ?? "";
+                }
+            }
+            var extracted = ExtractComponentIdFromLineageId(lineageId);
+            return !string.IsNullOrEmpty(extracted) ? extracted : lineageId;
+        }
 
+        private string ResolveColumnNameFromLineageId(XElement exeNode, string lineageId, string fallbackName)
+        {
+            if (string.IsNullOrEmpty(lineageId)) return fallbackName;
+            var col = exeNode.Descendants()
+                .FirstOrDefault(x => (x.Name.LocalName == "outputColumn" || x.Name.LocalName == "inputColumn")
+                                     && (x.Attribute("lineageId")?.Value == lineageId || x.Attribute("id")?.Value == lineageId));
+            if (col != null)
+            {
+                var name = col.Attribute("name")?.Value ?? col.Attribute("cachedName")?.Value;
+                if (!string.IsNullOrEmpty(name)) return name;
+            }
+            return fallbackName;
+        }
+
+        private string ResolveComponentName(string compId, XElement exeNode)
+        {
+            if (string.IsNullOrWhiteSpace(compId)) return "";
+
+            var compNode = _graph.Components.FirstOrDefault(c => c.Id == compId);
+            if (compNode != null && !string.IsNullOrWhiteSpace(compNode.Name)) return compNode.Name;
+
+            var rawId = compId.Contains("::") ? compId.Split("::").Last() : compId;
+            var comp = exeNode.Descendants()
+                .FirstOrDefault(x => x.Name.LocalName == "component" &&
+                    (x.Attribute("refId")?.Value == rawId || x.Attribute("id")?.Value == rawId ||
+                     x.Attribute("refId")?.Value == compId || x.Attribute("id")?.Value == compId));
+            if (comp != null)
+            {
+                var name = comp.Attribute("name")?.Value;
+                if (!string.IsNullOrWhiteSpace(name)) return name;
+            }
+
+            var extracted = ExtractComponentNameFromRefId(rawId);
+            if (!string.IsNullOrWhiteSpace(extracted)) return extracted;
+
+            return !string.IsNullOrWhiteSpace(rawId) && rawId != "?" ? rawId : "";
+        }
+
+        private string GetTargetColumnName(XElement inCol)
+        {
+            var refId = inCol.Attribute("refId")?.Value;
+            var targetCol = ExtractColumnNameFromRefId(refId);
+            if (!string.IsNullOrEmpty(targetCol)) return targetCol;
+
+            var name = inCol.Attribute("name")?.Value;
+            if (!string.IsNullOrEmpty(name)) return name;
+
+            var extId = inCol.Attribute("externalMetadataColumnId")?.Value;
+            if (!string.IsNullOrEmpty(extId))
+            {
+                var comp = inCol.Ancestors().FirstOrDefault(x => x.Name.LocalName == "component");
+                if (comp != null)
+                {
+                    var extCol = comp.Descendants()
+                        .FirstOrDefault(x => x.Name.LocalName == "externalMetadataColumn" && x.Attribute("id")?.Value == extId);
+                    if (extCol != null)
+                    {
+                        var extName = extCol.Attribute("name")?.Value;
+                        if (!string.IsNullOrEmpty(extName)) return extName;
+                    }
+                }
+            }
+
+            var cachedName = inCol.Attribute("cachedName")?.Value;
+            if (!string.IsNullOrEmpty(cachedName)) return cachedName;
+
+            return "";
+        }
+
+        private void ParsePackageXmlFallback(string packagePath, string? parentPackageId)
+        {
+            try
+            {
+                var doc = XDocument.Load(packagePath);
+                var root = doc.Root;
+                if (root == null) return;
+
+                XNamespace dts = "www.microsoft.com/SqlServer/Dts";
+
+                var packageId = root.Attribute(dts + "DTSID")?.Value
+                    ?? root.Attribute(dts + "refId")?.Value
+                    ?? Path.GetFileNameWithoutExtension(packagePath);
+                var packageNode = new PackageNode
+                {
+                    Id = packageId,
+                    Name = root.Attribute(dts + "ObjectName")?.Value ?? Path.GetFileNameWithoutExtension(packagePath),
+                    Path = packagePath,
+                    ProjectPath = _projectDirectory,
+                    FileHash = ProjectLoader.ComputeFileHash(packagePath)
+                };
+
+                var variables = ExpressionEvaluator.ExtractVariablesFromXml(doc);
+                ApplyVariableLayers(variables);
+                foreach (var varKey in variables.Keys)
+                {
+                    packageNode.Variables.Add(varKey);
+                }
+
+                foreach (var cm in doc.Descendants(dts + "ConnectionManager"))
+                {
+                    var objName = cm.Attribute(dts + "ObjectName")?.Value ?? cm.Attribute("ObjectName")?.Value;
+                    var dtsId = cm.Attribute(dts + "DTSID")?.Value ?? cm.Attribute("DTSID")?.Value;
+                    var refId = cm.Attribute(dts + "refId")?.Value ?? cm.Attribute("refId")?.Value;
+                    var connStr = SsisConnectionManagerResolver.FindConnectionString(cm);
+                    if (!string.IsNullOrWhiteSpace(connStr))
+                    {
+                        _connectionResolver ??= new SsisConnectionManagerResolver(_projectDirectory, _connectionManagerOverrides);
+                        if (!string.IsNullOrWhiteSpace(objName)) _connectionResolver.AddConnection(objName, connStr);
+                        if (!string.IsNullOrWhiteSpace(dtsId)) _connectionResolver.AddConnection(dtsId, connStr);
+                        if (!string.IsNullOrWhiteSpace(refId)) _connectionResolver.AddConnection(refId, connStr);
+                    }
+                    if (!string.IsNullOrWhiteSpace(objName) && !packageNode.ConnectionManagers.Contains(objName))
+                    {
+                        packageNode.ConnectionManagers.Add(objName);
+                    }
+                }
+
+                _graph.Packages.Add(packageNode);
+
+                var executables = doc.Descendants(dts + "Executable")
+                    .Where(x => x != root && !x.Elements(dts + "Executables").Any());
+                foreach (var exe in executables)
+                {
+                    var rawExeId = GetExecutableId(exe, dts);
+                    var exeName = GetExecutableName(exe, dts);
+                    var exeType = GetExecutableType(exe, dts);
+
+                    if (string.IsNullOrEmpty(rawExeId)) continue;
+                    var exeId = QualifyId(packageId, rawExeId);
+
+                    var taskNode = new TaskNode
+                    {
+                        Id = exeId,
+                        Name = exeName,
+                        Type = exeType,
+                        PackageId = packageId,
+                        PackageName = packageNode.Name
+                    };
+                    _graph.Tasks.Add(taskNode);
+
+                    if (exeType.Contains("ExecutePackageTask"))
+                    {
+                        var childPkgNameNode = exe.Descendants("PackageName").FirstOrDefault();
+                        if (childPkgNameNode != null && !string.IsNullOrEmpty(childPkgNameNode.Value))
+                        {
+                            var childName = childPkgNameNode.Value;
+                            taskNode.Description = childName;
+                            if (!childName.EndsWith(".dtsx", StringComparison.OrdinalIgnoreCase))
+                                childName += ".dtsx";
+
+                            var childPath = Path.Combine(_projectDirectory, childName);
+                            var packagesBefore = _graph.Packages.Count;
+                            ParsePackageRecursive(childPath, packageId);
+
+                            if (_graph.Packages.Count > packagesBefore)
+                            {
+                                _graph.ExecutionEdges.Add(new ExecutionEdge
+                                {
+                                    FromTaskId = exeId,
+                                    ToTaskId   = _graph.Packages[packagesBefore].Id,
+                                    PrecedenceConstraintValue = "Invokes"
+                                });
+                            }
+                        }
+                    }
+                    else if (IsDataFlowTask(exeType))
+                    {
+                        ParseDataFlowXmlFallback(packageNode, taskNode, rawExeId);
+                    }
+                    else if (exeType.Contains("ExecuteSQLTask", StringComparison.OrdinalIgnoreCase))
+                    {
+                        ParseExecuteSqlTaskXmlFallback(exe, packageNode, taskNode, variables);
+                    }
+                    else if (exeType.Contains("ScriptTask", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _graph.Warnings.Add(
+                            $"Script Task '{exeName}' in package '{packageNode.Name}' — script code cannot be statically analysed; any data movement inside it is not captured in lineage.");
+                    }
+                }
+
+                foreach (var constraint in doc.Descendants(dts + "PrecedenceConstraint"))
+                {
+                    var from = constraint.Attribute(dts + "From")?.Value ?? "";
+                    var to = constraint.Attribute(dts + "To")?.Value ?? "";
+                    if (string.IsNullOrWhiteSpace(from) || string.IsNullOrWhiteSpace(to))
+                    {
+                        continue;
+                    }
+
+                    _graph.ExecutionEdges.Add(new ExecutionEdge
+                    {
+                        FromTaskId = QualifyId(packageId, from),
+                        ToTaskId = QualifyId(packageId, to),
+                        PrecedenceConstraintValue = constraint.Attribute(dts + "Value")?.Value ?? "Success",
+                        Expression = constraint.Attribute(dts + "Expression")?.Value ?? ""
+                    });
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[Error] XML fallback parsing failed for package {Path.GetFileName(packagePath)}: {ex.Message}");
+            }
+        }
+
+        private void ParseExecuteSqlTaskXmlFallback(XElement exe, PackageNode packageNode, TaskNode taskNode,
+            Dictionary<string, object> variables)
+        {
+            try
+            {
+                XNamespace sqlTask = "www.microsoft.com/sqlserver/dts/tasks/sqltask";
+                var sqlData = exe.Descendants()
+                    .FirstOrDefault(x => x.Name.LocalName.Equals("SqlTaskData", StringComparison.OrdinalIgnoreCase));
+
+                if (sqlData == null)
+                {
+                    return;
+                }
+
+                var sqlSource = sqlData.Attribute(sqlTask + "SqlStatementSource")?.Value
+                    ?? sqlData.Attribute("SqlStatementSource")?.Value
+                    ?? "";
+                var connection = sqlData.Attribute(sqlTask + "Connection")?.Value
+                    ?? sqlData.Attribute("Connection")?.Value
+                    ?? "";
+
+                if (ExpressionEvaluator.IsSingleVariableReference(sqlSource))
+                {
+                    var resolved = ExpressionEvaluator.Evaluate(sqlSource, variables);
+                    if (!string.IsNullOrWhiteSpace(resolved)) sqlSource = resolved;
+                }
+
+                var bindings = new List<string>();
+                foreach (var pb in sqlData.Descendants().Where(x => x.Name.LocalName == "ParameterBinding"))
+                {
+                    var paramName = pb.Attribute(sqlTask + "ParameterName")?.Value ?? pb.Attribute("ParameterName")?.Value ?? "?";
+                    var varName = pb.Attribute(sqlTask + "DtsVariableName")?.Value ?? pb.Attribute("DtsVariableName")?.Value ?? "";
+                    var direction = pb.Attribute(sqlTask + "ParameterDirection")?.Value ?? pb.Attribute("ParameterDirection")?.Value ?? "Input";
+                    if (!string.IsNullOrEmpty(varName))
+                        bindings.Add($"@{paramName} ← {varName} ({direction})");
+                }
+                foreach (var rb in sqlData.Descendants().Where(x => x.Name.LocalName == "ResultBinding"))
+                {
+                    var resultName = rb.Attribute(sqlTask + "ResultName")?.Value ?? rb.Attribute("ResultName")?.Value ?? "0";
+                    var varName = rb.Attribute(sqlTask + "DtsVariableName")?.Value ?? rb.Attribute("DtsVariableName")?.Value ?? "";
+                    if (!string.IsNullOrEmpty(varName))
+                        bindings.Add($"Result[{resultName}] → {varName}");
+                }
+
+                var componentId = taskNode.Id + "_sql";
+                _graph.Components.Add(new ComponentNode
+                {
+                    Id = componentId,
+                    Name = taskNode.Name,
+                    Type = "Execute SQL Task",
+                    PackageId = packageNode.Id,
+                    TaskId = taskNode.Id,
+                    ConnectionManager = connection,
+                    SqlQueryOrTable = sqlSource,
+                    ParameterBindings = bindings
+                });
+
+                if (string.IsNullOrWhiteSpace(sqlSource)) return;
+
+                // Stored-proc reference → body is loaded from SQL Server by the enricher.
+                if (SqlProcedureDefinitionLoader.TryParseProcedureReference(sqlSource, out _, out _))
+                {
+                    _graph.Warnings.Add(
+                        $"Execute SQL task '{taskNode.Name}' calls {sqlSource.Trim()} — procedure body will be loaded from SQL Server when a connection is available.");
+                    return;
+                }
+
+                // Inline SQL — parse for column lineage (INSERT/UPDATE/DELETE/MERGE/SELECT INTO,
+                // CTEs, dynamic SQL), same as the native path. OLE DB positional parameters (?)
+                // are substituted so ScriptDom can parse the statement.
+                var parsableSql = SqlProcedureParser.ReplacePositionalParameters(sqlSource);
+                var (connServer, connDb) = ResolveConnectionServerDb(connection);
+                var sqlRecords = SqlProcedureParser.Parse(parsableSql, connDb, connServer, _sqlVariableValues);
+                foreach (var rec in sqlRecords)
+                {
+                    _graph.ColumnMappings.Add(BuildSqlTaskColumnMap(
+                        rec, packageNode.Id, taskNode.Id, componentId, taskNode.Name));
+                }
+            }
+            catch (Exception ex)
+            {
+                _graph.Warnings.Add($"Failed to parse Execute SQL task '{taskNode.Name}' from XML: {ex.Message}");
+            }
+        }
+
+        private void ParseDataFlowXmlFallback(PackageNode packageNode, TaskNode taskNode, string taskRefId)
+        {
+            try
+            {
+                var doc = XDocument.Load(packageNode.Path);
+                XNamespace dts = "www.microsoft.com/SqlServer/Dts";
+
+                // Locate the executable node with taskRefId (matching raw refId, qualified refId, or suffix)
+                var exeNode = doc.Descendants(dts + "Executable")
+                    .FirstOrDefault(x => {
+                        var id = GetExecutableId(x, dts);
+                        return id == taskRefId || QualifyId(packageNode.Id, id) == taskRefId ||
+                               id.EndsWith(taskRefId, StringComparison.OrdinalIgnoreCase);
+                    });
+
+                if (exeNode == null) return;
+
+                // Enumerate pipeline components
+                var components = exeNode.Descendants()
+                    .Where(x => x.Name.LocalName == "component");
+                foreach (var comp in components)
+                {
+                    var rawCompId = comp.Attribute("refId")?.Value ?? comp.Attribute("id")?.Value ?? "";
+                    var compId = QualifyId(taskNode.Id, rawCompId);
+                    var compName = comp.Attribute("name")?.Value ?? "";
+                    var compType = comp.Attribute("componentClassID")?.Value ?? "";
+
+                    var compNode = new ComponentNode
+                    {
+                        Id = compId,
+                        Name = compName,
+                        Type = ThirdPartyComponentDetector.NormalizeComponentType(compType, compName),
+                        PackageId = packageNode.Id,
+                        TaskId = taskNode.Id
+                    };
+
+                    if (ThirdPartyComponentDetector.IsScriptComponent(compType, compName))
+                    {
+                        _graph.Warnings.Add(
+                            $"Script Component '{compName}' in package '{packageNode.Name}' — only its declared input/output columns are captured; transformation logic inside the script is opaque.");
+                    }
+                    else if (ThirdPartyComponentDetector.IsLikelyThirdParty(compType, compName))
+                    {
+                        _graph.Warnings.Add(
+                            $"Third-party or custom component '{compName}' (XML fallback) — lineage metadata may be incomplete.");
+                    }
+
+                    // Connection manager for this component
+                    var compCm = comp.Descendants()
+                        .FirstOrDefault(x => x.Name.LocalName == "connection" && (x.Attribute("connectionManagerRefId") != null || x.Attribute("connectionManagerID") != null));
+                    if (compCm != null)
+                    {
+                        var cmRef = compCm.Attribute("connectionManagerRefId")?.Value ?? compCm.Attribute("connectionManagerID")?.Value ?? "";
+                        compNode.ConnectionManager = cmRef.Contains(":") ? cmRef.Split(':').Last() : cmRef;
+                    }
+
+                    // SQL statement or table name property
+                    var sqlProp = comp.Descendants()
+                        .FirstOrDefault(x => x.Name.LocalName == "property" && (x.Attribute("name")?.Value == "SqlCommand" || x.Attribute("name")?.Value == "OpenRowset"));
+                    if (sqlProp != null && !string.IsNullOrWhiteSpace(sqlProp.Value))
+                    {
+                        compNode.SqlQueryOrTable = sqlProp.Value;
+                    }
+
+                    _graph.Components.Add(compNode);
+
+                    // Extract input columns and mappings
+                    var inputCols = comp.Descendants()
+                        .Where(x => x.Name.LocalName == "inputColumn");
+                    foreach (var inCol in inputCols)
+                    {
+                        var lineageId = inCol.Attribute("lineageId")?.Value ?? inCol.Attribute("id")?.Value ?? "";
+                        var sourceCompId = ResolveComponentIdFromLineageId(exeNode, lineageId);
+                        var sourceCompName = ResolveComponentName(sourceCompId, exeNode);
+                        var sourceColName = ResolveColumnNameFromLineageId(exeNode, lineageId, inCol.Attribute("name")?.Value ?? "");
+                        var targetColName = GetTargetColumnName(inCol);
+
+                        _graph.ColumnMappings.Add(new ColumnMap
+                        {
+                            PackageId = packageNode.Id,
+                            TaskId = taskNode.Id,
+                            SourceComponentId = sourceCompId,
+                            SourceComponentName = sourceCompName,
+                            SourceColumnName = sourceColName,
+                            TargetComponentId = compId,
+                            TargetComponentName = compName,
+                            TargetColumnName = targetColName,
+                            OperationType = compNode.Type ?? "DataFlow"
+                        });
+                    }
 
                     // These are NOT captured by the inputColumn loop above (which only sees downstream
                     // consumers), so we add them here as ColumnMaps with SourceExpression filled in.
