@@ -424,6 +424,54 @@ else if (_reportData == null)
         StateHasChanged();
     }
 
+    private string GetExportZipFileName()
+    {
+        string projName = "";
+
+        if (_reportData?.Summary != null && _reportData.Summary.TryGetValue("projectName", out var nameObj) && nameObj != null)
+        {
+            projName = nameObj.ToString() ?? "";
+        }
+
+        if (string.IsNullOrWhiteSpace(projName) && !string.IsNullOrWhiteSpace(_reportData?.ProjectPath))
+        {
+            projName = System.IO.Path.GetFileName(_reportData.ProjectPath.TrimEnd('/', '\\'));
+        }
+
+        if (string.IsNullOrWhiteSpace(projName) && _reportData?.Graph?.Packages?.Count > 0)
+        {
+            var firstPkg = _reportData.Graph.Packages[0];
+            if (!string.IsNullOrWhiteSpace(firstPkg.ProjectPath))
+            {
+                var projFiles = System.IO.Directory.Exists(firstPkg.ProjectPath) 
+                    ? System.IO.Directory.EnumerateFiles(firstPkg.ProjectPath, "*.dtproj").ToList() 
+                    : new List<string>();
+                if (projFiles.Any())
+                {
+                    projName = System.IO.Path.GetFileNameWithoutExtension(projFiles.First());
+                }
+                else
+                {
+                    projName = System.IO.Path.GetFileName(firstPkg.ProjectPath.TrimEnd('/', '\\'));
+                }
+            }
+            if (string.IsNullOrWhiteSpace(projName) && !string.IsNullOrWhiteSpace(firstPkg.Name))
+            {
+                projName = firstPkg.Name;
+            }
+        }
+
+        if (string.IsNullOrWhiteSpace(projName) || projName.Equals("lineage.json", StringComparison.OrdinalIgnoreCase))
+        {
+            projName = "SSIS_Migration_Project";
+        }
+
+        var cleanName = System.Text.RegularExpressions.Regex.Replace(projName, @"[^\w\-]", "_").Trim('_');
+        if (string.IsNullOrEmpty(cleanName)) cleanName = "SSIS_Migration_Project";
+
+        return $"{cleanName}_Migration.zip";
+    }
+
     private async Task DownloadProjectWorkspace()
     {
         if (_reportData?.Graph == null) return;
@@ -433,8 +481,9 @@ else if (_reportData == null)
             var templatePath = System.IO.Path.Combine(System.IO.Directory.GetCurrentDirectory(), "wwwroot", "templates", "data_engineering_project_template.zip");
             var zipBytes = ProjectExportService.ExportToTemplateZip(_reportData.Graph, templatePath);
             var base64 = Convert.ToBase64String(zipBytes);
-            await JS.InvokeVoidAsync("downloadFileFromBase64", "Modern_Data_Engineering_Project.zip", base64);
-            Snackbar.Add("Project exported successfully!", Severity.Success);
+            var zipFileName = GetExportZipFileName();
+            await JS.InvokeVoidAsync("downloadFileFromBase64", zipFileName, base64);
+            Snackbar.Add($"Project exported successfully as '{zipFileName}'!", Severity.Success);
         }
         catch (Exception ex)
         {

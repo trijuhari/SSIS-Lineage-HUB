@@ -920,7 +920,7 @@ namespace SsisLineage.Core
                         .Where(x => x.Name.LocalName == "inputColumn");
                     foreach (var inCol in inputCols)
                     {
-                        var lineageId = inCol.Attribute("lineageId")?.Value ?? inCol.Attribute("id")?.Value ?? "";
+                        var lineageId = inCol.Attribute("cachedLineageId")?.Value ?? inCol.Attribute("lineageId")?.Value ?? inCol.Attribute("id")?.Value ?? "";
                         var fallbackColName = inCol.Attribute("name")?.Value ?? inCol.Attribute("cachedName")?.Value ?? "";
                         var sourceColName = ResolveColumnNameFromLineageId(exeNode, lineageId, fallbackColName);
                         if (string.IsNullOrEmpty(sourceColName)) sourceColName = fallbackColName;

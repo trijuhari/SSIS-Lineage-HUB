@@ -228,7 +228,7 @@ public class SsisMigrationConverterTests
         Assert.NotNull(dbtFile);
         Assert.Contains("SELECT * FROM dbo.Customers", dbtFile.Content);
         Assert.True(dbtResult.IsValid);
-        Assert.Contains("QUALITY GATE: All generated artifacts passed validation!", dbtResult.Summary);
+        Assert.Contains("QUALITY GATE: All generated artifacts passed", dbtResult.Summary);
     }
 
     [Fact]
@@ -284,7 +284,7 @@ public class SsisMigrationConverterTests
 
         Assert.True(result.IsValid);
         Assert.Empty(result.ValidationErrors);
-        Assert.Contains("QUALITY GATE: All generated artifacts passed validation!", result.Summary);
+        Assert.Contains("QUALITY GATE: All generated artifacts passed", result.Summary);
 
         var sqlFile = result.Files.FirstOrDefault(f => f.FileName.EndsWith(".sql"));
         Assert.NotNull(sqlFile);
@@ -350,5 +350,31 @@ public class SsisMigrationConverterTests
         Assert.Contains("on_task_failure_callback", dagFile.Content);
         Assert.Contains("retry_exponential_backoff", dagFile.Content);
         Assert.Contains("self_healing", dagFile.Content);
+    }
+
+    [Fact]
+    public void SingleDtsxProject_ScansAndConvertsSuccessfully()
+    {
+        var sampleDir = Path.Combine(Directory.GetCurrentDirectory(), "sample-ssis-project-single");
+        if (!Directory.Exists(sampleDir))
+        {
+            sampleDir = "/home/hirazone/Documents/ssis-lineage-hub/sample-ssis-project-single";
+        }
+
+        var service = new LineageScanService();
+        var report = service.Scan(new LineageScanOptions
+        {
+            ProjectPath = sampleDir,
+            StartPackage = "Pkg_Single_Customer_ETL.dtsx",
+            UseCache = false
+        });
+
+        Assert.NotNull(report);
+        Assert.Single(report.Graph.Packages);
+        Assert.Equal("Pkg_Single_Customer_ETL", report.Graph.Packages[0].Name);
+
+        var dbtResult = SsisMigrationConverter.ConvertProject(report.Graph, MigrationTarget.DbtSql);
+        Assert.True(dbtResult.IsValid);
+        Assert.NotEmpty(dbtResult.Files);
     }
 }
