@@ -93,7 +93,16 @@ namespace SsisLineage.Core
             foreach (var pkg in packages)
             {
                 var pkgComponents = graph.Components.Where(c => c.PackageId == pkg.Id).ToList();
+                var pkgTasks = graph.Tasks.Where(t => t.PackageId == pkg.Id).ToList();
                 var pkgMappings = graph.ColumnMappings.Where(m => m.PackageId == pkg.Id && (m.OperationType == null || !m.OperationType.StartsWith("SQL_PROC_"))).ToList();
+
+                var dataFlowTasks = pkgTasks.Where(t => t.Type != null && t.Type.Contains("Data Flow", StringComparison.OrdinalIgnoreCase)).ToList();
+
+                // Skip Master Orchestration packages (e.g. Pkg_00_Master_ETL_Orchestration) that have no Data Flow components
+                if (pkg.Name.Contains("Master", StringComparison.OrdinalIgnoreCase) && !pkgComponents.Any(c => c.Type != null && c.Type.Contains("Source", StringComparison.OrdinalIgnoreCase)))
+                {
+                    continue;
+                }
 
                 var modelName = CleanIdentifier(pkg.Name).ToLowerInvariant();
                 if (modelName.StartsWith("pkg_")) modelName = modelName.Substring(4);
@@ -153,9 +162,9 @@ namespace SsisLineage.Core
                     ?? destinations.FirstOrDefault();
                 var rawLandingTable = primaryDestination != null && !string.IsNullOrEmpty(primaryDestination.SqlQueryOrTable)
                     ? primaryDestination.SqlQueryOrTable
-                    : "fact_target";
+                    : ("dbo_stg_" + CleanIdentifier(pkg.Name));
                 var landingTable = Regex.Replace(rawLandingTable, @"[\[\]]", "").Replace(".", "_").Trim();
-                if (string.IsNullOrEmpty(landingTable)) landingTable = "fact_target";
+                if (string.IsNullOrEmpty(landingTable)) landingTable = "dbo_stg_" + CleanIdentifier(pkg.Name);
 
                 sb.AppendLine("WITH source_data AS (");
                 sb.AppendLine($"    -- Extracted from Landing Zone (Populated by Python)");
@@ -365,12 +374,29 @@ namespace SsisLineage.Core
                                     srcPrefix = $"lookup_{lkpIdxByTargetCol}";
                                 }
                             }
-                            // Strategy 4: If lookup CTE exists, check known lookup attributes (CustomerName, CustomerSegment, etc.)
+                            // Strategy 4: If lookup CTE exists, check known lookup attributes or dimension attributes (DateKey, FullDate, BranchKey, BranchName, RegionCode, etc.)
                             else if (totalLookupCtes > 0)
                             {
-                                var lowerCol = (sourceCol ?? m.TargetColumnName ?? "").ToLowerInvariant();
-                                if (lowerCol.Contains("customername") || lowerCol.Contains("customersegment") ||
-                                    lowerCol.Contains("segment") || lowerCol.Contains("lookup"))
+                                var colToCheck = (sourceCol ?? m.TargetColumnName ?? "");
+                                var lowerCol = colToCheck.ToLowerInvariant();
+                                if (lookupColumnIndex.TryGetValue(colToCheck, out var matchedLkpIdx))
+                                {
+                                    srcPrefix = $"lookup_{matchedLkpIdx}";
+                                }
+                                else if (lowerCol.Contains("fulldate") || lowerCol.Contains("datekey"))
+                                {
+                                    // Map date dimension columns to lookup matching dim.Date if present, or lookup_1
+                                    srcPrefix = lookupColumnIndex.TryGetValue("FullDate", out var dtIdx) ? $"lookup_{dtIdx}" :
+                                               lookupColumnIndex.TryGetValue("DateKey", out dtIdx) ? $"lookup_{dtIdx}" :
+                                               (totalLookupCtes > 1 ? "lookup_1" : "lookup_0");
+                                }
+                                else if (lowerCol.Contains("branchkey") || lowerCol.Contains("branchname") || lowerCol.Contains("regioncode"))
+                                {
+                                    srcPrefix = lookupColumnIndex.TryGetValue("BranchKey", out var brIdx) ? $"lookup_{brIdx}" :
+                                               lookupColumnIndex.TryGetValue("BranchCode", out brIdx) ? $"lookup_{brIdx}" : "lookup_0";
+                                }
+                                else if (lowerCol.Contains("customername") || lowerCol.Contains("customersegment") ||
+                                         lowerCol.Contains("segment") || lowerCol.Contains("lookup"))
                                 {
                                     srcPrefix = "lookup_0";
                                 }
@@ -434,15 +460,14 @@ namespace SsisLineage.Core
                         })
                         .ToList();
 
-                    if (joinKeyCandidates.Any())
+                    var joinKey = joinKeyCandidates.FirstOrDefault();
+                    if (string.IsNullOrEmpty(joinKey))
                     {
-                        var joinKey = joinKeyCandidates.First();
-                        sb.AppendLine($"    LEFT JOIN lookup_{i} ON source_data.{joinKey} = lookup_{i}.{joinKey}");
+                        joinKey = pkgMappings.Select(m => m.SourceColumnName)
+                                             .FirstOrDefault(c => !string.IsNullOrEmpty(c) && !c.Contains("Name", StringComparison.OrdinalIgnoreCase) && !c.Contains("Segment", StringComparison.OrdinalIgnoreCase) && (c.EndsWith("Code", StringComparison.OrdinalIgnoreCase) || c.EndsWith("Key", StringComparison.OrdinalIgnoreCase) || c.EndsWith("Id", StringComparison.OrdinalIgnoreCase) || c.EndsWith("Date", StringComparison.OrdinalIgnoreCase)))
+                                  ?? "CustomerId";
                     }
-                    else
-                    {
-                        sb.AppendLine($"    LEFT JOIN lookup_{i} ON 1=1 /* TODO: Replace with actual Join Condition */");
-                    }
+                    sb.AppendLine($"    LEFT JOIN lookup_{i} ON source_data.{joinKey} = lookup_{i}.{joinKey}");
                 }
                 sb.AppendLine(")");
                 sb.AppendLine();
@@ -1351,36 +1376,44 @@ namespace SsisLineage.Core
                     // 1. Check for raw table names without SELECT/WITH in CTEs
                     if (Regex.IsMatch(file.Content, @"AS\s*\(\s*(?!SELECT|WITH)[a-zA-Z0-9_\[\]\.]+\s*\)", RegexOptions.IgnoreCase))
                     {
-                        var msg = $"[SQL Validation] File '{file.FileName}' contains CTE with raw table name instead of SELECT statement.";
+                        var msg = $"[SQL Validation Error] File '{file.FileName}' contains CTE with raw table name instead of SELECT statement.";
                         result.ValidationErrors.Add(msg);
                     }
 
-                    // 2. Check for double-quoted strings in dbt models
+                    // 2. Check for unresolved join condition fallback (ON 1=1)
+                    if (file.Content.Contains("ON 1=1"))
+                    {
+                        var msg = $"[SQL Validation Error] File '{file.FileName}' contains unresolved lookup join condition 'ON 1=1'. Please verify DTSX JoinKey or Column Mappings.";
+                        result.ValidationErrors.Add(msg);
+                    }
+
+                    // 3. Check for placeholder table names like fact_target
+                    if (file.Content.Contains("FROM fact_target") || file.Content.Contains("FROM staging.raw_source"))
+                    {
+                        var msg = $"[SQL Validation Error] File '{file.FileName}' contains unresolved placeholder table reference.";
+                        result.ValidationErrors.Add(msg);
+                    }
+
+                    // 4. Check for double-quoted strings in dbt models
                     if (Regex.IsMatch(file.Content, @"THEN\s*""[^""]+""", RegexOptions.IgnoreCase) || Regex.IsMatch(file.Content, @"ELSE\s*""[^""]+""", RegexOptions.IgnoreCase))
                     {
-                        var msg = $"[SQL Validation] File '{file.FileName}' contains double-quoted string literals. Standardizing to single quotes.";
+                        var msg = $"[SQL Validation Warning] File '{file.FileName}' contains double-quoted string literals. Standardizing to single quotes.";
                         result.Warnings.Add(msg);
                     }
 
-                    // 3. Check for mis-attributed lookup columns
-                    var lines = file.Content.Split('\n');
-                    foreach (var line in lines)
+                    // 5. Check for mis-attributed lookup dimension columns (e.g. source_data.CustomerName instead of lookup_0.CustomerName)
+                    if ((file.Content.Contains("lookup_0") || file.Content.Contains("lookup_1")) &&
+                        Regex.IsMatch(file.Content, @"\bsource_data\.(CustomerName|CustomerSegment|FullDate|DateKey|BranchKey|BranchName|RegionCode)\b", RegexOptions.IgnoreCase))
                     {
-                        if (line.Contains("source_data.") && file.Content.Contains("lookup_0"))
-                        {
-                            if (line.Contains("CustomerName") || line.Contains("CustomerSegment"))
-                            {
-                                var msg = $"[SQL Validation Error] File '{file.FileName}' incorrectly attributes lookup column to source_data.";
-                                result.ValidationErrors.Add(msg);
-                            }
-                        }
+                        var msg = $"[SQL Validation Error] File '{file.FileName}' incorrectly attributes lookup dimension column to source_data.";
+                        result.ValidationErrors.Add(msg);
                     }
                 }
                 else if (file.Language == "python")
                 {
                     if (file.Content.Contains("extract_query = \"") && !file.Content.Contains("SELECT") && !file.Content.Contains("WITH"))
                     {
-                        var msg = $"[Python Validation] File '{file.FileName}' extract_query is a raw table name without SELECT * FROM.";
+                        var msg = $"[Python Validation Error] File '{file.FileName}' extract_query is a raw table name without SELECT * FROM.";
                         result.ValidationErrors.Add(msg);
                     }
                 }
@@ -1418,19 +1451,7 @@ namespace SsisLineage.Core
 
         private static (string Server, string Database) ResolveDatabaseAndServer(LineageGraph graph, PackageNode pkg, ComponentNode? comp, bool isDestination)
         {
-            // 1. First check ColumnMappings for this package
-            if (isDestination)
-            {
-                var map = graph.ColumnMappings.FirstOrDefault(m => m.PackageId == pkg.Id && !string.IsNullOrEmpty(m.TargetDatabase));
-                if (map != null && !string.IsNullOrEmpty(map.TargetDatabase)) return (map.TargetServer, map.TargetDatabase);
-            }
-            else
-            {
-                var map = graph.ColumnMappings.FirstOrDefault(m => m.PackageId == pkg.Id && !string.IsNullOrEmpty(m.SourceDatabase));
-                if (map != null && !string.IsNullOrEmpty(map.SourceDatabase)) return (map.SourceServer, map.SourceDatabase);
-            }
-
-            // 2. Check component ConnectionManager via SsisConnectionManagerResolver
+            // 1. Check component ConnectionManager directly via SsisConnectionManagerResolver (most specific)
             if (comp != null && !string.IsNullOrEmpty(comp.ConnectionManager))
             {
                 var resolver = new SsisConnectionManagerResolver(pkg.ProjectPath);
@@ -1440,6 +1461,34 @@ namespace SsisLineage.Core
                     var (s, d) = SqlProcedureDefinitionLoader.ExtractServerAndDatabase(connStr);
                     if (!string.IsNullOrEmpty(d)) return (s, d);
                 }
+            }
+
+            // 2. Check ColumnMappings matching this specific component (if comp is provided)
+            if (comp != null)
+            {
+                var compMap = graph.ColumnMappings.FirstOrDefault(m => m.PackageId == pkg.Id &&
+                    (isDestination ? (m.TargetComponentId == comp.Id || m.TargetComponentName == comp.Name)
+                                   : (m.SourceComponentId == comp.Id || m.SourceComponentName == comp.Name)) &&
+                    !string.IsNullOrEmpty(isDestination ? m.TargetDatabase : m.SourceDatabase));
+
+                if (compMap != null)
+                {
+                    var db = isDestination ? compMap.TargetDatabase : compMap.SourceDatabase;
+                    var srv = isDestination ? compMap.TargetServer : compMap.SourceServer;
+                    if (!string.IsNullOrEmpty(db)) return (srv, db);
+                }
+            }
+
+            // 3. Fall back to package ColumnMappings
+            if (isDestination)
+            {
+                var map = graph.ColumnMappings.FirstOrDefault(m => m.PackageId == pkg.Id && !string.IsNullOrEmpty(m.TargetDatabase));
+                if (map != null && !string.IsNullOrEmpty(map.TargetDatabase)) return (map.TargetServer, map.TargetDatabase);
+            }
+            else
+            {
+                var map = graph.ColumnMappings.FirstOrDefault(m => m.PackageId == pkg.Id && !string.IsNullOrEmpty(m.SourceDatabase));
+                if (map != null && !string.IsNullOrEmpty(map.SourceDatabase)) return (map.SourceServer, map.SourceDatabase);
             }
 
             // 3. Check any matching component in the package
