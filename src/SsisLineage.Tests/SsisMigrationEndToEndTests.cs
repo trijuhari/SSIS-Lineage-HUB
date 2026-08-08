@@ -325,6 +325,38 @@ public class SsisMigrationEndToEndTests
     }
 
     [Fact]
+    public void SampleProject7_FullProject_ValidationTest()
+    {
+        var projectDir = Path.Combine(
+            Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!,
+            "..", "..", "..", "..", "..", "sample-ssis-project-7");
+        projectDir = Path.GetFullPath(projectDir);
+
+        if (!Directory.Exists(projectDir))
+            return;
+
+        var parser = new SsisPackageParser(projectDir);
+        var pkgFiles = Directory.GetFiles(projectDir, "*.dtsx");
+        var graph = parser.ParseMultiple(pkgFiles);
+
+        Assert.Equal(4, graph.Packages.Count);
+
+        var result = SsisMigrationConverter.ConvertProject(graph, MigrationTarget.DbtSql);
+        Assert.True(result.IsValid, $"Validation failed with errors: {string.Join("; ", result.ValidationErrors)}");
+
+        var pythonResult = SsisMigrationConverter.ConvertProject(graph, MigrationTarget.PythonPandas);
+        Assert.NotEmpty(pythonResult.Files);
+
+        var inventoryFile = pythonResult.Files.FirstOrDefault(f => f.FileName.Contains("warehouse"));
+        Assert.NotNull(inventoryFile);
+        Assert.Contains("DATABASE=WarehouseWmsDB", inventoryFile.Content);
+
+        var logisticsFile = pythonResult.Files.FirstOrDefault(f => f.FileName.Contains("shipment"));
+        Assert.NotNull(logisticsFile);
+        Assert.Contains("DATABASE=SupplyChainDB", logisticsFile.Content);
+    }
+
+    [Fact]
     public void SampleProject6_MasterOrchestration_ParseTest()
     {
         var projectDir = Path.Combine(
