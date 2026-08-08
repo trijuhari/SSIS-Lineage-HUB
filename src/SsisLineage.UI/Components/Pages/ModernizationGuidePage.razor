@@ -10,10 +10,13 @@
             Modernization Knowledge Base
         </MudText>
         <MudText Typo="Typo.body2" Color="Color.Secondary">
-            Comprehensive guidelines for migrating SSIS to the Modern Data Stack (dbt, Python, Airflow).
+            Comprehensive guidelines and pre-migration rules for migrating SSIS (.dtsx) packages to the Modern Data Stack (dbt, Python, Airflow).
         </MudText>
     </div>
-    <MudChip T="string" Color="Color.Tertiary" Variant="Variant.Filled" Style="font-weight:700;">STRATEGY 2026</MudChip>
+    <div class="d-flex gap-2">
+        <MudChip T="string" Color="Color.Tertiary" Variant="Variant.Filled" Style="font-weight:700;">STRATEGY 2026</MudChip>
+        <MudChip T="string" Color="Color.Info" Variant="Variant.Outlined" Style="font-weight:700;">10 PRE-MIGRATION RULES</MudChip>
+    </div>
 </div>
 
 <MudTabs Elevation="2" Rounded="true" ApplyEffectsToPanels="true" PanelClass="pa-4" Class="mt-6">
@@ -50,6 +53,122 @@
                 </MudPaper>
             </MudItem>
         </MudGrid>
+    </MudTabPanel>
+
+    <MudTabPanel Text="Aturan Pre-Migrasi DTSX" Icon="@Icons.Material.Filled.FactCheck">
+        <div class="mb-4 d-flex justify-space-between align-center flex-wrap gap-4">
+            <div>
+                <MudText Typo="Typo.h6" Class="font-weight-bold">Aturan & Panduan Penting Sebelum Migrasi DTSX</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Checklist & standar wajib yang harus diperhatikan dan divalidasi sebelum mengonversi paket SSIS (.dtsx) ke Airflow & dbt.
+                </MudText>
+            </div>
+            <div class="d-flex align-center gap-3">
+                <MudChip T="string" Color="Color.Error" Size="Size.Small" Variant="Variant.Filled">Critical: @Rules.Count(r => r.Severity == SeverityLevel.Critical)</MudChip>
+                <MudChip T="string" Color="Color.Warning" Size="Size.Small" Variant="Variant.Filled">High: @Rules.Count(r => r.Severity == SeverityLevel.High)</MudChip>
+                <MudChip T="string" Color="Color.Info" Size="Size.Small" Variant="Variant.Filled">Medium: @Rules.Count(r => r.Severity == SeverityLevel.High)</MudChip>
+            </div>
+        </div>
+
+        <MudGrid Class="mb-4">
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-3 text-center" Style="border: 1px solid var(--mud-palette-lines-default);">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">TOTAL RULES</MudText>
+                    <MudText Typo="Typo.h5" Class="font-weight-bold color-tertiary">@Rules.Count</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-3 text-center" Style="border: 1px solid var(--mud-palette-lines-default);">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">CRITICAL MANDATORY</MudText>
+                    <MudText Typo="Typo.h5" Class="font-weight-bold" Color="Color.Error">@Rules.Count(r => r.Severity == SeverityLevel.Critical)</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-3 text-center" Style="border: 1px solid var(--mud-palette-lines-default);">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">HIGH PRIORITY</MudText>
+                    <MudText Typo="Typo.h5" Class="font-weight-bold" Color="Color.Warning">@Rules.Count(r => r.Severity == SeverityLevel.High)</MudText>
+                </MudPaper>
+            </MudItem>
+            <MudItem xs="12" sm="6" md="3">
+                <MudPaper Class="pa-3 text-center" Style="border: 1px solid var(--mud-palette-lines-default);">
+                    <MudText Typo="Typo.caption" Color="Color.Secondary">VERIFIED CHECKLIST</MudText>
+                    <MudText Typo="Typo.h5" Class="font-weight-bold" Color="Color.Success">@CheckedRuleIds.Count / @Rules.Count</MudText>
+                </MudPaper>
+            </MudItem>
+        </MudGrid>
+
+        <div class="d-flex align-center gap-2 mb-4">
+            <MudText Typo="Typo.body2" Class="font-weight-bold">Filter Severity:</MudText>
+            <MudChipSet T="string" SelectedChipChanged="OnFilterChanged">
+                <MudChip T="string" Text="All" Color="Color.Default" Variant="@(SelectedSeverityFilter == "All" ? Variant.Filled : Variant.Outlined)">All (@Rules.Count)</MudChip>
+                <MudChip T="string" Text="Critical" Color="Color.Error" Variant="@(SelectedSeverityFilter == "Critical" ? Variant.Filled : Variant.Outlined)">Critical</MudChip>
+                <MudChip T="string" Text="High" Color="Color.Warning" Variant="@(SelectedSeverityFilter == "High" ? Variant.Filled : Variant.Outlined)">High</MudChip>
+                <MudChip T="string" Text="Medium" Color="Color.Info" Variant="@(SelectedSeverityFilter == "Medium" ? Variant.Filled : Variant.Outlined)">Medium</MudChip>
+            </MudChipSet>
+        </div>
+
+        <MudExpansionPanels MultiExpansion="true" Elevation="1">
+            @foreach (var rule in FilteredRules)
+            {
+                var isChecked = CheckedRuleIds.Contains(rule.Id);
+                <MudExpansionPanel Class="mb-2" Style="border: 1px solid var(--mud-palette-lines-default); border-radius: 8px;">
+                    <TitleContent>
+                        <div class="d-flex align-center justify-space-between w-100 pr-4">
+                            <div class="d-flex align-center gap-3">
+                                <MudCheckBox T="bool" Value="@isChecked" ValueChanged="@((val) => ToggleRuleCheck(rule.Id, val))" Color="Color.Success" StopClickPropagation="true" />
+                                <div>
+                                    <div class="d-flex align-center gap-2">
+                                        <MudText Typo="Typo.subtitle1" Class="font-weight-bold" Style="@(isChecked ? "text-decoration: line-through; opacity: 0.7;" : "")">
+                                            @rule.Id: @rule.Title
+                                        </MudText>
+                                        <MudChip T="string" Size="Size.Small" Variant="Variant.Filled" Color="@GetSeverityColor(rule.Severity)">
+                                            @rule.Severity.ToString().ToUpper()
+                                        </MudChip>
+                                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">
+                                            @rule.Category
+                                        </MudChip>
+                                    </div>
+                                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                                        @rule.ShortSummary
+                                    </MudText>
+                                </div>
+                            </div>
+                        </div>
+                    </TitleContent>
+                    <ChildContent>
+                        <MudDivider Class="my-2" />
+                        <MudGrid Class="pa-2">
+                            <MudItem xs="12" md="6">
+                                <MudText Typo="Typo.subtitle2" Class="font-weight-bold mb-1 color-tertiary">Deskripsi & Potensi Risiko</MudText>
+                                <MudText Typo="Typo.body2" Class="mb-3" Style="line-height: 1.6;">
+                                    @rule.Description
+                                </MudText>
+
+                                <MudText Typo="Typo.subtitle2" Class="font-weight-bold mb-1 color-tertiary">Langkah Verifikasi (Pre-Flight Check)</MudText>
+                                <MudAlert Severity="Severity.Normal" Variant="Variant.Outlined" Class="pa-2">
+                                    <MudText Typo="Typo.body2">@rule.ChecklistItem</MudText>
+                                </MudAlert>
+                            </MudItem>
+                            <MudItem xs="12" md="6">
+                                <MudText Typo="Typo.subtitle2" Class="font-weight-bold mb-1 text-success">
+                                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Size="Size.Small" Class="mr-1" /> Standar Target (Good Practice)
+                                </MudText>
+                                <MudPaper Class="pa-2 mb-3 font-monospace" Style="background: #1e293b; color: #38bdf8; font-size: 0.82rem; overflow-x: auto;">
+                                    <pre style="margin:0;">@rule.GoodExample</pre>
+                                </MudPaper>
+
+                                <MudText Typo="Typo.subtitle2" Class="font-weight-bold mb-1 text-danger">
+                                    <MudIcon Icon="@Icons.Material.Filled.Cancel" Size="Size.Small" Class="mr-1" /> Praktik yang Harus Dihindari (Anti-Pattern)
+                                </MudText>
+                                <MudPaper Class="pa-2 font-monospace" Style="background: #1e293b; color: #f87171; font-size: 0.82rem; overflow-x: auto;">
+                                    <pre style="margin:0;">@rule.BadExample</pre>
+                                </MudPaper>
+                            </MudItem>
+                        </MudGrid>
+                    </ChildContent>
+                </MudExpansionPanel>
+            }
+        </MudExpansionPanels>
     </MudTabPanel>
 
     <MudTabPanel Text="Target Architecture" Icon="@Icons.Material.Filled.Architecture">
@@ -171,7 +290,173 @@
 
 @code {
     private record ComponentMap(string Ssis, string Modern, string Notes);
-    
+
+    public enum SeverityLevel
+    {
+        Critical,
+        High,
+        Medium
+    }
+
+    private record PreMigrationRule(
+        string Id,
+        string Title,
+        string Category,
+        SeverityLevel Severity,
+        string ShortSummary,
+        string Description,
+        string ChecklistItem,
+        string GoodExample,
+        string BadExample
+    );
+
+    private HashSet<string> CheckedRuleIds = new();
+    private string SelectedSeverityFilter = "All";
+
+    private void ToggleRuleCheck(string id, bool isChecked)
+    {
+        if (isChecked) CheckedRuleIds.Add(id);
+        else CheckedRuleIds.Remove(id);
+    }
+
+    private void OnFilterChanged(MudChip<string> chip)
+    {
+        if (chip != null)
+        {
+            SelectedSeverityFilter = chip.Text;
+        }
+    }
+
+    private IEnumerable<PreMigrationRule> FilteredRules => SelectedSeverityFilter switch
+    {
+        "Critical" => Rules.Where(r => r.Severity == SeverityLevel.Critical),
+        "High" => Rules.Where(r => r.Severity == SeverityLevel.High),
+        "Medium" => Rules.Where(r => r.Severity == SeverityLevel.Medium),
+        _ => Rules
+    };
+
+    private Color GetSeverityColor(SeverityLevel severity) => severity switch
+    {
+        SeverityLevel.Critical => Color.Error,
+        SeverityLevel.High => Color.Warning,
+        SeverityLevel.Medium => Color.Info,
+        _ => Color.Default
+    };
+
+    private List<PreMigrationRule> Rules = new()
+    {
+        new(
+            "RULE-01",
+            "Self-Healing Staging Tables (CREATE TABLE IF NOT EXISTS)",
+            "Staging & Storage",
+            SeverityLevel.Critical,
+            "Pastikan script ekstraksi Airflow membuat tabel staging secara otomatis jika belum ada.",
+            "Saat melakukan ekstraksi data dari sumber ke database staging (seperti PostgreSQL/Snowflake), script Python atau task Airflow harus memastikan struktur DDL tabel staging dibuat otomatis jika belum ada. Tanpa DDL self-healing, DAG akan langsung gagal pada run pertama di lingkungan baru.",
+            "Periksa skrip ekstraksi Python dan task truncate_staging pada Airflow DAG untuk memastikan terdapat DDL 'CREATE TABLE IF NOT EXISTS' sebelum proses ekstraksi berjalan.",
+            "CREATE TABLE IF NOT EXISTS stg_hr_employees (\n    employee_id INT PRIMARY KEY,\n    first_name VARCHAR(50),\n    salary NUMERIC(12,2)\n);",
+            "INSERT INTO stg_hr_employees SELECT ...;\n-- Mengasumsikan tabel staging sudah dibuat manual di DB."
+        ),
+        new(
+            "RULE-02",
+            "Idempotensi Ekstraksi & Clean-Before-Insert (Truncate Staging)",
+            "Staging & Storage",
+            SeverityLevel.Critical,
+            "Lakukan TRUNCATE / pembersihan staging sebelum insert untuk mencegah duplikasi Primary Key saat retry.",
+            "Airflow DAG dirancang untuk dapat diretry kapan saja secara aman (idempotent). Jika task ekstraksi memasukkan data ke tabel staging tanpa pembersihan terlebih dahulu, percobaan ulang (retry) akan menyebabkan error 'duplicate key value violates unique constraint' atau data ganda.",
+            "Pastikan setiap task penarikan data ke staging diawali dengan 'TRUNCATE TABLE' atau operasi pembersihan idempotent yang relevan.",
+            "TRUNCATE TABLE stg_sales_transactions;\nINSERT INTO stg_sales_transactions SELECT ...;",
+            "INSERT INTO stg_sales_transactions SELECT ...;\n-- Tanpa TRUNCATE terlebih dahulu, memicu Primary Key constraint error saat DAG retry."
+        ),
+        new(
+            "RULE-03",
+            "Validasi Scope Connection Manager & Referensi Multi-Source DB",
+            "Connections & Security",
+            SeverityLevel.Critical,
+            "Audit seluruh .conmgr (Project vs Package level) dan petakan ke Airflow Connections resmi.",
+            "Paket SSIS sering menggunakan Connection Manager tingkat Project atau Package yang menunjuk ke beberapa database terpisah (misal: HR_PayrollSystem, CoreBankingLedger). Koneksi ini tidak boleh di-hardcode ke string koneksi lokal atau menggunakan database default fallback.",
+            "Audit semua file .conmgr pada solusi SSIS, lalu daftarkan koneksi tersebut di Airflow Connection Manager (misal: Airflow PostgresHook / pyodbc connections).",
+            "from airflow.providers.postgres.hooks.postgres import PostgresHook\n\nhook = PostgresHook(postgres_conn_id='hr_source_db')\nengine = hook.get_sqlalchemy_engine()",
+            "conn_str = 'Driver={SQL Server};Server=192.168.1.100;Database=SsisDemoDB;'\n# Hardcoded connection string & database fallback salah"
+        ),
+        new(
+            "RULE-04",
+            "Atribusi Kolom Lookup dbt via CTE Join (Bukan source_data)",
+            "dbt & Transformation",
+            SeverityLevel.High,
+            "Kolom hasil SSIS Lookup harus di-referensikan dari alias CTE Lookup, bukan source_data.",
+            "Dalam migrasi Lookup Transformation SSIS ke dbt SQL, data dari tabel lookup dipetakan melalui LEFT JOIN CTE. Error umum pada konverter otomatis adalah mengaitkan kolom hasil lookup ke alias 'source_data', yang menyebabkan error dbt compile 'column does not exist'.",
+            "Jalankan Quality Gate validation pada SSIS Code Migrator untuk mengonfirmasi bahwa semua kolom lookup dirujuk dengan benar ke CTE lookup terkait (misal: lkp_dept.department_name).",
+            "WITH source_data AS (\n    SELECT employee_id, dept_id FROM {{ source('hr', 'emp') }}\n),\nlkp_dept AS (\n    SELECT dept_id, dept_name FROM {{ ref('stg_departments') }}\n)\nSELECT s.employee_id, d.dept_name -- Correct lookup CTE reference\nFROM source_data s\nLEFT JOIN lkp_dept d ON s.dept_id = d.dept_id",
+            "SELECT source_data.employee_id, source_data.dept_name -- Salah! dept_name tidak ada di source_data"
+        ),
+        new(
+            "RULE-05",
+            "Standarisasi Ekspresi SSIS ke ANSI SQL Standard",
+            "dbt & Transformation",
+            SeverityLevel.High,
+            "Konversi SSIS Expression (ISNULL, FINDSTRING, GETDATE) ke fungsi SQL standar (COALESCE, POSITION, CURRENT_TIMESTAMP).",
+            "Komponen Derived Column pada SSIS sering memuat ekspresi C#-like / SSIS expression syntax yang tidak valid di ANSI SQL. Sebelum memindahkan logika ke model dbt, ekspresi harus ditransformasikan ke fungsi ANSI SQL.",
+            "Periksa node Derived Column pada .dtsx XML dan pastikan fungsi seperti ISNULL(), GETDATE(), dan SUBSTRING() (index 1) disesuaikan dengan dialect SQL target.",
+            "SELECT COALESCE(bonus_amount, 0) AS net_bonus,\n       CURRENT_TIMESTAMP AS loaded_at\nFROM source_data",
+            "SELECT ISNULL(bonus_amount) ? 0 : bonus_amount AS net_bonus, GETDATE() AS loaded_at\n-- SSIS expression syntax yang tidak didukung SQL engine"
+        ),
+        new(
+            "RULE-06",
+            "Dekopling Script Component (C# / VB.NET) ke Script Python / PySpark",
+            "Script Tasks & Code",
+            SeverityLevel.High,
+            "Refaktor kode C# pada Script Task/Component menjadi fungsi Python mandiri di Airflow.",
+            "Kode C#/VB.NET di dalam Script Task SSIS tidak dapat dijalankan secara native di Linux worker Airflow. Logika bisnis seperti pemrosesan file khusus, panggilan REST API, atau enkripsi harus direfaktor menjadi Python script atau PySpark DataFrame.",
+            "Identifikasi seluruh node ScriptTask & ScriptComponent pada package SSIS, lalu buat modul Python terpisah yang dipanggil melalui PythonOperator atau BashOperator.",
+            "# Python task di Airflow\ndef process_custom_file(**kwargs):\n    import requests\n    resp = requests.get('https://api.internal/data')\n    # Simpan ke staging table",
+            "// C# Code di Script Task SSIS\npublic void Main() {\n    System.Net.WebClient client = new System.Net.WebClient();\n    // Menjalankan DLL Windows di Linux Airflow akan gagal\n}"
+        ),
+        new(
+            "RULE-07",
+            "Pemetaan Dependencies Parent-Child Package (Execute Package Task)",
+            "Orchestration",
+            SeverityLevel.High,
+            "Gunakan TriggerDagRunOperator atau gabungkan child packages menjadi Sub-DAG / Task Group.",
+            "Paket Master SSIS sering memanggil sub-package menggunakan Execute Package Task. Saat dimigrasikan ke Airflow, hubungan ini harus dipetakan menggunakan TriggerDagRunOperator agar urutan eksekusi tetap terjaga.",
+            "Periksa paket Master ETL Orchestration (`Pkg_00_Master_ETL_Orchestration.dtsx`) dan pastikan alur dependency antar DAG terhubung dengan jelas (`dag_master >> trigger_child_dag`).",
+            "trigger_pkg_01 = TriggerDagRunOperator(\n    task_id='trigger_pkg_01',\n    trigger_dag_id='pkg_01_load_dimensions',\n    wait_for_completion=True\n)",
+            "# Membuat DAG terpisah untuk setiap sub-package tanpa Orchestration DAG parent"
+        ),
+        new(
+            "RULE-08",
+            "Pemetaan Parameter Paket & Variabel Lingkungan ke Airflow Jinja Templating",
+            "Connections & Security",
+            SeverityLevel.Medium,
+            "Petakan @[$Package::Param] dan .dtsConfig ke Airflow Variables & Params ({{ params.x }}).",
+            "Paket SSIS mengandalkan SSISDB Package Parameters dan file `.dtsConfig` untuk konfigurasi dinamis (tanggal cutoff, environment target). Di Airflow, parameter ini dimigrasikan ke `params` DAG atau Airflow Variables.",
+            "Ekstrak daftar parameter paket SSIS dan definisikan skema parameter pada file DAG Airflow.",
+            "with DAG(dag_id='etl_dag', params={'start_date': Param('2026-01-01', type='string')}):\n    # Dalam task: select * from table where date >= '{{ params.start_date }}'",
+            "-- Hardcoded value di dalam file SQL query tanpa parameterization"
+        ),
+        new(
+            "RULE-09",
+            "Strategi Precedence Constraint & Handlign Error Constraint",
+            "Orchestration",
+            SeverityLevel.Medium,
+            "Terjemahkan aturan Precedence (Success, Failure, Completion) ke Airflow trigger_rule.",
+            "Di SSIS, alur kerja dapat bercabang berdasarkan constraint Success (Panah Hijau), Failure (Panah Merah), atau Completion (Panah Biru). Di Airflow, perilaku ini diatur menggunakan parameter `trigger_rule` (misal: `all_success`, `one_failed`, `all_done`).",
+            "Audit garis penghubung antar task di SSIS Control Flow dan terjemahkan jalur failure handling ke task alert Airflow.",
+            "alert_task = PythonOperator(\n    task_id='send_error_alert',\n    python_callable=send_slack_alert,\n    trigger_rule=TriggerRule.ONE_FAILED\n)",
+            "# Mengabaikan jalur Failure constraint dari SSIS sehingga error tidak terdeteksi di Airflow"
+        ),
+        new(
+            "RULE-10",
+            "Audit Quality Gate & Paritas Rekonsiliasi Data Sebelum Deprecate DTSX",
+            "Governance & Quality",
+            SeverityLevel.Critical,
+            "Lakukan dual-run SSIS vs Airflow/dbt dan pastikan 100% row count & metric match di Reconciliation Tracker.",
+            "Sebelum mematikan paket legacy `.dtsx`, lakukan uji dual-run di lingkungan staging/prod. Uji paritas data meliputi pencocokan jumlah baris, checksum nilai numerik, dan validasi data contract.",
+            "Manfaatkan menu 'Reconciliation Tracker' pada SSIS Lineage Hub untuk membandingkan output paket SSIS legacy dengan dbt model yang baru dimigrasikan.",
+            "SELECT count(*) FROM legacy_ssis_staging;\nSELECT count(*) FROM dbt_stg_table;\n-- Pastikan diff == 0 dan Quality Gate 0 errors.",
+            "-- Langsung mematikan job SSIS di Production tanpa uji rekonsiliasi data."
+        )
+    };
+
     private List<ComponentMap> ComponentMappings = new()
     {
         new("Control Flow Precedence", "Airflow Dependencies (>>)", "Use bitshift operators in Airflow to define execution order."),
@@ -186,3 +471,4 @@
         new("Script Component", "Python / PySpark", "Translate C#/VB.NET logic into Python scripts or PySpark DataFrames.")
     };
 }
+
