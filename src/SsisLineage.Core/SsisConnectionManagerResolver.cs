@@ -206,18 +206,31 @@ namespace SsisLineage.Core
                 var connStr = FindConnectionString(root);
                 if (string.IsNullOrWhiteSpace(connStr)) return;
 
-                if (!string.IsNullOrWhiteSpace(objectName))
+                // If the object name (or fileName) has a user override, propagate
+                // the override value to all aliases (GUID, fileName) so that lookups
+                // by any reference return the overridden connection string.
+                var effectiveConnStr = connStr;
+                if (!string.IsNullOrWhiteSpace(objectName) && _overrides.TryGetValue(objectName, out var nameOverride))
                 {
-                    _connectionStrings[objectName] = connStr;
-                }
-                if (!string.IsNullOrWhiteSpace(dtsId))
-                {
-                    _connectionStrings[dtsId] = connStr;
+                    effectiveConnStr = nameOverride;
                 }
                 var fileName = Path.GetFileNameWithoutExtension(path);
-                if (!string.IsNullOrWhiteSpace(fileName))
+                if (!string.IsNullOrWhiteSpace(fileName) && _overrides.TryGetValue(fileName, out var fileOverride))
                 {
-                    _connectionStrings[fileName] = connStr;
+                    effectiveConnStr = fileOverride;
+                }
+
+                if (!string.IsNullOrWhiteSpace(objectName) && !_overrides.ContainsKey(objectName))
+                {
+                    _connectionStrings[objectName] = effectiveConnStr;
+                }
+                if (!string.IsNullOrWhiteSpace(dtsId) && !_overrides.ContainsKey(dtsId))
+                {
+                    _connectionStrings[dtsId] = effectiveConnStr;
+                }
+                if (!string.IsNullOrWhiteSpace(fileName) && !_overrides.ContainsKey(fileName))
+                {
+                    _connectionStrings[fileName] = effectiveConnStr;
                 }
             }
             catch
