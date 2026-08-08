@@ -7,170 +7,138 @@ using System.Xml.Linq;
 namespace SsisLineage.Core
 {
     /// <summary>
-    /// Resolves connection strings from SSIS project .conmgr files and package connection metadata.
+    /// Resolves connection strings from SSIS project .conmgr files, embedded package .dtsx files, and user overrides.
     /// </summary>
     public class SsisConnectionManagerResolver
     {
         private readonly Dictionary<string, string> _connectionStrings = new(StringComparer.OrdinalIgnoreCase);
-
-        // Caller-supplied overrides keyed by connection-manager name or GUID. Take precedence
-        // over the project's .conmgr values — e.g. redirect "Staging"/"DW" to a reachable server.
         private readonly Dictionary<string, string> _overrides = new(StringComparer.OrdinalIgnoreCase);
-
-        public SsisConnectionManagerResolver(string projectDirectory, IDictionary<string, string>? overrides = null)
-        {
-            if (overrides != null)
-            {
-                foreach (var kv in overrides)
-                {
-                    if (!string.IsNullOrWhiteSpace(kv.Key) && !string.IsNullOrWhiteSpace(kv.Value))
-                        _overrides[kv.Key.Trim()] = kv.Value;
-                }
-            }
-
-            if (string.IsNullOrWhiteSpace(projectDirectory) || !Directory.Exists(projectDirectory))
-            {
-                return;
-            }
-
-            foreach (var conmgrPath in Directory.EnumerateFiles(projectDirectory, "*.conmgr", SearchOption.AllDirectories))
-            {
-                TryLoadConmgrFile(conmgrPath);
-            }
-        }
 
         public IReadOnlyDictionary<string, string> ConnectionStrings => _connectionStrings;
 
-        public string? TryResolveConnectionString(string? connectionManagerRef)
+        public SsisConnectionManagerResolver()
         {
-            if (string.IsNullOrWhiteSpace(connectionManagerRef))
-            {
-                return null;
-            }
-
-            // Overrides win over the project's .conmgr values; same matching either way.
-            return MatchIn(_overrides, connectionManagerRef) ?? MatchIn(_connectionStrings, connectionManagerRef);
         }
 
-        // Resolve a connection-manager reference against a key→value map: exact ref, bare GUID,
-        // extracted name, then a substring fallback (handles suffixes like "{guid}:external").
-        private static string? MatchIn(Dictionary<string, string> map, string connectionManagerRef)
+        public SsisConnectionManagerResolver(string? projectDirectory, IDictionary<string, string>? overrides = null)
         {
-            if (map.Count == 0) return null;
-            var trimmed = connectionManagerRef.Trim();
-
-            if (map.TryGetValue(trimmed, out var direct)) return direct;
-
-            var bareGuid = trimmed.Trim('{', '}');
-            if (!string.IsNullOrEmpty(bareGuid) && map.TryGetValue(bareGuid, out var byGuid)) return byGuid;
-
-            var name = ExtractConnectionManagerName(connectionManagerRef);
-            if (!string.IsNullOrEmpty(name) && map.TryGetValue(name, out var byName)) return byName;
-
-            foreach (var pair in map)
+            if (overrides != null)
             {
-                if (connectionManagerRef.Contains(pair.Key, StringComparison.OrdinalIgnoreCase))
+                foreach (var (k, v) in overrides)
                 {
-                    return pair.Value;
+                    _overrides[k] = v;
+                    _connectionStrings[k] = v;
                 }
             }
-            return null;
+
+            if (!string.IsNullOrWhiteSpace(projectDirectory) && Directory.Exists(projectDirectory))
+            {
+                ScanDirectory(projectDirectory);
+            }
+        }
+
+        public void AddConnection(string nameOrId, string connectionString)
+        {
+            if (string.IsNullOrWhiteSpace(nameOrId) || string.IsNullOrWhiteSpace(connectionString)) return;
+            _connectionStrings[nameOrId] = connectionString;
         }
 
         public string? TryResolveFirstSqlConnectionString()
         {
-            foreach (var value in _connectionStrings.Values)
+            return _overrides.Values.FirstOrDefault(LooksLikeSqlConnection)
+                ?? _connectionStrings.Values.FirstOrDefault(LooksLikeSqlConnection);
+        }
+
+        public string? TryResolveConnectionString(string? reference)
+        {
+            if (string.IsNullOrWhiteSpace(reference))
             {
-                if (LooksLikeSqlConnection(value))
+                return null;
+            }
+
+            if (_overrides.TryGetValue(reference, out var overrideValue) && !string.IsNullOrWhiteSpace(overrideValue))
+            {
+                return overrideValue;
+            }
+
+            if (_connectionStrings.TryGetValue(reference, out var exactMatch) && !string.IsNullOrWhiteSpace(exactMatch))
+            {
+                return exactMatch;
+            }
+
+            var cleanName = ExtractConnectionManagerName(reference);
+            if (!string.IsNullOrWhiteSpace(cleanName))
+            {
+                if (_overrides.TryGetValue(cleanName, out overrideValue) && !string.IsNullOrWhiteSpace(overrideValue))
                 {
-                    return value;
+                    return overrideValue;
                 }
+
+                if (_connectionStrings.TryGetValue(cleanName, out var match) && !string.IsNullOrWhiteSpace(match))
+                {
+                    return match;
+                }
+
+                var fuzzy = _connectionStrings.FirstOrDefault(kv =>
+                    kv.Key.Contains(cleanName, StringComparison.OrdinalIgnoreCase) ||
+                    cleanName.Contains(kv.Key, StringComparison.OrdinalIgnoreCase));
+                if (!string.IsNullOrWhiteSpace(fuzzy.Value))
+                {
+                    return fuzzy.Value;
+                }
+            }
+
+            if (LooksLikeSqlConnection(reference))
+            {
+                return reference;
             }
 
             return null;
         }
 
-        private void TryLoadConmgrFile(string path)
-        {
-            try
-            {
-                var doc = XDocument.Load(path);
-                var root = doc.Root;
-                if (root == null)
-                {
-                    return;
-                }
-
-                XNamespace dts = "www.microsoft.com/SqlServer/Dts";
-                var objectName = root.Attribute(dts + "ObjectName")?.Value
-                    ?? root.Attribute("ObjectName")?.Value
-                    ?? Path.GetFileNameWithoutExtension(path);
-
-                var connectionString = FindConnectionString(root);
-                if (string.IsNullOrWhiteSpace(connectionString))
-                {
-                    return;
-                }
-
-                _connectionStrings[objectName] = connectionString;
-
-                var aliases = new List<string> { objectName };
-                var dtsId = root.Attribute(dts + "DTSID")?.Value?.Trim();
-                if (!string.IsNullOrEmpty(dtsId))
-                {
-                    var bareId = dtsId.Trim('{', '}');
-                    var braced = "{" + bareId + "}";
-                    _connectionStrings[dtsId] = connectionString;
-                    _connectionStrings[bareId] = connectionString;
-                    _connectionStrings[braced] = connectionString;
-                    aliases.Add(dtsId);
-                    aliases.Add(bareId);
-                    aliases.Add(braced);
-                }
-
-                // If any alias of this manager is overridden, propagate the override to ALL its
-                // aliases so a name-keyed override matches a GUID reference (and vice versa).
-                var overrideValue = aliases
-                    .Select(a => _overrides.TryGetValue(a, out var v) ? v : null)
-                    .FirstOrDefault(v => v != null);
-                if (overrideValue != null)
-                {
-                    foreach (var a in aliases) _overrides[a] = overrideValue;
-                }
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[Warning] Failed to read connection manager file {path}: {ex.Message}");
-            }
-        }
-
-        private static string? FindConnectionString(XElement root)
+        public static string? FindConnectionString(XElement element)
         {
             XNamespace dts = "www.microsoft.com/SqlServer/Dts";
 
-            foreach (var element in root.Descendants())
+            var attrNames = new[] { "ConnectionString", "ConnectionManagerConnectionString", "CreationName" };
+            foreach (var attrName in attrNames)
             {
-                if (element.Name.LocalName.Equals("EncryptedData", StringComparison.OrdinalIgnoreCase))
-                {
-                    continue;
-                }
+                var dtsAttr = element.Attribute(dts + attrName);
+                if (dtsAttr != null && LooksLikeSqlConnection(dtsAttr.Value))
+                    return dtsAttr.Value;
 
-                var attributeValue = element.Attribute(dts + "ConnectionString")?.Value
-                    ?? element.Attribute("ConnectionString")?.Value;
-                if (!string.IsNullOrWhiteSpace(attributeValue))
-                {
-                    return attributeValue.Trim();
-                }
+                var plainAttr = element.Attribute(attrName);
+                if (plainAttr != null && LooksLikeSqlConnection(plainAttr.Value))
+                    return plainAttr.Value;
+            }
 
-                var localName = element.Name.LocalName;
-                if (localName.Equals("connectionString", StringComparison.OrdinalIgnoreCase)
-                    || localName.Equals("ConnectionString", StringComparison.OrdinalIgnoreCase))
+            var connStrProp = element.Descendants(dts + "Property")
+                .FirstOrDefault(p => string.Equals(p.Attribute(dts + "Name")?.Value, "ConnectionString", StringComparison.OrdinalIgnoreCase)
+                                  || string.Equals(p.Attribute("Name")?.Value, "ConnectionString", StringComparison.OrdinalIgnoreCase));
+            if (connStrProp != null && LooksLikeSqlConnection(connStrProp.Value))
+                return connStrProp.Value;
+
+            var objData = element.Element(dts + "ObjectData") ?? element.Element("ObjectData");
+            if (objData != null)
+            {
+                foreach (var descendant in objData.Descendants())
                 {
-                    var value = element.Value?.Trim();
-                    if (!string.IsNullOrEmpty(value))
+                    foreach (var attr in descendant.Attributes())
                     {
-                        return value;
+                        if (LooksLikeSqlConnection(attr.Value))
+                            return attr.Value;
                     }
+                    if (LooksLikeSqlConnection(descendant.Value))
+                        return descendant.Value;
+                }
+            }
+
+            foreach (var desc in element.Descendants())
+            {
+                foreach (var attr in desc.Attributes())
+                {
+                    if (LooksLikeSqlConnection(attr.Value))
+                        return attr.Value;
                 }
             }
 
@@ -200,8 +168,104 @@ namespace SsisLineage.Core
             return trimmed;
         }
 
+        private void ScanDirectory(string directory)
+        {
+            try
+            {
+                foreach (var file in Directory.EnumerateFiles(directory, "*.conmgr", SearchOption.AllDirectories))
+                {
+                    TryLoadConmgrFile(file);
+                }
+
+                foreach (var file in Directory.EnumerateFiles(directory, "*.dtsx", SearchOption.AllDirectories))
+                {
+                    TryLoadDtsxFile(file);
+                }
+            }
+            catch
+            {
+                // Best-effort directory scan
+            }
+        }
+
+        private void TryLoadConmgrFile(string path)
+        {
+            try
+            {
+                var doc = XDocument.Load(path);
+                var root = doc.Root;
+                if (root == null) return;
+
+                XNamespace dts = "www.microsoft.com/SqlServer/Dts";
+
+                var objectName = root.Attribute(dts + "ObjectName")?.Value
+                    ?? root.Attribute("ObjectName")?.Value
+                    ?? Path.GetFileNameWithoutExtension(path);
+                var dtsId = root.Attribute(dts + "DTSID")?.Value ?? root.Attribute("DTSID")?.Value;
+
+                var connStr = FindConnectionString(root);
+                if (string.IsNullOrWhiteSpace(connStr)) return;
+
+                if (!string.IsNullOrWhiteSpace(objectName))
+                {
+                    _connectionStrings[objectName] = connStr;
+                }
+                if (!string.IsNullOrWhiteSpace(dtsId))
+                {
+                    _connectionStrings[dtsId] = connStr;
+                }
+                var fileName = Path.GetFileNameWithoutExtension(path);
+                if (!string.IsNullOrWhiteSpace(fileName))
+                {
+                    _connectionStrings[fileName] = connStr;
+                }
+            }
+            catch
+            {
+                // Ignore malformed files during discovery
+            }
+        }
+
+        private void TryLoadDtsxFile(string path)
+        {
+            try
+            {
+                var doc = XDocument.Load(path);
+                XNamespace dts = "www.microsoft.com/SqlServer/Dts";
+
+                foreach (var cm in doc.Descendants(dts + "ConnectionManager"))
+                {
+                    var objectName = cm.Attribute(dts + "ObjectName")?.Value
+                        ?? cm.Attribute("ObjectName")?.Value;
+                    var dtsId = cm.Attribute(dts + "DTSID")?.Value ?? cm.Attribute("DTSID")?.Value;
+                    var refId = cm.Attribute(dts + "refId")?.Value ?? cm.Attribute("refId")?.Value;
+
+                    var connStr = FindConnectionString(cm);
+                    if (string.IsNullOrWhiteSpace(connStr)) continue;
+
+                    if (!string.IsNullOrWhiteSpace(objectName) && !_connectionStrings.ContainsKey(objectName))
+                    {
+                        _connectionStrings[objectName] = connStr;
+                    }
+                    if (!string.IsNullOrWhiteSpace(dtsId) && !_connectionStrings.ContainsKey(dtsId))
+                    {
+                        _connectionStrings[dtsId] = connStr;
+                    }
+                    if (!string.IsNullOrWhiteSpace(refId) && !_connectionStrings.ContainsKey(refId))
+                    {
+                        _connectionStrings[refId] = connStr;
+                    }
+                }
+            }
+            catch
+            {
+                // Best-effort
+            }
+        }
+
         private static bool LooksLikeSqlConnection(string value)
         {
+            if (string.IsNullOrWhiteSpace(value)) return false;
             var lower = value.ToLowerInvariant();
             return lower.Contains("data source=")
                 || lower.Contains("server=")
