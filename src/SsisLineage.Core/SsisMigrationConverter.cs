@@ -1444,6 +1444,20 @@ namespace SsisLineage.Core
                         result.ValidationErrors.Add(msg);
                     }
 
+                    // Check for self-healing staging table DDL (RULE-01)
+                    if (file.FileName.StartsWith("dag_") && file.Content.Contains("truncate_staging") && !file.Content.Contains("CREATE TABLE IF NOT EXISTS"))
+                    {
+                        var msg = $"[RULE-01 VIOLATION] File '{file.FileName}' staging task lacks self-healing DDL (CREATE TABLE IF NOT EXISTS). Periksa konfigurasi Execute SQL Task pada DTSX.";
+                        result.ValidationErrors.Add(msg);
+                    }
+
+                    // Check for idempotency clean-before-insert (RULE-02)
+                    if (file.FileName.StartsWith("dag_") && file.Content.Contains("truncate_staging") && !file.Content.Contains("TRUNCATE TABLE"))
+                    {
+                        var msg = $"[RULE-02 VIOLATION] File '{file.FileName}' staging task lacks clean-before-insert logic (TRUNCATE TABLE). Periksa konfigurasi Execute SQL Task pada DTSX.";
+                        result.ValidationErrors.Add(msg);
+                    }
+
                     // Check for unhandled Script Component C# code (RULE-06)
                     if (file.Content.Contains("MANUAL PYTHON TRANSLATION REQUIRED") || file.Content.Contains("Script Component (C#/VB.NET)"))
                     {
