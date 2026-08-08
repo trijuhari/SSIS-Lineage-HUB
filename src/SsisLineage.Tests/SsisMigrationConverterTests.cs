@@ -293,4 +293,62 @@ public class SsisMigrationConverterTests
         Assert.DoesNotContain("source_data.CustomerName", sqlFile.Content);
         Assert.DoesNotContain("source_data.CustomerSegment", sqlFile.Content);
     }
+
+    [Fact]
+    public void BmcControlMJson_GeneratesValidJsonSpec()
+    {
+        var graph = new LineageGraph();
+        var masterPkg = new PackageNode { Id = "pkg-00", Name = "Pkg_00_Master_ETL_Orchestration", Path = "master.dtsx", ProjectPath = "EnterpriseETL.dtproj" };
+        var childPkg = new PackageNode { Id = "pkg-01", Name = "Pkg_01_Extract_HR", Path = "hr.dtsx", ProjectPath = "EnterpriseETL.dtproj" };
+        graph.Packages.Add(masterPkg);
+        graph.Packages.Add(childPkg);
+
+        graph.Tasks.Add(new TaskNode
+        {
+            Id = "task-exec-hr",
+            Name = "Execute HR Package",
+            Type = "Execute Package Task",
+            PackageId = "pkg-00",
+            Description = "Pkg_01_Extract_HR.dtsx"
+        });
+
+        var result = SsisMigrationConverter.ConvertProject(graph, MigrationTarget.BmcControlMJson);
+
+        Assert.True(result.IsValid);
+        Assert.NotEmpty(result.Files);
+
+        var jsonFile = result.Files.FirstOrDefault(f => f.FileName.EndsWith(".json"));
+        Assert.NotNull(jsonFile);
+        Assert.Contains("EnterpriseETL_Folder", jsonFile.Content);
+        Assert.Contains("Job:Command", jsonFile.Content);
+        Assert.Contains("Pkg_00_Master_ETL_Orchestration", jsonFile.Content);
+        Assert.Contains("Pkg_01_Extract_HR", jsonFile.Content);
+        Assert.Contains("ctmserver", jsonFile.Content);
+    }
+
+    [Fact]
+    public void AirflowDag_GeneratesSelfHealingAndFileSensors()
+    {
+        var graph = new LineageGraph();
+        var pkg = new PackageNode { Id = "pkg-01", Name = "Pkg_01_Ingest_Files", Path = "files.dtsx", ProjectPath = "ETL.dtproj" };
+        graph.Packages.Add(pkg);
+
+        graph.Tasks.Add(new TaskNode
+        {
+            Id = "task-file",
+            Name = "Wait For Trigger File",
+            Type = "File System Task",
+            PackageId = "pkg-01"
+        });
+
+        var result = SsisMigrationConverter.ConvertProject(graph, MigrationTarget.AirflowDag);
+
+        Assert.True(result.IsValid);
+        var dagFile = result.Files.FirstOrDefault(f => f.FileName.EndsWith(".py"));
+        Assert.NotNull(dagFile);
+        Assert.Contains("FileSensor", dagFile.Content);
+        Assert.Contains("on_task_failure_callback", dagFile.Content);
+        Assert.Contains("retry_exponential_backoff", dagFile.Content);
+        Assert.Contains("self_healing", dagFile.Content);
+    }
 }

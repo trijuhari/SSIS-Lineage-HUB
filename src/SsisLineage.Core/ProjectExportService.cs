@@ -13,6 +13,7 @@ namespace SsisLineage.Core
             var dbtResult = SsisMigrationConverter.ConvertProject(graph, MigrationTarget.DbtSql);
             var pandasResult = SsisMigrationConverter.ConvertProject(graph, MigrationTarget.PythonPandas);
             var airflowResult = SsisMigrationConverter.ConvertProject(graph, MigrationTarget.AirflowDag);
+            var controlmResult = SsisMigrationConverter.ConvertProject(graph, MigrationTarget.BmcControlMJson);
 
             using var ms = new MemoryStream();
 
@@ -49,6 +50,12 @@ namespace SsisLineage.Core
                 foreach (var file in dbtResult.Files)
                 {
                     AddOrReplaceEntry(archive, $"dags/dbt_project/models/{file.FileName}", file.Content);
+                }
+
+                // Add BMC Control-M Automation API JSON definitions to controlm/
+                foreach (var file in controlmResult.Files)
+                {
+                    AddOrReplaceEntry(archive, $"controlm/{file.FileName}", file.Content);
                 }
 
                 // Add dbt_project.yml and profiles.yml

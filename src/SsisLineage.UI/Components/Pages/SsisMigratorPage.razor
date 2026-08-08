@@ -118,6 +118,22 @@
             <MudText Typo="Typo.caption" Color="Color.Secondary">Consolidate SSIS Data Flow into clean ANSI SQL Stored Procedures.</MudText>
         </div>
     </MudItem>
+
+    <MudItem xs="12" sm="6" md="4">
+        <div Class="pa-4 mud-paper mud-elevation-2"
+             style="@GetCardStyle(MigrationTarget.BmcControlMJson)"
+             @onclick="() => SelectTarget(MigrationTarget.BmcControlMJson)">
+            <div class="d-flex align-center justify-space-between mb-2">
+                <MudIcon Icon="@Icons.Material.Filled.AccountTree" Color="Color.Secondary" Size="Size.Large" />
+                @if (_selectedTarget == MigrationTarget.BmcControlMJson)
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Secondary" Size="Size.Medium" />
+                }
+            </div>
+            <MudText Typo="Typo.h6" Class="font-weight-bold">BMC Control-M JSON</MudText>
+            <MudText Typo="Typo.caption" Color="Color.Secondary">Generate Control-M Automation API JSON definitions with job events & dependencies.</MudText>
+        </div>
+    </MudItem>
 </MudGrid>
 
 <!-- Action Bar -->
@@ -436,6 +452,7 @@ else if (_reportData == null)
                 MigrationTarget.PythonPandas => "#ef4444",
                 MigrationTarget.AirflowDag => "#a855f7",
                 MigrationTarget.AzureDataFactory => "#06b6d4",
+                MigrationTarget.BmcControlMJson => "#ec4899",
                 _ => "#10b981"
             };
             return $"{baseStyle} border: 2px solid {borderColor}; box-shadow: 0 4px 14px rgba(0,0,0,0.3);";

@@ -993,6 +993,40 @@ window.cyLineage = (function () {
         setTimeout(() => { if (cy) cy.fit(undefined, 48); }, 400);
     }
 
+    function highlightCriticalPath(criticalTaskIds, criticalPackageIds) {
+        if (!cy) return;
+        clearHighlight();
+
+        const taskSet = new Set(criticalTaskIds || []);
+        const pkgSet = new Set(criticalPackageIds || []);
+
+        cy.nodes().forEach(n => {
+            const id = n.id();
+            const isCrit = taskSet.has(id) || pkgSet.has(id);
+            if (isCrit) {
+                n.data('state', 'downstream');
+            } else {
+                n.data('state', 'dim');
+            }
+        });
+
+        cy.edges().forEach(e => {
+            const src = e.data('source');
+            const tgt = e.data('target');
+            if ((taskSet.has(src) || pkgSet.has(src)) && (taskSet.has(tgt) || pkgSet.has(tgt))) {
+                e.addClass('hl');
+                e.style({
+                    'line-color': '#ef4444',
+                    'target-arrow-color': '#ef4444',
+                    'width': 4.5,
+                    'line-style': 'solid'
+                });
+            } else {
+                e.addClass('faded');
+            }
+        });
+    }
+
     function locate(id) {
         if (!cy) return;
         const n = cy.getElementById(id);
@@ -1004,5 +1038,5 @@ window.cyLineage = (function () {
 
     function setColumnClickHandler(fn) { columnClickHandler = typeof fn === 'function' ? fn : null; }
 
-    return { render, fit, resetLayout, locate, clearHighlight, exportPng, toggleFullscreen, setColumnClickHandler, changeLayout };
+    return { render, fit, resetLayout, locate, clearHighlight, exportPng, toggleFullscreen, setColumnClickHandler, changeLayout, highlightCriticalPath };
 })();

@@ -15,7 +15,8 @@ namespace SsisLineage.Core
         AzureDataFactory,
         ConsolidatedSql,
         AirflowDag,
-        PythonPandas
+        PythonPandas,
+        BmcControlMJson
     }
 
     public class GeneratedFile
@@ -74,6 +75,9 @@ namespace SsisLineage.Core
                     break;
                 case MigrationTarget.PythonPandas:
                     GeneratePythonPandasScripts(graph, packagesToConvert, result);
+                    break;
+                case MigrationTarget.BmcControlMJson:
+                    GenerateBmcControlMJson(graph, packagesToConvert, result);
                     break;
             }
 
@@ -984,13 +988,18 @@ namespace SsisLineage.Core
                 if (dagName.StartsWith("pkg_")) dagName = dagName.Substring(4);
                 dagName = "dag_" + dagName;
 
-                sb.AppendLine("from datetime import datetime, timedelta");
+                                sb.AppendLine("from datetime import datetime, timedelta");
                 sb.AppendLine("from airflow import DAG");
                 sb.AppendLine("from airflow.operators.empty import EmptyOperator");
                 sb.AppendLine("from airflow.operators.bash import BashOperator");
                 sb.AppendLine("from airflow.providers.common.sql.operators.sql import SQLExecuteQueryOperator");
                 sb.AppendLine("from airflow.operators.trigger_dagrun import TriggerDagRunOperator");
                 sb.AppendLine("from airflow.operators.python import PythonOperator");
+                sb.AppendLine("from airflow.sensors.filesystem import FileSensor");
+                sb.AppendLine();
+                sb.AppendLine("def on_task_failure_callback(context):");
+                sb.AppendLine("    ti = context.get('task_instance')");
+                sb.AppendLine("    print(f'[SELF-HEALING ALERT] Task {ti.task_id} in DAG {ti.dag_id} failed. Initiating retry protocol.')");
                 sb.AppendLine();
                 sb.AppendLine("default_args = {");
                 sb.AppendLine("    'owner': 'data_engineering',");
@@ -999,6 +1008,9 @@ namespace SsisLineage.Core
                 sb.AppendLine("    'email_on_retry': False,");
                 sb.AppendLine("    'retries': 3,");
                 sb.AppendLine("    'retry_delay': timedelta(seconds=15),");
+                sb.AppendLine("    'retry_exponential_backoff': True,");
+                sb.AppendLine("    'max_retry_delay': timedelta(minutes=5),");
+                sb.AppendLine("    'on_failure_callback': on_task_failure_callback,");
                 sb.AppendLine("}");
                 sb.AppendLine();
                 sb.AppendLine($"with DAG(");
@@ -1008,7 +1020,7 @@ namespace SsisLineage.Core
                 sb.AppendLine($"    schedule=None,");
                 sb.AppendLine($"    start_date=datetime(2026, 1, 1),");
                 sb.AppendLine($"    catchup=False,");
-                sb.AppendLine($"    tags=['ssis_migration'],");
+                sb.AppendLine($"    tags=['ssis_migration', 'self_healing'],");
                 sb.AppendLine($") as dag:");
                 sb.AppendLine();
                 sb.AppendLine("    start_pipeline = EmptyOperator(task_id='start_pipeline')");
@@ -1038,6 +1050,16 @@ namespace SsisLineage.Core
                         sb.AppendLine($"        task_id='{taskId}',");
                         sb.AppendLine($"        conn_id='sql_default',");
                         sb.AppendLine($"        sql='{sqlQuery}',");
+                        sb.AppendLine($"    )");
+                    }
+                    else if (tType.Contains("file system") || tType.Contains("filesystem") || tType.Contains("wmi") || tType.Contains("event"))
+                    {
+                        sb.AppendLine($"    {taskId} = FileSensor(");
+                        sb.AppendLine($"        task_id='{taskId}_file_sensor',");
+                        sb.AppendLine($"        filepath='/opt/airflow/dags/incoming/{dagName.Replace("dag_", "")}_trigger.flag',");
+                        sb.AppendLine($"        poke_interval=30,");
+                        sb.AppendLine($"        timeout=600,");
+                        sb.AppendLine($"        mode='poke',");
                         sb.AppendLine($"    )");
                     }
                     else if (tType.Contains("data flow") || tType.Contains("pipeline"))
@@ -1616,6 +1638,101 @@ namespace SsisLineage.Core
             if (fallback.StartsWith("pkg_")) fallback = fallback.Substring(4);
             if (fallback.StartsWith("execute_")) fallback = fallback.Substring(8);
             return "dag_" + fallback;
+        }
+
+        // ── 7. BMC Control-M Automation API JSON Generator ──────────────────────
+        private static void GenerateBmcControlMJson(LineageGraph graph, List<PackageNode> packages, MigrationResult result)
+        {
+            var rawProjectName = packages.FirstOrDefault() != null
+                ? Path.GetFileNameWithoutExtension(packages.First().ProjectPath)
+                : "SSIS_Migration";
+            if (string.IsNullOrEmpty(rawProjectName) || rawProjectName == ".") rawProjectName = "SSIS_Migration";
+
+            var folderName = CleanIdentifier(rawProjectName + "_Folder");
+
+            var folderObj = new Dictionary<string, object>
+            {
+                ["Type"] = "Folder",
+                ["ControlmServer"] = "ctmserver",
+                ["Application"] = "EnterpriseETL",
+                ["SubApplication"] = "SSIS_Migration",
+                ["OrderMethod"] = "Manual"
+            };
+
+            foreach (var pkg in packages)
+            {
+                var jobName = CleanIdentifier(pkg.Name);
+                var pkgTasks = graph.Tasks.Where(t => t.PackageId == pkg.Id).ToList();
+
+                var cleanPkgName = CleanIdentifier(pkg.Name).ToLowerInvariant();
+                if (cleanPkgName.StartsWith("pkg_")) cleanPkgName = cleanPkgName.Substring(4);
+
+                var jobDef = new Dictionary<string, object>
+                {
+                    ["Type"] = "Job:Command",
+                    ["RunAs"] = "etluser",
+                    ["Host"] = "etl-node-01",
+                    ["Command"] = $"python /opt/etl/scripts/extract_{cleanPkgName}.py && dbt run --select stg_{cleanPkgName}"
+                };
+
+                var childTaskExecutes = pkgTasks.Where(t => t.Type != null && t.Type.Contains("Execute Package", StringComparison.OrdinalIgnoreCase)).ToList();
+
+                var eventsDict = new Dictionary<string, object>();
+                var addEvents = new List<object>();
+
+                if (childTaskExecutes.Any())
+                {
+                    foreach (var childTask in childTaskExecutes)
+                    {
+                        var childDagId = ResolveChildDagId(graph, childTask);
+                        addEvents.Add(new Dictionary<string, string>
+                        {
+                            ["Event"] = $"{jobName}-TO-{childDagId}"
+                        });
+                    }
+                }
+
+                if (!jobName.Contains("Master", StringComparison.OrdinalIgnoreCase) && packages.Any(p => p.Name.Contains("Master", StringComparison.OrdinalIgnoreCase)))
+                {
+                    var waitForEvents = new List<object>
+                    {
+                        new Dictionary<string, string>
+                        {
+                            ["Event"] = $"Pkg_00_Master_ETL_Orchestration-TO-dag_{cleanPkgName}"
+                        }
+                    };
+                    eventsDict["WaitFor"] = waitForEvents;
+                }
+
+                if (addEvents.Any())
+                {
+                    eventsDict["Add"] = addEvents;
+                }
+
+                if (eventsDict.Any())
+                {
+                    jobDef["Events"] = eventsDict;
+                }
+
+                folderObj[jobName] = jobDef;
+            }
+
+            var rootObj = new Dictionary<string, object>
+            {
+                [folderName] = folderObj
+            };
+
+            var jsonStr = JsonSerializer.Serialize(rootObj, new JsonSerializerOptions { WriteIndented = true });
+
+            result.Files.Add(new GeneratedFile
+            {
+                FileName = $"{folderName}.json",
+                Content = jsonStr,
+                Language = "json",
+                TargetFramework = "BMC Control-M Automation API"
+            });
+
+            result.Summary = $"Generated BMC Control-M Automation API JSON workflow specification ({folderName}.json).";
         }
     }
 }

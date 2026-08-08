@@ -356,6 +356,16 @@ else
                             <MudSelectItem T="string" Value="@("table")">Table</MudSelectItem>
                         </MudSelect>
                     }
+                    <MudTooltip Text="Highlight the Critical Execution Path & SLA Bottleneck risks inspired by BMC Control-M SLA Management" Placement="Placement.Top">
+                        <MudButton OnClick="ToggleCriticalPathHighlight"
+                                   Variant="@(_isCriticalPathHighlighted ? Variant.Filled : Variant.Outlined)"
+                                   Color="@(_isCriticalPathHighlighted ? Color.Error : Color.Warning)"
+                                   Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.Bolt"
+                                   Style="text-transform:none; font-weight:600;">
+                            @(_isCriticalPathHighlighted ? "Critical Path Active" : "SLA & Critical Path")
+                        </MudButton>
+                    </MudTooltip>
                     <MudButton id="open-legend-guide-btn" OnClick="OpenLegendGuide" Variant="Variant.Outlined" Color="Color.Info" Size="Size.Small"
                                StartIcon="@Icons.Material.Filled.HelpOutline" Style="text-transform:none; font-weight:600;">
                         Legend & Color Guide
@@ -376,6 +386,19 @@ else
                     </MudTooltip>
                 </div>
             </div>
+            @if (_criticalPathReport != null && _isCriticalPathHighlighted)
+            {
+                <MudAlert Severity="@(_criticalPathReport.IsSlaRiskDetected ? Severity.Warning : Severity.Info)" Dense="true" Class="mb-3" Icon="@Icons.Material.Filled.Speed">
+                    <div class="d-flex align-center justify-space-between flex-wrap gap-2">
+                        <div>
+                            <strong>⚡ BMC Control-M Critical Path & SLA Analytics:</strong> @_criticalPathReport.Summary
+                        </div>
+                        <MudChip T="string" Color="@(_criticalPathReport.IsSlaRiskDetected ? Color.Warning : Color.Success)" Size="Size.Small" Variant="Variant.Filled">
+                            SLA Threshold: @_criticalPathReport.RecommendedSlaThresholdSeconds s
+                        </MudChip>
+                    </div>
+                </MudAlert>
+            }
             @{
                 var totalNodes = reportData?.Graph is { } g
                     ? g.Packages.Count + g.Tasks.Count + g.Components.Count : 0;
@@ -936,6 +959,26 @@ else
         catch (Exception ex)
         {
             Console.WriteLine($"[Lineage] ChangeGraphLayout warning: {ex.Message}");
+        }
+    }
+
+    private CriticalPathReport? _criticalPathReport;
+    private bool _isCriticalPathHighlighted = false;
+
+    private async Task ToggleCriticalPathHighlight()
+    {
+        if (reportData == null) return;
+        _isCriticalPathHighlighted = !_isCriticalPathHighlighted;
+
+        if (_isCriticalPathHighlighted)
+        {
+            _criticalPathReport ??= CriticalPathAnalyzer.AnalyzeProject(reportData.Graph);
+            await JS.InvokeVoidAsync("cyLineage.highlightCriticalPath", _criticalPathReport.CriticalPathTaskIds, _criticalPathReport.CriticalPathPackageIds);
+            Snackbar.Add($"Critical Path highlighted! Estimated Total Batch Duration: {_criticalPathReport.TotalEstimatedDurationSeconds:F0}s", Severity.Warning);
+        }
+        else
+        {
+            await JS.InvokeVoidAsync("cyLineage.clearHighlight");
         }
     }
 
