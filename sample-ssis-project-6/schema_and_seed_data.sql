@@ -174,7 +174,7 @@ CREATE TABLE dbo.ETL_RowCountLog (
     BatchId      INT,
     PackageName  VARCHAR(200),
     TableName    VARCHAR(200),
-    RowCount     INT,
+    [RowCount]   INT,
     LogTime      DATETIME
 );
 GO

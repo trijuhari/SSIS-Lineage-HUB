@@ -273,5 +273,49 @@ public class SsisMigrationEndToEndTests
         var result = SsisMigrationConverter.ConvertProject(graph, MigrationTarget.AirflowDag);
         Assert.NotEmpty(result.Files);
     }
-}
+    [Fact]
+    public void SampleProject6_FullProject_ValidationTest()
+    {
+        var projectDir = Path.Combine(
+            Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!,
+            "..", "..", "..", "..", "..", "sample-ssis-project-6");
+        projectDir = Path.GetFullPath(projectDir);
 
+        if (!Directory.Exists(projectDir))
+            return;
+
+        var parser = new SsisPackageParser(projectDir);
+        var pkgFiles = Directory.GetFiles(projectDir, "*.dtsx");
+        var graph = parser.ParseMultiple(pkgFiles);
+
+        Assert.Equal(4, graph.Packages.Count);
+
+        var result = SsisMigrationConverter.ConvertProject(graph, MigrationTarget.DbtSql);
+        Assert.True(result.IsValid, $"Validation failed with errors: {string.Join("; ", result.ValidationErrors)}");
+    }
+
+    [Fact]
+    public void SampleProject6_MasterOrchestration_ParseTest()
+    {
+        var projectDir = Path.Combine(
+            Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!,
+            "..", "..", "..", "..", "..", "sample-ssis-project-6");
+        projectDir = Path.GetFullPath(projectDir);
+
+        if (!Directory.Exists(projectDir))
+            return;
+
+        var parser = new SsisPackageParser(projectDir);
+        var masterPath = Path.Combine(projectDir, "Pkg_00_Master_ETL_Orchestration.dtsx");
+        var graph = parser.Parse(masterPath);
+
+        // Verify master package and child package recursive resolution
+        Assert.True(graph.Packages.Count >= 4, $"Expected at least 4 packages parsed recursively from master, got {graph.Packages.Count}");
+
+        var masterPkg = graph.Packages.FirstOrDefault(p => p.Name == "Pkg_00_Master_ETL_Orchestration");
+        Assert.NotNull(masterPkg);
+
+        var result = SsisMigrationConverter.ConvertProject(graph, MigrationTarget.AirflowDag);
+        Assert.NotEmpty(result.Files);
+    }
+}
