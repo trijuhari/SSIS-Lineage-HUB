@@ -101,13 +101,20 @@ namespace SsisLineage.Core
 
                 schemaYaml.AppendLine($"  - name: {modelName}");
                 schemaYaml.AppendLine($"    description: \"Auto-converted from SSIS Package '{pkg.Name}'\"");
-                schemaYaml.AppendLine("    columns:");
 
-                var targetCols = pkgMappings.Select(m => m.TargetColumnName).Distinct().Where(c => !string.IsNullOrEmpty(c));
-                foreach (var col in targetCols)
+                var targetCols = pkgMappings.Select(m => m.TargetColumnName).Distinct().Where(c => !string.IsNullOrEmpty(c)).ToList();
+                if (targetCols.Any())
                 {
-                    schemaYaml.AppendLine($"      - name: {col}");
-                    schemaYaml.AppendLine($"        description: \"Mapped from source column\"");
+                    schemaYaml.AppendLine("    columns:");
+                    foreach (var col in targetCols)
+                    {
+                        schemaYaml.AppendLine($"      - name: {col}");
+                        schemaYaml.AppendLine($"        description: \"Mapped from source column\"");
+                    }
+                }
+                else
+                {
+                    schemaYaml.AppendLine("    columns: []");
                 }
 
                 // Generate Model SQL (.sql)
@@ -961,8 +968,8 @@ namespace SsisLineage.Core
                 sb.AppendLine("    'depends_on_past': False,");
                 sb.AppendLine("    'email_on_failure': False,");
                 sb.AppendLine("    'email_on_retry': False,");
-                sb.AppendLine("    'retries': 1,");
-                sb.AppendLine("    'retry_delay': timedelta(minutes=5),");
+                sb.AppendLine("    'retries': 3,");
+                sb.AppendLine("    'retry_delay': timedelta(seconds=15),");
                 sb.AppendLine("}");
                 sb.AppendLine();
                 sb.AppendLine($"with DAG(");
@@ -991,9 +998,12 @@ namespace SsisLineage.Core
                     if (tType.Contains("execute sql") || tType.Contains("executesql"))
                     {
                         var sqlComp = graph.Components.FirstOrDefault(c => c.TaskId == task.Id && c.Type == "Execute SQL Task");
-                        var sqlQuery = sqlComp != null && !string.IsNullOrEmpty(sqlComp.SqlQueryOrTable) 
-                                       ? sqlComp.SqlQueryOrTable.Replace("?", "1").Replace("'", "\\'").Replace("\n", " ").Replace("\r", "") 
+                        var rawSql = sqlComp != null && !string.IsNullOrEmpty(sqlComp.SqlQueryOrTable) 
+                                       ? sqlComp.SqlQueryOrTable 
                                        : "-- TODO: Insert SQL from SSIS task";
+                        // Escape T-SQL reserved keyword RowCount -> [RowCount]
+                        rawSql = Regex.Replace(rawSql, @"(?<!\[)\bRowCount\b(?!\])", "[RowCount]", RegexOptions.IgnoreCase);
+                        var sqlQuery = rawSql.Replace("?", "1").Replace("'", "\\'").Replace("\n", " ").Replace("\r", "");
                                        
                         sb.AppendLine($"    {taskId} = SQLExecuteQueryOperator(");
                         sb.AppendLine($"        task_id='{taskId}',");
@@ -1013,7 +1023,7 @@ namespace SsisLineage.Core
                         sb.AppendLine();
                         sb.AppendLine($"    {taskId}_dbt = BashOperator(");
                         sb.AppendLine($"        task_id='{taskId}_transform_dbt',");
-                        sb.AppendLine($"        bash_command='cd /opt/airflow/dags/dbt_project && dbt run --profiles-dir . --select {dbtModelName}',");
+                        sb.AppendLine($"        bash_command='cd /opt/airflow/dags/dbt_project && dbt run --no-partial-parse --profiles-dir . --select {dbtModelName}',");
                         sb.AppendLine($"    )");
                         sb.AppendLine();
                         sb.AppendLine($"    {taskId}_extract >> {taskId}_dbt");
@@ -1372,6 +1382,26 @@ namespace SsisLineage.Core
                     {
                         var msg = $"[Python Validation] File '{file.FileName}' extract_query is a raw table name without SELECT * FROM.";
                         result.ValidationErrors.Add(msg);
+                    }
+                }
+                else if (file.Language == "yaml" || file.FileName == "schema.yml")
+                {
+                    var lines = file.Content.Split('\n');
+                    for (int i = 0; i < lines.Length - 1; i++)
+                    {
+                        var line = lines[i].TrimEnd();
+                        if (line.Trim() == "columns:")
+                        {
+                            var nextLine = lines[i + 1].TrimEnd();
+                            var indentCurrent = line.Length - line.TrimStart().Length;
+                            var indentNext = nextLine.Length - nextLine.TrimStart().Length;
+                            if (indentNext <= indentCurrent)
+                            {
+                                var msg = $"[YAML Validation Error] File '{file.FileName}' contains empty/dangling 'columns:' key without child items.";
+                                result.ValidationErrors.Add(msg);
+                                break;
+                            }
+                        }
                     }
                 }
             }

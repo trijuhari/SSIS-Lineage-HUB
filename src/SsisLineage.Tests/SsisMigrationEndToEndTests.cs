@@ -348,4 +348,21 @@ public class SsisMigrationEndToEndTests
         var result = SsisMigrationConverter.ConvertProject(graph, MigrationTarget.AirflowDag);
         Assert.NotEmpty(result.Files);
     }
+
+    [Fact]
+    public void EmptyColumns_GeneratesColumnsEmptyArray_AndPassesQualityGate()
+    {
+        var graph = new LineageGraph
+        {
+            Packages = new List<PackageNode> { new PackageNode { Id = "pkg-1", Name = "Pkg_Empty_Test" } }
+        };
+
+        var result = SsisMigrationConverter.ConvertProject(graph, MigrationTarget.DbtSql);
+        var schemaFile = result.Files.FirstOrDefault(f => f.FileName == "schema.yml");
+        Assert.NotNull(schemaFile);
+        Assert.Contains("columns: []", schemaFile.Content);
+        Assert.DoesNotContain("columns:\n", schemaFile.Content);
+        Assert.True(result.IsValid);
+    }
 }
+
