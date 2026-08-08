@@ -1399,48 +1399,56 @@ namespace SsisLineage.Core
             {
                 if (file.Language == "sql")
                 {
-                    // 1. Check for raw table names without SELECT/WITH in CTEs
+                    // 1. Check for raw table names without SELECT/WITH in CTEs (RULE-05)
                     if (Regex.IsMatch(file.Content, @"AS\s*\(\s*(?!SELECT|WITH)[a-zA-Z0-9_\[\]\.]+\s*\)", RegexOptions.IgnoreCase))
                     {
-                        var msg = $"[SQL Validation Error] File '{file.FileName}' contains CTE with raw table name instead of SELECT statement.";
+                        var msg = $"[RULE-05 VIOLATION] File '{file.FileName}' contains CTE with raw table name instead of SELECT statement. Periksa ekspresi / kueri DTSX.";
                         result.ValidationErrors.Add(msg);
                     }
 
-                    // 2. Check for unresolved join condition fallback (ON 1=1)
+                    // 2. Check for unresolved join condition fallback (ON 1=1) (RULE-04)
                     if (file.Content.Contains("ON 1=1"))
                     {
-                        var msg = $"[SQL Validation Error] File '{file.FileName}' contains unresolved lookup join condition 'ON 1=1'. Please verify DTSX JoinKey or Column Mappings.";
+                        var msg = $"[RULE-04 VIOLATION] File '{file.FileName}' contains unresolved lookup join condition 'ON 1=1'. Paket DTSX perlu disesuaikan (verifikasi JoinKey atau Column Mappings).";
                         result.ValidationErrors.Add(msg);
                     }
 
-                    // 3. Check for placeholder table names like fact_target
+                    // 3. Check for placeholder table names like fact_target (RULE-03)
                     if (file.Content.Contains("FROM fact_target") || file.Content.Contains("FROM staging.raw_source"))
                     {
-                        var msg = $"[SQL Validation Error] File '{file.FileName}' contains unresolved placeholder table reference.";
+                        var msg = $"[RULE-03 VIOLATION] File '{file.FileName}' contains unresolved placeholder table reference. Pastikan Connection Manager & tabel sumber pada DTSX sudah benar.";
                         result.ValidationErrors.Add(msg);
                     }
 
-                    // 4. Check for double-quoted strings in dbt models
+                    // 4. Check for double-quoted strings in dbt models (RULE-05)
                     if (Regex.IsMatch(file.Content, @"THEN\s*""[^""]+""", RegexOptions.IgnoreCase) || Regex.IsMatch(file.Content, @"ELSE\s*""[^""]+""", RegexOptions.IgnoreCase))
                     {
-                        var msg = $"[SQL Validation Warning] File '{file.FileName}' contains double-quoted string literals. Standardizing to single quotes.";
+                        var msg = $"[RULE-05 WARNING] File '{file.FileName}' contains double-quoted string literals. Standardizing to single quotes.";
                         result.Warnings.Add(msg);
                     }
 
-                    // 5. Check for mis-attributed lookup dimension columns (e.g. source_data.CustomerName instead of lookup_0.CustomerName)
+                    // 5. Check for mis-attributed lookup dimension columns (RULE-04)
                     if ((file.Content.Contains("lookup_0") || file.Content.Contains("lookup_1")) &&
                         Regex.IsMatch(file.Content, @"\bsource_data\.(CustomerName|CustomerSegment|FullDate|DateKey|BranchKey|BranchName|RegionCode)\b", RegexOptions.IgnoreCase))
                     {
-                        var msg = $"[SQL Validation Error] File '{file.FileName}' incorrectly attributes lookup dimension column to source_data.";
+                        var msg = $"[RULE-04 VIOLATION] File '{file.FileName}' incorrectly attributes lookup dimension column to source_data. Paket DTSX perlu disesuaikan pada pemetaan komponen Lookup.";
                         result.ValidationErrors.Add(msg);
                     }
                 }
                 else if (file.Language == "python")
                 {
+                    // Check for raw table name in extract_query without SELECT (RULE-03)
                     if (file.Content.Contains("extract_query = \"") && !file.Content.Contains("SELECT") && !file.Content.Contains("WITH"))
                     {
-                        var msg = $"[Python Validation Error] File '{file.FileName}' extract_query is a raw table name without SELECT * FROM.";
+                        var msg = $"[RULE-03 VIOLATION] File '{file.FileName}' extract_query is a raw table name without SELECT * FROM. Sesuaikan kueri sumber pada DTSX.";
                         result.ValidationErrors.Add(msg);
+                    }
+
+                    // Check for unhandled Script Component C# code (RULE-06)
+                    if (file.Content.Contains("MANUAL PYTHON TRANSLATION REQUIRED") || file.Content.Contains("Script Component (C#/VB.NET)"))
+                    {
+                        var msg = $"[RULE-06 WARNING] File '{file.FileName}' mengaitkan Script Component (C#/VB.NET) legacy. Paket DTSX perlu disesuaikan untuk refaktor logika ke Python/PySpark.";
+                        result.Warnings.Add(msg);
                     }
                 }
                 else if (file.Language == "yaml" || file.FileName == "schema.yml")
@@ -1456,7 +1464,7 @@ namespace SsisLineage.Core
                             var indentNext = nextLine.Length - nextLine.TrimStart().Length;
                             if (indentNext <= indentCurrent)
                             {
-                                var msg = $"[YAML Validation Error] File '{file.FileName}' contains empty/dangling 'columns:' key without child items.";
+                                var msg = $"[RULE-04 VIOLATION] File '{file.FileName}' contains empty 'columns:' key without child items. Periksa pemetaan kolom pada DTSX.";
                                 result.ValidationErrors.Add(msg);
                                 break;
                             }
@@ -1467,11 +1475,11 @@ namespace SsisLineage.Core
 
             if (result.ValidationErrors.Count > 0)
             {
-                result.Summary += $" [QUALITY GATE: {result.ValidationErrors.Count} error(s) detected!]";
+                result.Summary += $" [RULE CHECK FAILED: {result.ValidationErrors.Count} error(s) detected! DTSX Perlu Disesuaikan]";
             }
             else
             {
-                result.Summary += " [QUALITY GATE: All generated artifacts passed validation!]";
+                result.Summary += " [QUALITY GATE: All generated artifacts passed pre-migration rules!]";
             }
         }
 

@@ -238,10 +238,30 @@
             else
             {
                 <MudChip T="string" Color="Color.Error" Variant="Variant.Filled" Icon="@Icons.Material.Filled.Warning" Style="font-weight: bold;">
-                    QUALITY GATE: @_result.ValidationErrors.Count ERROR(S) DETECTED
+                    MIGRATION RULE CHECK: FAILED (@_result.ValidationErrors.Count PELANGGARAN ATURAN)
                 </MudChip>
             }
         </div>
+
+        @if (!_result.IsValid)
+        {
+            <MudAlert Severity="Severity.Error" Variant="Variant.Filled" Class="mt-3" Style="border-radius: 8px;">
+                <div class="d-flex align-center justify-space-between flex-wrap gap-3">
+                    <div>
+                        <MudText Typo="Typo.subtitle1" Class="font-weight-bold d-flex align-center gap-2">
+                            <MudIcon Icon="@Icons.Material.Filled.ReportProblem" />
+                            MIGRATION RULE CHECK FAILED — Paket .DTSX Perlu Disesuaikan!
+                        </MudText>
+                        <MudText Typo="Typo.body2">
+                            Hasil konversi terdeteksi melanggar standar pre-migrasi. Silakan sesuaikan paket SSIS (.dtsx), pemetaan komponen, atau koneksi database terlebih dahulu.
+                        </MudText>
+                    </div>
+                    <MudButton Href="/modernization-guide" Target="_blank" Variant="Variant.Outlined" Color="Color.Surface" Size="Size.Small" StartIcon="@Icons.Material.Filled.MenuBook">
+                        Lihat Aturan Pre-Migrasi
+                    </MudButton>
+                </div>
+            </MudAlert>
+        }
 
         @if (!string.IsNullOrEmpty(_result.Summary))
         {
@@ -255,7 +275,7 @@
             <div class="mt-2 pa-3 mud-paper" style="background: rgba(239, 68, 68, 0.1); border: 1px solid var(--mud-palette-error); border-radius: 6px;">
                 <MudText Typo="Typo.subtitle2" Color="Color.Error" Class="font-weight-bold mb-1">
                     <MudIcon Icon="@Icons.Material.Filled.BugReport" Size="Size.Small" Class="mr-1" />
-                    Detected Code Issues (Click 'Scan / Load Project' on Lineage Discovery page to resolve):
+                    Detail Pelanggaran Aturan Pre-Migrasi (DTSX Perlu Disesuaikan):
                 </MudText>
                 <ul class="pl-4 ma-0" style="font-size: 0.85rem; color: var(--mud-palette-text-primary);">
                     @foreach (var err in _result.ValidationErrors)
