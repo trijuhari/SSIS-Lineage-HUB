@@ -992,7 +992,7 @@ namespace SsisLineage.Core
                     {
                         var sqlComp = graph.Components.FirstOrDefault(c => c.TaskId == task.Id && c.Type == "Execute SQL Task");
                         var sqlQuery = sqlComp != null && !string.IsNullOrEmpty(sqlComp.SqlQueryOrTable) 
-                                       ? sqlComp.SqlQueryOrTable.Replace("'", "\\'").Replace("\n", " ").Replace("\r", "") 
+                                       ? sqlComp.SqlQueryOrTable.Replace("?", "1").Replace("'", "\\'").Replace("\n", " ").Replace("\r", "") 
                                        : "-- TODO: Insert SQL from SSIS task";
                                        
                         sb.AppendLine($"    {taskId} = SQLExecuteQueryOperator(");

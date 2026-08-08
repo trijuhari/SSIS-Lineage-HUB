@@ -295,6 +295,36 @@ public class SsisMigrationEndToEndTests
     }
 
     [Fact]
+    public void SampleProject6_VerifyGeneratedCode_DatabaseConnections()
+    {
+        var projectDir = Path.Combine(
+            Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location)!,
+            "..", "..", "..", "..", "..", "sample-ssis-project-6");
+        projectDir = Path.GetFullPath(projectDir);
+
+        if (!Directory.Exists(projectDir))
+            return;
+
+        var parser = new SsisPackageParser(projectDir);
+        var pkgFiles = Directory.GetFiles(projectDir, "*.dtsx");
+        var graph = parser.ParseMultiple(pkgFiles);
+
+        // Convert to PythonPandas
+        var pythonResult = SsisMigrationConverter.ConvertProject(graph, MigrationTarget.PythonPandas);
+        Assert.NotEmpty(pythonResult.Files);
+
+        var payrollFile = pythonResult.Files.FirstOrDefault(f => f.FileName.Contains("payroll"));
+        Assert.NotNull(payrollFile);
+        Assert.Contains("DATABASE=HR_PayrollSystem", payrollFile.Content);
+        Assert.Contains("DATABASE=EnterpriseDataWarehouse", payrollFile.Content);
+
+        var ledgerFile = pythonResult.Files.FirstOrDefault(f => f.FileName.Contains("ledger"));
+        Assert.NotNull(ledgerFile);
+        Assert.Contains("DATABASE=CoreBankingLedger", ledgerFile.Content);
+        Assert.Contains("DATABASE=EnterpriseDataWarehouse", ledgerFile.Content);
+    }
+
+    [Fact]
     public void SampleProject6_MasterOrchestration_ParseTest()
     {
         var projectDir = Path.Combine(

@@ -865,10 +865,25 @@ namespace SsisLineage.Core
 
                     // Connection manager for this component
                     var compCm = comp.Descendants()
-                        .FirstOrDefault(x => x.Name.LocalName == "connection" && (x.Attribute("connectionManagerRefId") != null || x.Attribute("connectionManagerID") != null));
+                        .FirstOrDefault(x => x.Name.LocalName == "connection" && (x.Attribute("connectionManagerRefId") != null || x.Attribute("connectionManagerID") != null || x.Attribute("connectionRef") != null));
+                    string cmRef = "";
                     if (compCm != null)
                     {
-                        var cmRef = compCm.Attribute("connectionManagerRefId")?.Value ?? compCm.Attribute("connectionManagerID")?.Value ?? "";
+                        cmRef = compCm.Attribute("connectionManagerRefId")?.Value 
+                            ?? compCm.Attribute("connectionManagerID")?.Value 
+                            ?? compCm.Attribute("connectionRef")?.Value 
+                            ?? "";
+                    }
+                    else
+                    {
+                        cmRef = comp.Attribute("connectionRef")?.Value 
+                            ?? comp.Attribute("connectionManagerID")?.Value 
+                            ?? comp.Attribute("connectionManagerRefId")?.Value 
+                            ?? "";
+                    }
+
+                    if (!string.IsNullOrEmpty(cmRef))
+                    {
                         compNode.ConnectionManager = cmRef.Contains(":") ? cmRef.Split(':').Last() : cmRef;
                     }
 
