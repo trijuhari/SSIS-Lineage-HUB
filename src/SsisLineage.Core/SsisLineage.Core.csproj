@@ -3,7 +3,8 @@
   <PropertyGroup>
     <!-- Multi-target: net10.0 is cross-platform (XML parser path, no SSIS runtime);
          net10.0-windows additionally links the native DTS runtime for in-place parsing. -->
-    <TargetFrameworks>net10.0;net10.0-windows</TargetFrameworks>
+    <TargetFrameworks Condition="$([MSBuild]::IsOSPlatform('Windows'))">net10.0;net10.0-windows</TargetFrameworks>
+    <TargetFrameworks Condition="!$([MSBuild]::IsOSPlatform('Windows'))">net10.0</TargetFrameworks>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     <UseWpf>false</UseWpf>
