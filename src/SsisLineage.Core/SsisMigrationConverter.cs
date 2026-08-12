@@ -357,16 +357,23 @@ namespace SsisLineage.Core
                             {
                                 srcPrefix = "lookup_0";
                             }
-                            // Strategy 3: column exists in lookup SELECT list
+                            // Strategy 3: column exists in lookup SELECT list (by source column name)
                             else if (!string.IsNullOrEmpty(sourceCol) &&
                                      lookupColumnIndex.TryGetValue(sourceCol, out var lkpIdxByCol))
                             {
                                 srcPrefix = $"lookup_{lkpIdxByCol}";
                             }
+                            // Strategy 3b (FIX #5): match TargetColumnName as a lookup alias.
+                            // When a Lookup component renames a column (e.g. "SegmentName AS CustomerSegment"),
+                            // lookupColumnIndex stores the ALIAS "CustomerSegment". SourceColumnName is the
+                            // pre-alias "SegmentName" which may not be in the index. Checking TargetColumnName
+                            // catches this case and avoids incorrectly sourcing the column from source_data.
                             else if (!string.IsNullOrEmpty(m.TargetColumnName) &&
                                      lookupColumnIndex.TryGetValue(m.TargetColumnName, out var lkpIdxByTargetCol))
                             {
                                 srcPrefix = $"lookup_{lkpIdxByTargetCol}";
+                                // Use TargetColumnName (the alias) as the column reference within the lookup CTE
+                                sourceCol = m.TargetColumnName;
                             }
                             // Strategy 4: If lookup CTE exists, check known lookup attributes or dimension attributes (DateKey, FullDate, BranchKey, BranchName, RegionCode, etc.)
                             else if (totalLookupCtes > 0)
@@ -1024,7 +1031,10 @@ namespace SsisLineage.Core
                 sb.AppendLine($") as dag:");
                 sb.AppendLine();
                 sb.AppendLine("    start_pipeline = EmptyOperator(task_id='start_pipeline')");
-                sb.AppendLine("    end_pipeline = EmptyOperator(task_id='end_pipeline')");
+                // FIX #4: trigger_rule='all_done' ensures end_pipeline always runs and is not
+                // marked yellow/skipped when any upstream task fails. Without this the final
+                // node inherits the default 'all_success' and becomes upstream_failed.
+                sb.AppendLine("    end_pipeline = EmptyOperator(task_id='end_pipeline', trigger_rule='all_done')");
                 sb.AppendLine();
 
                 var tasks = graph.Tasks.Where(t => t.PackageId == pkg.Id).OrderBy(t => t.ExecutionSequence).ToList();
@@ -1044,7 +1054,39 @@ namespace SsisLineage.Core
                                        : "-- TODO: Insert SQL from SSIS task";
                         // Escape T-SQL reserved keyword RowCount -> [RowCount]
                         rawSql = Regex.Replace(rawSql, @"(?<!\[)\bRowCount\b(?!\])", "[RowCount]", RegexOptions.IgnoreCase);
-                        var sqlQuery = rawSql.Replace("?", "1").Replace("'", "\\'").Replace("\n", " ").Replace("\r", "");
+
+                        // FIX #2: Normalize non-dbo schema table references to dbo.stg_ flat naming
+                        // so SQL prep task is consistent with the Python extraction script output
+                        // e.g. "stg.RawCustomers" -> "stg_RawCustomers" (dbo assumed by connection default)
+                        rawSql = Regex.Replace(rawSql,
+                            @"(\[?)(stg|staging)(\]?)\.(\[?)([\w]+)(\]?)",
+                            m => $"stg_{m.Groups[5].Value}",
+                            RegexOptions.IgnoreCase);
+
+                        // FIX #3: Detect non-dbo schemas used in CREATE TABLE and prepend a
+                        // CREATE SCHEMA ... IF NOT EXISTS guard so the task does not fail on
+                        // a freshly provisioned database where the schema does not yet exist.
+                        var schemaMatches = Regex.Matches(rawSql,
+                            @"CREATE\s+TABLE\s+(\[?([a-zA-Z_][\w]*)\]?)\.\[?[\w]+\]?",
+                            RegexOptions.IgnoreCase);
+                        var schemasToCreate = schemaMatches
+                            .Select(sm => sm.Groups[2].Value)
+                            .Where(s => !string.Equals(s, "dbo", StringComparison.OrdinalIgnoreCase))
+                            .Distinct(StringComparer.OrdinalIgnoreCase)
+                            .ToList();
+                        var schemaGuard = new StringBuilder();
+                        foreach (var schemaName in schemasToCreate)
+                        {
+                            schemaGuard.Append(
+                                $"IF NOT EXISTS (SELECT 1 FROM sys.schemas WHERE name = \\'{schemaName}\\') " +
+                                $"EXEC(\'CREATE SCHEMA [{schemaName}]\'); ");
+                        }
+
+                        var sqlQuery = (schemaGuard.ToString() + rawSql)
+                            .Replace("?", "1")
+                            .Replace("'", "\\'")
+                            .Replace("\n", " ")
+                            .Replace("\r", "");
                                        
                         sb.AppendLine($"    {taskId} = SQLExecuteQueryOperator(");
                         sb.AppendLine($"        task_id='{taskId}',");
@@ -1591,8 +1633,13 @@ namespace SsisLineage.Core
                 if (map != null) return (map.TargetServer, map.TargetDatabase);
             }
 
-            // Fallback defaults
-            return ("", isDestination ? "EnterpriseDataWarehouse" : "SsisDemoDB");
+            // FIX #1: Unified fallback database. When connection manager metadata cannot be
+            // resolved from the .dtsx (e.g. AI-generated samples using bare GUIDs without
+            // a <DTS:ConnectionManagers> block), always fall back to "SsisDemoDB" for both
+            // source AND destination. This keeps the Python extraction script, the SQL prep
+            // task, and the dbt profile all pointing at the same database, matching the
+            // sql_default Airflow connection defined in docker-compose.yml.
+            return ("", "SsisDemoDB");
         }
 
         private static string NormalizeServer(string server)
