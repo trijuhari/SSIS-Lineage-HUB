@@ -1,0 +1,18 @@
+version: 2
+
+models:
+  - name: stg_single_customer_etl
+    description: "Auto-converted from SSIS Package 'Pkg_Single_Customer_ETL'"
+    columns:
+      - name: SegmentCode
+        description: "Mapped from source column"
+      - name: CustomerId
+        description: "Mapped from source column"
+      - name: FullName
+        description: "Mapped from source column"
+      - name: CustomerSegment
+        description: "Mapped from source column"
+      - name: EmailAddress
+        description: "Mapped from source column"
+      - name: AccountBalance
+        description: "Mapped from source column"
