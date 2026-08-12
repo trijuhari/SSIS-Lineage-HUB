@@ -469,9 +469,11 @@ namespace SsisLineage.Core
         #region XML Fallback Parsers
         private string GetExecutableId(XElement exe, XNamespace dts)
         {
+            var dtsId = exe.Attribute(dts + "DTSID")?.Value 
+                ?? exe.Elements(dts + "Property").FirstOrDefault(p => p.Attribute(dts + "Name")?.Value == "DTSID")?.Value;
+            if (!string.IsNullOrEmpty(dtsId)) return dtsId;
+
             var refId = exe.Attribute(dts + "refId")?.Value 
-                ?? exe.Attribute(dts + "DTSID")?.Value 
-                ?? exe.Elements(dts + "Property").FirstOrDefault(p => p.Attribute(dts + "Name")?.Value == "DTSID")?.Value 
                 ?? exe.Elements(dts + "Property").FirstOrDefault(p => p.Attribute(dts + "Name")?.Value == "refId")?.Value;
             return refId ?? "";
         }

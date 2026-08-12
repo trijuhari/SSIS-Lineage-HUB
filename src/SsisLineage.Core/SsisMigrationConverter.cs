@@ -1150,8 +1150,15 @@ namespace SsisLineage.Core
                 sb.AppendLine("    # Set up task dependencies (follows original SSIS PrecedenceConstraint order)");
                 if (taskNames.Count > 0)
                 {
+                    bool IsTaskMatch(TaskNode t, string id) =>
+                        string.Equals(t.Id, id, StringComparison.OrdinalIgnoreCase) ||
+                        t.Id.EndsWith("::" + id, StringComparison.OrdinalIgnoreCase) ||
+                        id.EndsWith("::" + t.Id, StringComparison.OrdinalIgnoreCase) ||
+                        (!string.IsNullOrEmpty(t.Id) && !string.IsNullOrEmpty(id) &&
+                         t.Id.Replace("Package\\", "").Trim('{', '}').Equals(id.Replace("Package\\", "").Trim('{', '}'), StringComparison.OrdinalIgnoreCase));
+
                     var execEdges = graph.ExecutionEdges
-                        .Where(e => tasks.Any(t => t.Id == e.FromTaskId) && tasks.Any(t => t.Id == e.ToTaskId))
+                        .Where(e => tasks.Any(t => IsTaskMatch(t, e.FromTaskId)) && tasks.Any(t => IsTaskMatch(t, e.ToTaskId)))
                         .ToList();
 
                     // Helper: return the correct Airflow task variable reference for a task.
@@ -1172,19 +1179,19 @@ namespace SsisLineage.Core
                     if (execEdges.Count > 0)
                     {
                         // Use actual PrecedenceConstraint edges from the SSIS package
-                        var rootTasks = tasks.Where(t => !execEdges.Any(e => e.ToTaskId == t.Id)).ToList();
+                        var rootTasks = tasks.Where(t => !execEdges.Any(e => IsTaskMatch(t, e.ToTaskId))).ToList();
                         foreach (var root in rootTasks)
                             sb.AppendLine($"    start_pipeline >> {EntryRef(root)}");
 
                         foreach (var edge in execEdges)
                         {
-                            var fromTask = tasks.FirstOrDefault(t => t.Id == edge.FromTaskId);
-                            var toTask   = tasks.FirstOrDefault(t => t.Id == edge.ToTaskId);
+                            var fromTask = tasks.FirstOrDefault(t => IsTaskMatch(t, edge.FromTaskId));
+                            var toTask   = tasks.FirstOrDefault(t => IsTaskMatch(t, edge.ToTaskId));
                             if (fromTask != null && toTask != null)
                                 sb.AppendLine($"    {ExitRef(fromTask)} >> {EntryRef(toTask)}");
                         }
 
-                        var leafTasks = tasks.Where(t => !execEdges.Any(e => e.FromTaskId == t.Id)).ToList();
+                        var leafTasks = tasks.Where(t => !execEdges.Any(e => IsTaskMatch(t, e.FromTaskId))).ToList();
                         foreach (var leaf in leafTasks)
                             sb.AppendLine($"    {ExitRef(leaf)} >> end_pipeline");
                     }
