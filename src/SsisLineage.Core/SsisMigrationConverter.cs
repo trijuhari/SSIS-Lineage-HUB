@@ -94,6 +94,15 @@ namespace SsisLineage.Core
             schemaYaml.AppendLine();
             schemaYaml.AppendLine("models:");
 
+            // sources block will be appended after all model entries are added
+            var schemaYamlSources = new StringBuilder();
+            schemaYamlSources.AppendLine();
+            schemaYamlSources.AppendLine("sources:");
+            schemaYamlSources.AppendLine("  - name: landing");
+            schemaYamlSources.AppendLine("    description: \"Physical SQL Server tables populated by Python extraction scripts\"");
+            schemaYamlSources.AppendLine("    schema: dbo");
+            schemaYamlSources.AppendLine("    tables:");
+
             foreach (var pkg in packages)
             {
                 var pkgComponents = graph.Components.Where(c => c.PackageId == pkg.Id).ToList();
@@ -166,16 +175,24 @@ namespace SsisLineage.Core
                     ?? destinations.FirstOrDefault();
                 var rawLandingTable = primaryDestination != null && !string.IsNullOrEmpty(primaryDestination.SqlQueryOrTable)
                     ? primaryDestination.SqlQueryOrTable
-                    : ("dbo_stg_" + CleanIdentifier(pkg.Name));
-                var landingTable = Regex.Replace(rawLandingTable, @"[\[\]]", "").Replace(".", "_").Trim();
-                if (string.IsNullOrEmpty(landingTable)) landingTable = "dbo_stg_" + CleanIdentifier(pkg.Name);
+                    : ("dbo.stg_" + CleanIdentifier(pkg.Name));
+                // Strip brackets and schema prefix to get just the physical table name for dbt source()
+                var landingTablePhysical = Regex.Replace(rawLandingTable, @"[\[\]]", "").Trim();
+                // Physical name without schema: e.g. "dbo.stg_RawCustomers" → "stg_RawCustomers"
+                var landingTableName = landingTablePhysical.Contains(".")
+                    ? landingTablePhysical.Substring(landingTablePhysical.IndexOf('.') + 1)
+                    : landingTablePhysical;
+                if (string.IsNullOrEmpty(landingTableName)) landingTableName = "stg_" + CleanIdentifier(pkg.Name);
+
+                // Register this landing table in the sources: block of schema.yml
+                schemaYamlSources.AppendLine($"      - name: {landingTableName}");
+                schemaYamlSources.AppendLine($"        description: \"Landing table populated by Python extraction for {pkg.Name}\"");
 
                 sb.AppendLine("WITH source_data AS (");
                 sb.AppendLine($"    -- Extracted from Landing Zone (Populated by Python)");
-                // landingTable is already flattened to a plain identifier (e.g. dbo_stg_ECommerceOrders)
-                // by the dot→underscore transform above, so no schema prefix is needed here.
-                // The dbt profile schema (dbo) is applied automatically at run time.
-                sb.AppendLine($"    SELECT * FROM {landingTable}");
+                // Use dbt {{ source() }} macro so dbt can correctly resolve the physical table
+                // at compile time using the 'landing' source declared in schema.yml.
+                sb.AppendLine($"    SELECT * FROM {{{{ source('landing', '{landingTableName}') }}}}");
                 sb.AppendLine(")");
                 
                 // Build a lookup alias map: component name/id → CTE index (lookup_0, lookup_1 …)
@@ -498,6 +515,9 @@ namespace SsisLineage.Core
 
                 result.MappingsConverted += pkgMappings.Count;
             }
+
+            // Append the sources: block to schema.yml after all model entries
+            schemaYaml.Append(schemaYamlSources.ToString());
 
             result.Files.Insert(0, new GeneratedFile
             {
@@ -1116,7 +1136,12 @@ namespace SsisLineage.Core
                         sb.AppendLine();
                         sb.AppendLine($"    {taskId}_dbt = BashOperator(");
                         sb.AppendLine($"        task_id='{taskId}_transform_dbt',");
-                        sb.AppendLine($"        bash_command='cd /opt/airflow/dags/dbt_project && dbt run --no-partial-parse --profiles-dir . --select {dbtModelName}',");
+                        sb.AppendLine($"        bash_command=(");
+                        sb.AppendLine($"            'set -e && '");
+                        sb.AppendLine($"            'cd /opt/airflow/dags/dbt_project && '");
+                        sb.AppendLine($"            'dbt deps --profiles-dir . && '");
+                        sb.AppendLine($"            'dbt run --no-partial-parse --profiles-dir . --select {dbtModelName}'");
+                        sb.AppendLine($"        ),");
                         sb.AppendLine($"    )");
                         sb.AppendLine();
                         sb.AppendLine($"    {taskId}_extract >> {taskId}_dbt");

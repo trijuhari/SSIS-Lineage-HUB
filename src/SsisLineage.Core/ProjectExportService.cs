@@ -90,7 +90,7 @@ models:
       user: sa
       password: 'YourPassword123!'
       encrypt: true
-      trust_cert: true";
+      trust_server_certificate: true";
                 AddOrReplaceEntry(archive, "dags/dbt_project/profiles.yml", profilesYaml);
 
                 var makefileContent = @"docker-spin-up:
