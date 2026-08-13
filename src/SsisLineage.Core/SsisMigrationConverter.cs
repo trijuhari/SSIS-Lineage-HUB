@@ -175,13 +175,13 @@ namespace SsisLineage.Core
                     ?? destinations.FirstOrDefault();
                 var rawLandingTable = primaryDestination != null && !string.IsNullOrEmpty(primaryDestination.SqlQueryOrTable)
                     ? primaryDestination.SqlQueryOrTable
-                    : ("dbo.stg_" + CleanIdentifier(pkg.Name));
-                // Strip brackets and schema prefix to get just the physical table name for dbt source()
+                    : ("stg_" + CleanIdentifier(pkg.Name));
+                // Strip brackets and schema prefix (e.g. [dbo].[stg_RawCustomers] -> stg_RawCustomers)
                 var landingTablePhysical = Regex.Replace(rawLandingTable, @"[\[\]]", "").Trim();
-                // Physical name without schema: e.g. "dbo.stg_RawCustomers" → "stg_RawCustomers"
                 var landingTableName = landingTablePhysical.Contains(".")
                     ? landingTablePhysical.Substring(landingTablePhysical.IndexOf('.') + 1)
                     : landingTablePhysical;
+                if (landingTableName.StartsWith("dbo_")) landingTableName = landingTableName.Substring(4);
                 if (string.IsNullOrEmpty(landingTableName)) landingTableName = "stg_" + CleanIdentifier(pkg.Name);
 
                 // Register this landing table in the sources: block of schema.yml
@@ -905,13 +905,16 @@ namespace SsisLineage.Core
                 sb.AppendLine("    # ---------------------------------------------------------");
                 sb.AppendLine();
 
-                // Build target table name: strip schema prefix (e.g. "stg.RawCustomers" → "stg_RawCustomers")
+                // Build target table name: strip schema prefix (e.g. "[dbo].[stg_RawCustomers]" → "stg_RawCustomers")
                 var rawTarget = destComp != null && !string.IsNullOrEmpty(destComp.SqlQueryOrTable)
                     ? destComp.SqlQueryOrTable
-                    : "fact_target";
-                // Remove surrounding brackets and replace dots with underscores for pandas to_sql naming
-                var targetTable = Regex.Replace(rawTarget, @"[\[\]]", "").Replace(".", "_").Trim();
-                if (string.IsNullOrEmpty(targetTable)) targetTable = "fact_target";
+                    : ("stg_" + CleanIdentifier(pkg.Name));
+                var targetTablePhysical = Regex.Replace(rawTarget, @"[\[\]]", "").Trim();
+                var targetTable = targetTablePhysical.Contains(".")
+                    ? targetTablePhysical.Substring(targetTablePhysical.IndexOf('.') + 1)
+                    : targetTablePhysical;
+                if (targetTable.StartsWith("dbo_")) targetTable = targetTable.Substring(4);
+                if (string.IsNullOrEmpty(targetTable)) targetTable = "stg_" + CleanIdentifier(pkg.Name);
                     
                 var scripts = pkgComponents.Where(c => c.Type != null && c.Type.Contains("Script Component", StringComparison.OrdinalIgnoreCase)).ToList();
                 if (scripts.Any())
