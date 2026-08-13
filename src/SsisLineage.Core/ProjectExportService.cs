@@ -89,8 +89,8 @@ models:
       schema: dbo
       user: sa
       password: 'YourPassword123!'
-      encrypt: true
-      trust_server_certificate: true";
+      encrypt: false
+      trust_cert: true";
                 AddOrReplaceEntry(archive, "dags/dbt_project/profiles.yml", profilesYaml);
 
                 var makefileContent = @"docker-spin-up:
