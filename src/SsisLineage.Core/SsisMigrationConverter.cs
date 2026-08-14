@@ -431,7 +431,6 @@ namespace SsisLineage.Core
                             else if (targetNameLower.Contains("date"))
                                 expr = $"CAST({expr} AS DATETIME)";
                         }
-
                         mapLines.Add($"        {expr} AS {m.TargetColumnName}");
                     }
                     sb.AppendLine(string.Join(",\n", mapLines));
@@ -461,6 +460,36 @@ namespace SsisLineage.Core
                         .Distinct(StringComparer.OrdinalIgnoreCase)
                         .ToList();
 
+                    // Strategy 0 (highest priority): use LOOKUP_JOIN metadata parsed from joinToReferenceColumn
+                    // in the DTSX. Format: "LOOKUP_JOIN:sourceCol=refCol" stored in JoinDetails.
+                    // This correctly handles chained lookups where the join key comes from a prior
+                    // lookup CTE output rather than from source_data.
+                    var lkpComponent = lookups.ElementAtOrDefault(i);
+                    var lkpName = lkpComponent?.Name ?? "";
+                    var joinMetaMap = pkgMappings
+                        .Where(m => !string.IsNullOrEmpty(m.JoinDetails) && m.JoinDetails.StartsWith("LOOKUP_JOIN:") &&
+                                    (string.Equals(m.TargetComponentName, lkpName, StringComparison.OrdinalIgnoreCase) ||
+                                     (!string.IsNullOrEmpty(lkpComponent?.Id) && m.TargetComponentId.Contains(lkpComponent.Id, StringComparison.OrdinalIgnoreCase))))
+                        .Select(m => {
+                            var payload = m.JoinDetails.Substring("LOOKUP_JOIN:".Length); // "srcCol=refCol"
+                            var parts = payload.Split('=');
+                            return parts.Length == 2 ? (srcCol: parts[0].Trim(), refCol: parts[1].Trim()) : (srcCol: "", refCol: "");
+                        })
+                        .Where(t => !string.IsNullOrEmpty(t.srcCol) && !string.IsNullOrEmpty(t.refCol))
+                        .ToList();
+
+                    if (joinMetaMap.Any())
+                    {
+                        var jm = joinMetaMap.First();
+                        // Determine which CTE (or source_data) supplies the join key column.
+                        // If jm.srcCol exists in a prior lookup's column index, join from that lookup;
+                        // otherwise join from source_data.
+                        var supplierCteIdx = lookupColumnIndex.TryGetValue(jm.srcCol, out var prevIdx) && prevIdx < i ? prevIdx : -1;
+                        var supplierAlias = supplierCteIdx >= 0 ? $"lookup_{supplierCteIdx}" : "source_data";
+                        sb.AppendLine($"    LEFT JOIN lookup_{i} ON {supplierAlias}.{jm.srcCol} = lookup_{i}.{jm.refCol}");
+                        continue;
+                    }
+
                     var commonKey = srcCols.FirstOrDefault(sc => lkpCols.Any(lc => string.Equals(sc, lc, StringComparison.OrdinalIgnoreCase)));
                     if (!string.IsNullOrEmpty(commonKey))
                     {
@@ -473,6 +502,16 @@ namespace SsisLineage.Core
                     if (!string.IsNullOrEmpty(srcDateCol) && !string.IsNullOrEmpty(lkpDateCol))
                     {
                         sb.AppendLine($"    LEFT JOIN lookup_{i} ON source_data.{srcDateCol} = lookup_{i}.{lkpDateCol}");
+                        continue;
+                    }
+
+                    // Strategy: check if any column in this lookup CTE was also output by a prior
+                    // lookup CTE — use that prior lookup as the join supplier (chained lookup pattern).
+                    var chainedJoinKey = lkpCols.FirstOrDefault(lc => lookupColumnIndex.TryGetValue(lc, out var prevCteIdx) && prevCteIdx < i);
+                    if (!string.IsNullOrEmpty(chainedJoinKey))
+                    {
+                        var prevCteIdx = lookupColumnIndex[chainedJoinKey];
+                        sb.AppendLine($"    LEFT JOIN lookup_{i} ON lookup_{prevCteIdx}.{chainedJoinKey} = lookup_{i}.{chainedJoinKey}");
                         continue;
                     }
 

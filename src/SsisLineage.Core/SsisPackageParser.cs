@@ -936,6 +936,19 @@ namespace SsisLineage.Core
                         var targetColName = GetTargetColumnName(inCol);
                         if (string.IsNullOrEmpty(targetColName)) targetColName = sourceColName;
 
+                        // Capture Lookup join key: joinToReferenceColumn declares which column in the
+                        // reference dataset this input column is matched against. We store this as
+                        // "LOOKUP_JOIN:sourceCol=refCol" in JoinDetails so the dbt converter can
+                        // correctly resolve chained-lookup joins (e.g. RegionCode coming from lookup_0
+                        // joins lookup_1 ON lookup_0.RegionCode = lookup_1.RegionCode).
+                        var joinDetails = "";
+                        var joinToRef = inCol.Attribute("joinToReferenceColumn")?.Value;
+                        if (!string.IsNullOrEmpty(joinToRef))
+                        {
+                            var joinSrcCol = !string.IsNullOrEmpty(sourceColName) ? sourceColName : fallbackColName;
+                            joinDetails = $"LOOKUP_JOIN:{joinSrcCol}={joinToRef}";
+                        }
+
                         _graph.ColumnMappings.Add(new ColumnMap
                         {
                             PackageId = packageNode.Id,
@@ -946,7 +959,8 @@ namespace SsisLineage.Core
                             TargetComponentId = compId,
                             TargetComponentName = compName,
                             TargetColumnName = targetColName,
-                            OperationType = compNode.Type ?? "DataFlow"
+                            OperationType = compNode.Type ?? "DataFlow",
+                            JoinDetails = joinDetails
                         });
                     }
 
