@@ -463,8 +463,9 @@ namespace SsisLineage.Core
                     var lkpCols = lookupColumnIndex.Where(kv => kv.Value == i).Select(kv => kv.Key).ToList();
                     var lookupSourceCols = pkgMappings
                         .Where(m => string.IsNullOrEmpty(m.SourceExpression) &&
-                                    !string.IsNullOrEmpty(m.SourceComponentName) &&
-                                    lookupAliasMap.ContainsKey(m.SourceComponentName))
+                                    ((!string.IsNullOrEmpty(m.SourceComponentName) && lookupAliasMap.ContainsKey(m.SourceComponentName)) ||
+                                     (!string.IsNullOrEmpty(m.SourceComponentId) && lookupAliasMap.ContainsKey(m.SourceComponentId)) ||
+                                     (!string.IsNullOrEmpty(m.SourceColumnName) && lookupColumnIndex.ContainsKey(m.SourceColumnName))))
                         .Select(m => m.SourceColumnName)
                         .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
