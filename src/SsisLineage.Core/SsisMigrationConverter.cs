@@ -1115,17 +1115,10 @@ namespace SsisLineage.Core
                 sb.AppendLine("            cursor.executemany(f'INSERT INTO dbo.{target_table} VALUES ({placeholders})', rows)");
                 sb.AppendLine("        else:");
                 sb.AppendLine("            print(\"No rows to insert.\")");
-                sb.AppendLine();
-                sb.AppendLine("        # Reconciliation log");
-                sb.AppendLine("        cursor.execute(\"\"\"");
-                sb.AppendLine("            IF OBJECT_ID('dbo.ValidationLogs', 'U') IS NULL");
-                sb.AppendLine("            CREATE TABLE dbo.ValidationLogs (RunDate DATETIME, TableName NVARCHAR(100), SsisRows INT, DbtRows INT, Mismatches INT)");
-                sb.AppendLine("        \"\"\")");
-                sb.AppendLine("        cursor.execute('INSERT INTO dbo.ValidationLogs VALUES (GETDATE(), ?, ?, 0, 0)', target_table, len(df))");
                 sb.AppendLine("        target_conn.commit()");
                 sb.AppendLine("        cursor.close()");
                 sb.AppendLine("        target_conn.close()");
-                sb.AppendLine("        print(f\"Successfully loaded {len(df)} rows into {target_table}. Reconciliation log updated.\")");
+                sb.AppendLine("        print(f\"Successfully loaded {len(df)} rows into {target_table}.\")");
                 sb.AppendLine("    except Exception as e:");
                 sb.AppendLine("        print(f\"Failed to load to database: {e}\")");
                 sb.AppendLine("        raise");

@@ -20,7 +20,7 @@
         <div class="d-flex gap-2 flex-wrap align-center">
             @if (reportData != null)
             {
-                <MudMenu Label="Export Report" Variant="Variant.Filled" Color="Color.Primary" EndIcon="@Icons.Material.Filled.KeyboardArrowDown" StartIcon="@Icons.Material.Filled.Download">
+                <MudMenu Label="@(_exporting ? "Exporting..." : "Export Report")" Disabled="@_exporting" Variant="Variant.Filled" Color="Color.Primary" EndIcon="@Icons.Material.Filled.KeyboardArrowDown" StartIcon="@Icons.Material.Filled.Download">
                     <MudMenuItem Icon="@Icons.Material.Filled.TableChart" OnClick="ExportExcel">Excel Workbook (.xlsx)</MudMenuItem>
                     <MudMenuItem Icon="@Icons.Material.Filled.Description" OnClick="ExportCsv">CSV Mappings (.csv)</MudMenuItem>
                     <MudMenuItem Icon="@Icons.Material.Filled.Code" OnClick="ExportJson">JSON Document (.json)</MudMenuItem>

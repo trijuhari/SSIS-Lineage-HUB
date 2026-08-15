@@ -271,24 +271,7 @@ else
         </MudItem>
     </MudGrid>
 
-    @if (reportData != null && reportData.Graph.Warnings.Count > 0)
-    {
-        <MudExpansionPanels Elevation="1">
-            <MudExpansionPanel Icon="@Icons.Material.Filled.Warning"
-                               Text="@($"Scan warnings ({reportData.Graph.Warnings.Count})")">
-                <MudList T="string" Dense="true">
-                    @foreach (var warning in reportData.Graph.Warnings.Take(50))
-                    {
-                        <MudListItem T="string" Icon="@Icons.Material.Filled.ChevronRight">@warning</MudListItem>
-                    }
-                </MudList>
-                @if (reportData.Graph.Warnings.Count > 50)
-                {
-                    <MudText Typo="Typo.caption" Class="pa-2">Showing first 50. See detailed report for the full list.</MudText>
-                }
-            </MudExpansionPanel>
-        </MudExpansionPanels>
-    }
+
 
     <!-- Diagram -->
     @if (reportData != null)
@@ -877,7 +860,6 @@ else
             return;
         }
 
-        _isTestingConn = true;
         _connTestResult = "";
         StateHasChanged();
 
@@ -886,7 +868,6 @@ else
         var res = SqlProcedureDefinitionLoader.TestConnection(sqlConnectionString);
         _connTestSuccess = res.Success;
         _connTestResult = res.Message;
-        _isTestingConn = false;
     }
 
     private Task<IEnumerable<string>> SearchPackages(string? value, CancellationToken token)
