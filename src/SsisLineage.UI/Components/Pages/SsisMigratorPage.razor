@@ -294,10 +294,13 @@
     <MudGrid>
         <!-- File Explorer List -->
         <MudItem xs="12" md="4" lg="3">
-            <MudPaper Class="pa-2" Elevation="3" Style="height: 520px; overflow-y: auto;">
-                <MudText Typo="Typo.subtitle2" Class="pa-2 font-weight-bold color-primary">
-                    📁 Generated Target Files
-                </MudText>
+            <MudPaper Class="pa-2" Elevation="3" Style="height: 540px; overflow-y: auto;">
+                <div class="d-flex align-center justify-space-between pa-2">
+                    <MudText Typo="Typo.subtitle2" Class="font-weight-bold color-primary">
+                        📁 Generated Target Files
+                    </MudText>
+                    <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Filled">ZIP Ready</MudChip>
+                </div>
                 <MudList T="GeneratedFile" SelectionMode="SelectionMode.SingleSelection" SelectedValue="_activeFile">
                     @foreach (var file in _result.Files)
                     {
@@ -314,33 +317,68 @@
             </MudPaper>
         </MudItem>
 
-        <!-- Code Preview Pane -->
+        <!-- Code Preview & Diff Pane -->
         <MudItem xs="12" md="8" lg="9">
-            <MudPaper Class="pa-4" Elevation="3" Style="height: 520px; display: flex; flex-direction: column;">
+            <MudPaper Class="pa-4" Elevation="3" Style="height: 540px; display: flex; flex-direction: column;">
                 @if (_activeFile != null)
                 {
-                    <div class="d-flex align-center justify-space-between mb-3">
+                    <div class="d-flex align-center justify-space-between mb-3 flex-wrap gap-2">
                         <div class="d-flex align-center gap-2">
                             <MudChip T="string" Size="Size.Small" Color="Color.Primary" Variant="Variant.Filled">@_activeFile.TargetFramework</MudChip>
                             <MudText Typo="Typo.h6" Class="font-weight-bold">@_activeFile.FileName</MudText>
                         </div>
-                        <MudButton Variant="Variant.Outlined" Color="Color.Inherit" Size="Size.Small"
-                                   StartIcon="@(_copied ? Icons.Material.Filled.Check : Icons.Material.Filled.ContentCopy)"
-                                   OnClick="CopyActiveFileCode">
-                            @(_copied ? "Copied!" : "Copy Code")
-                        </MudButton>
+                        <div class="d-flex align-center gap-2">
+                            <MudToggleGroup T="string" @bind-Value="_viewMode" Size="Size.Small" Color="Color.Info">
+                                <MudToggleItem Value="@("single")">Code View</MudToggleItem>
+                                <MudToggleItem Value="@("diff")">Side-by-Side Diff Inspector</MudToggleItem>
+                            </MudToggleGroup>
+                            <MudButton Variant="Variant.Outlined" Color="Color.Inherit" Size="Size.Small"
+                                       StartIcon="@(_copied ? Icons.Material.Filled.Check : Icons.Material.Filled.ContentCopy)"
+                                       OnClick="CopyActiveFileCode">
+                                @(_copied ? "Copied!" : "Copy Code")
+                            </MudButton>
+                        </div>
                     </div>
 
-                    <div style="flex: 1; overflow: auto; background: #0b1329; border-radius: 8px; padding: 12px;">
-                        @if (_activeFile.Language == "sql")
-                        {
-                            <SqlQueryViewer Sql="@_activeFile.Content" Title="@_activeFile.FileName" />
-                        }
-                        else
-                        {
-                            <pre class="sql-code-editor"><code>@_activeFile.Content</code></pre>
-                        }
-                    </div>
+                    @if (_viewMode == "diff")
+                    {
+                        <MudGrid Style="flex: 1; overflow: hidden;" Class="ma-0 w-100">
+                            <!-- Left: SSIS Source Metadata & Logic -->
+                            <MudItem xs="12" md="6" Style="height: 100%; display: flex; flex-direction: column;" Class="pa-1">
+                                <div class="d-flex align-center gap-2 mb-2">
+                                    <MudIcon Icon="@Icons.Material.Filled.AccountTree" Color="Color.Error" Size="Size.Small" />
+                                    <MudText Typo="Typo.caption" Class="font-weight-bold" Style="color: #f87171;">LEGACY SSIS COMPONENT LOGIC (.DTSX)</MudText>
+                                </div>
+                                <div style="flex: 1; overflow: auto; background: #0f172a; border: 1px solid rgba(248, 113, 113, 0.3); border-radius: 8px; padding: 12px;">
+                                    <pre class="sql-code-editor" style="margin: 0; font-size: 0.8rem; color: #cbd5e1;"><code>@GetSsisSourceSummary()</code></pre>
+                                </div>
+                            </MudItem>
+
+                            <!-- Right: Modern Generated Code -->
+                            <MudItem xs="12" md="6" Style="height: 100%; display: flex; flex-direction: column;" Class="pa-1">
+                                <div class="d-flex align-center gap-2 mb-2">
+                                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Size="Size.Small" />
+                                    <MudText Typo="Typo.caption" Class="font-weight-bold" Style="color: #4ade80;">GENERATED MODERN TARGET CODE</MudText>
+                                </div>
+                                <div style="flex: 1; overflow: auto; background: #0b1329; border: 1px solid rgba(74, 222, 128, 0.3); border-radius: 8px; padding: 12px;">
+                                    <pre class="sql-code-editor" style="margin: 0; font-size: 0.8rem; color: #38bdf8;"><code>@_activeFile.Content</code></pre>
+                                </div>
+                            </MudItem>
+                        </MudGrid>
+                    }
+                    else
+                    {
+                        <div style="flex: 1; overflow: auto; background: #0b1329; border-radius: 8px; padding: 12px;">
+                            @if (_activeFile.Language == "sql")
+                            {
+                                <SqlQueryViewer Sql="@_activeFile.Content" Title="@_activeFile.FileName" />
+                            }
+                            else
+                            {
+                                <pre class="sql-code-editor"><code>@_activeFile.Content</code></pre>
+                            }
+                        </div>
+                    }
                 }
             </MudPaper>
         </MudItem>
@@ -360,7 +398,41 @@ else if (_reportData == null)
     private string _selectedPackageId = "ALL";
     private MigrationResult? _result;
     private GeneratedFile? _activeFile;
+    private string _viewMode = "single";
     private bool _copied;
+
+    private string GetSsisSourceSummary()
+    {
+        if (_reportData?.Graph == null || _activeFile == null) return "-- SSIS Source Package Data Not Loaded";
+
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("=================================================");
+        sb.AppendLine("📦 SSIS PACKAGE SOURCE METADATA (.DTSX)");
+        sb.AppendLine("=================================================");
+        sb.AppendLine($"Target File    : {_activeFile.FileName}");
+        sb.AppendLine($"Framework      : {_activeFile.TargetFramework}");
+        sb.AppendLine($"Scope Packages : {(_packages != null ? _packages.Count : 0)} DTSX Package(s)");
+        sb.AppendLine($"Total Nodes    : {_reportData.Graph.Components.Count} Data Flow Components");
+        sb.AppendLine();
+        sb.AppendLine("--- EXCERPT OF SSIS DTSX COMPONENT PIPELINE ---");
+
+        var compList = _reportData.Graph.Components.Take(12).ToList();
+        foreach (var c in compList)
+        {
+            sb.AppendLine($"• Component ID : {c.Id}");
+            sb.AppendLine($"  Type         : {c.ComponentType}");
+            sb.AppendLine($"  Name         : {c.Name}");
+            if (!string.IsNullOrWhiteSpace(c.SourceTable)) sb.AppendLine($"  Source Table : {c.SourceTable}");
+            if (!string.IsNullOrWhiteSpace(c.TargetTable)) sb.AppendLine($"  Target Table : {c.TargetTable}");
+            if (c.ColumnMappings != null && c.ColumnMappings.Any())
+            {
+                sb.AppendLine($"  Mappings     : {c.ColumnMappings.Count} Column(s) transformed");
+            }
+            sb.AppendLine();
+        }
+
+        return sb.ToString();
+    }
 
     private string _effortSize = "";
     private int _effortDays = 0;
