@@ -1,26 +1,64 @@
 @page "/lineage-trace"
 @using System.Linq
+@using System.Text
 @using SsisLineage.Core
 @using SsisLineage.Core.Models
 @using SsisLineage.UI.Services
 @inject LineageService LineageService
 @inject IJSRuntime JS
 @inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
 @implements IDisposable
 
 <PageTitle>Lineage Search</PageTitle>
+
+<style>
+    .trace-hero-card {
+        background: linear-gradient(135deg, rgba(15, 23, 42, 0.7) 0%, rgba(30, 41, 59, 0.4) 100%);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 12px;
+    }
+
+    .path-step-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        background: rgba(15, 23, 42, 0.6);
+        border: 1px solid rgba(56, 189, 248, 0.2);
+        padding: 8px 14px;
+        border-radius: 8px;
+        font-size: 0.85rem;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .path-step-chip:hover {
+        background: rgba(56, 189, 248, 0.15);
+        border-color: rgba(56, 189, 248, 0.5);
+        transform: translateY(-2px);
+    }
+
+    .path-step-chip.active {
+        background: rgba(139, 92, 246, 0.2);
+        border-color: #8b5cf6;
+        box-shadow: 0 0 12px rgba(139, 92, 246, 0.3);
+    }
+</style>
 
 <MudStack Spacing="4" Class="pa-4">
 
     <!-- Header -->
     <div class="d-flex justify-space-between align-center flex-wrap gap-4">
         <div>
-            <MudText Typo="Typo.overline" Color="Color.Primary">Lineage Search</MudText>
-            <MudText Typo="Typo.h4">Trace a Column or Table</MudText>
+            <MudText Typo="Typo.overline" Color="Color.Primary">Column Lineage Trace</MudText>
+            <MudText Typo="Typo.h4" Class="font-weight-bold">Trace & Inspector Workspace</MudText>
         </div>
         @if (_trace != null && _trace.Steps.Count > 0)
         {
             <div class="d-flex gap-2 flex-wrap">
+                <MudButton OnClick="CopyLineageChain" Variant="Variant.Outlined" Color="Color.Primary"
+                           StartIcon="@Icons.Material.Filled.ContentCopy">Copy Lineage Path</MudButton>
                 <MudButton OnClick="ExportCsv" Variant="Variant.Outlined" Color="Color.Success"
                            StartIcon="@Icons.Material.Filled.Download">Export CSV</MudButton>
                 <MudTooltip Text="Export the focused diagram as a PNG image" Placement="Placement.Bottom">
@@ -33,13 +71,13 @@
 
     @if (reportData == null)
     {
-        <MudPaper Outlined="true" Elevation="0" Class="pa-8 d-flex flex-column align-center justify-center">
+        <MudPaper Outlined="true" Elevation="0" Class="pa-8 d-flex flex-column align-center justify-center trace-hero-card">
             <MudIcon Icon="@Icons.Material.Filled.TravelExplore" Size="Size.Large" Color="Color.Primary" />
-            <MudText Typo="Typo.subtitle1" Class="mt-2">No report loaded</MudText>
-            <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center" Class="mb-3">
-                Generate a lineage report first, then come back to search and trace columns or tables.
+            <MudText Typo="Typo.subtitle1" Class="mt-2 font-weight-bold">No Lineage Report Loaded</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center" Class="mb-4" Style="max-width: 480px;">
+                Generate a lineage report first in Lineage Discovery, then come back to trace field dependencies upstream or downstream.
             </MudText>
-            <MudButton OnClick="@(() => NavigationManager.NavigateTo("/"))" Variant="Variant.Filled" Color="Color.Primary">
+            <MudButton OnClick="@(() => NavigationManager.NavigateTo("/lineage"))" Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.AccountTree">
                 Go to Lineage Discovery
             </MudButton>
         </MudPaper>
@@ -47,7 +85,7 @@
     else
     {
         <!-- Search controls -->
-        <MudPaper Class="pa-4" Elevation="2">
+        <MudPaper Class="pa-4 trace-hero-card" Elevation="2">
             <div class="d-flex flex-wrap gap-4 align-center">
                 <MudToggleGroup T="SearchScope" @bind-Value="_scope" @bind-Value:after="OnScopeChanged"
                                 Size="Size.Small" Color="Color.Primary" CheckMark="false">
@@ -67,7 +105,7 @@
 
                 <MudAutocomplete T="SearchHit" @bind-Value="_selected" @bind-Value:after="OnHitSelected"
                                  Label="@($"Search {_scope.ToString().ToLower()}")"
-                                 Placeholder="Type a name to search…"
+                                 Placeholder="Type a column or table name to trace…"
                                  SearchFunc="SearchAsync" ToStringFunc="@(h => h?.Display ?? "")"
                                  Variant="Variant.Outlined" Margin="Margin.Dense" Clearable="true"
                                  MaxItems="50" ResetValueOnEmptyText="true" CoerceText="true"
@@ -97,46 +135,144 @@
 
         @if (_trace != null && _trace.Steps.Count > 0)
         {
-            <!-- Step table -->
-            <MudPaper Class="pa-2" Elevation="2">
-                <MudDataGrid T="TraceStep" Items="_trace.Steps" Dense="true" Hover="true" Striped="true"
-                             FixedHeader="true" Height="420px" SortMode="SortMode.None">
-                    <Columns>
-                        @* Step is a stage grouping (rows of the same source→target stage share
-                           a number, increasing source→target) — not a serial row counter. *@
-                        <TemplateColumn Title="Step">
-                            <CellTemplate>@(context.Item.Rank + 1)</CellTemplate>
-                        </TemplateColumn>
-                        <PropertyColumn Property="x => x.SourceLabel" Title="Source" />
-                        <TemplateColumn Title="Operation">
-                            <CellTemplate>@FormatOp(context.Item.Operation)</CellTemplate>
-                        </TemplateColumn>
-                        <TemplateColumn Title="Rename">
-                            <CellTemplate>
-                                @if (context.Item.IsRename)
-                                {
-                                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined">renamed</MudChip>
-                                }
-                            </CellTemplate>
-                        </TemplateColumn>
-                        <PropertyColumn Property="x => x.Expression" Title="Expression" />
-                        <PropertyColumn Property="x => x.FilterConditions" Title="Filter" />
-                        <PropertyColumn Property="x => x.TargetLabel" Title="Target" />
-                        <PropertyColumn Property="x => x.PackageName" Title="Package" />
-                        <PropertyColumn Property="x => x.TaskName" Title="Task" />
-                        <PropertyColumn Property="x => x.ProcedureName" Title="Procedure" />
-                        <PropertyColumn Property="x => x.JoinDetails" Title="Join Condition" />
-                    </Columns>
-                </MudDataGrid>
+            <!-- Visual Path Breadcrumb Stream -->
+            <MudPaper Class="pa-4 trace-hero-card" Elevation="2">
+                <MudText Typo="Typo.subtitle2" Class="font-weight-bold mb-3 d-flex align-center gap-2">
+                    <MudIcon Icon="@Icons.Material.Filled.Timeline" Color="Color.Info" Size="Size.Small" />
+                    Interactive Lineage Pathway (Click step to inspect)
+                </MudText>
+                <div class="d-flex align-center gap-2 flex-wrap" style="overflow-x: auto; padding-bottom: 4px;">
+                    @for (int i = 0; i < _trace.Steps.Count; i++)
+                    {
+                        var step = _trace.Steps[i];
+                        var idx = i;
+                        <div class="path-step-chip @(_selectedStep == step ? "active" : "")" @onclick="() => InspectStep(step)">
+                            <MudIcon Icon="@GetOpIcon(step.Operation)" Size="Size.Small" Style="color: #38bdf8;" />
+                            <div class="d-flex flex-column">
+                                <span style="font-weight: 700; color: #f8fafc; font-size: 0.8rem;">@step.SourceLabel</span>
+                                <span style="font-size: 0.7rem; color: #94a3b8;">@FormatOp(step.Operation)</span>
+                            </div>
+                            @if (step.IsRename)
+                            {
+                                <span style="font-size: 0.65rem; background: #f59e0b; color: #000; font-weight: 800; padding: 1px 4px; border-radius: 4px;">RENAME</span>
+                            }
+                        </div>
+
+                        @if (i < _trace.Steps.Count - 1)
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.East" Size="Size.Small" Style="color: #64748b;" />
+                        }
+                    }
+                </div>
             </MudPaper>
 
+            <!-- Step data grid & Inspector Layout -->
+            <MudGrid Spacing="3">
+                <MudItem xs="12" md="@(_selectedStep != null ? 7 : 12)">
+                    <MudPaper Class="pa-2 trace-hero-card" Elevation="2">
+                        <MudDataGrid T="TraceStep" Items="_trace.Steps" Dense="true" Hover="true" Striped="true"
+                                     FixedHeader="true" Height="400px" SortMode="SortMode.None"
+                                     RowClick="@(args => InspectStep(args.Item))">
+                            <Columns>
+                                <TemplateColumn Title="Step">
+                                    <CellTemplate>@(context.Item.Rank + 1)</CellTemplate>
+                                </TemplateColumn>
+                                <PropertyColumn Property="x => x.SourceLabel" Title="Source" />
+                                <TemplateColumn Title="Operation">
+                                    <CellTemplate>@FormatOp(context.Item.Operation)</CellTemplate>
+                                </TemplateColumn>
+                                <TemplateColumn Title="Rename">
+                                    <CellTemplate>
+                                        @if (context.Item.IsRename)
+                                        {
+                                            <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined">renamed</MudChip>
+                                        }
+                                    </CellTemplate>
+                                </TemplateColumn>
+                                <PropertyColumn Property="x => x.TargetLabel" Title="Target" />
+                                <PropertyColumn Property="x => x.PackageName" Title="Package" />
+                            </Columns>
+                        </MudDataGrid>
+                    </MudPaper>
+                </MudItem>
+
+                @if (_selectedStep != null)
+                {
+                    <MudItem xs="12" md="5">
+                        <MudPaper Class="pa-4 trace-hero-card" Elevation="3" Style="border: 1px solid rgba(139, 92, 246, 0.4);">
+                            <div class="d-flex align-center justify-space-between mb-4">
+                                <div class="d-flex align-center gap-2">
+                                    <MudIcon Icon="@Icons.Material.Filled.FindInPage" Color="Color.Secondary" />
+                                    <MudText Typo="Typo.h6" Class="font-weight-bold">Step Transformation Inspector</MudText>
+                                </div>
+                                <MudIconButton Icon="@Icons.Material.Filled.Close" Size="Size.Small" OnClick="() => _selectedStep = null" />
+                            </div>
+
+                            <MudStack Spacing="3">
+                                <div>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">Source to Target Mapping</MudText>
+                                    <div class="d-flex align-center gap-2 mt-1">
+                                        <MudChip T="string" Color="Color.Info" Variant="Variant.Filled" Size="Size.Small">@_selectedStep.SourceLabel</MudChip>
+                                        <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small" />
+                                        <MudChip T="string" Color="Color.Success" Variant="Variant.Filled" Size="Size.Small">@_selectedStep.TargetLabel</MudChip>
+                                    </div>
+                                </div>
+
+                                <MudDivider />
+
+                                <div>
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">Operation & Task Context</MudText>
+                                    <MudText Typo="Typo.body2" Class="font-weight-bold text-primary mt-1">
+                                        @FormatOp(_selectedStep.Operation) (@(_selectedStep.PackageName ?? "Package"))
+                                    </MudText>
+                                    @if (!string.IsNullOrEmpty(_selectedStep.TaskName))
+                                    {
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block">Task: @_selectedStep.TaskName</MudText>
+                                    }
+                                </div>
+
+                                @if (!string.IsNullOrEmpty(_selectedStep.Expression))
+                                {
+                                    <div>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">Transformation Expression / Derived Logic</MudText>
+                                        <pre style="margin: 4px 0 0 0; background: #090d16; padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: #38bdf8; overflow-x: auto;"><code>@_selectedStep.Expression</code></pre>
+                                    </div>
+                                }
+
+                                @if (!string.IsNullOrEmpty(_selectedStep.JoinDetails))
+                                {
+                                    <div>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">Lookup Join Condition</MudText>
+                                        <pre style="margin: 4px 0 0 0; background: #090d16; padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: #a78bfa; overflow-x: auto;"><code>@_selectedStep.JoinDetails</code></pre>
+                                    </div>
+                                }
+
+                                @if (!string.IsNullOrEmpty(_selectedStep.FilterConditions))
+                                {
+                                    <div>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">Filter Condition</MudText>
+                                        <pre style="margin: 4px 0 0 0; background: #090d16; padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.1); font-family: 'JetBrains Mono', monospace; font-size: 0.8rem; color: #fbbf24; overflow-x: auto;"><code>@_selectedStep.FilterConditions</code></pre>
+                                    </div>
+                                }
+
+                                <div class="pt-2">
+                                    <MudButton OnClick="() => CopyStepDetail(_selectedStep)" Variant="Variant.Outlined" Color="Color.Primary" FullWidth="true" StartIcon="@Icons.Material.Filled.ContentCopy">
+                                        Copy Step Logic
+                                    </MudButton>
+                                </div>
+                            </MudStack>
+                        </MudPaper>
+                    </MudItem>
+                }
+            </MudGrid>
+
             <!-- Focused diagram -->
-            <MudPaper Class="pa-4" Elevation="2">
+            <MudPaper Class="pa-4 trace-hero-card" Elevation="2">
                 <div class="d-flex justify-space-between align-center mb-3 flex-wrap gap-3">
                     <div>
-                        <MudText Typo="Typo.h6">Path Diagram</MudText>
+                        <MudText Typo="Typo.h6" Class="font-weight-bold">Interactive Sub-Path Graph</MudText>
                         <MudText Typo="Typo.caption" Color="Color.Secondary">
-                            Click a column to highlight its sub-path · scroll to zoom · drag to pan
+                            Click a node to highlight sub-path · scroll to zoom · drag to pan
                         </MudText>
                     </div>
                     <div class="d-flex gap-2 flex-wrap align-center">
@@ -174,6 +310,7 @@
     private TraceDirection _direction = TraceDirection.Both;
     private SearchHit? _selected;
     private TraceResult? _trace;
+    private TraceStep? _selectedStep;
 
     private int renderToken = 0;
     private int _lastRenderedToken = -1;
@@ -194,14 +331,13 @@
 
     private void OnScopeChanged()
     {
-        // Switching scope invalidates the current selection/trace.
         _selected = null;
         _trace = null;
+        _selectedStep = null;
     }
 
     private void OnDirectionChanged()
     {
-        // Re-trace the current selection with the new direction.
         OnHitSelected();
     }
 
@@ -210,10 +346,44 @@
         if (_tracer == null || _selected == null)
         {
             _trace = null;
+            _selectedStep = null;
             return;
         }
         _trace = _tracer.Trace(_selected, _direction);
+        _selectedStep = _trace?.Steps?.FirstOrDefault();
         renderToken++;
+    }
+
+    private void InspectStep(TraceStep step)
+    {
+        _selectedStep = step;
+        StateHasChanged();
+    }
+
+    private async Task CopyLineageChain()
+    {
+        if (_trace == null || !_trace.Steps.Any()) return;
+        
+        var sb = new StringBuilder();
+        sb.AppendLine($"Lineage Path Trace for: {_trace.FocusLabel}");
+        sb.AppendLine(new string('-', 50));
+        
+        for (int i = 0; i < _trace.Steps.Count; i++)
+        {
+            var s = _trace.Steps[i];
+            sb.AppendLine($"Step {i + 1}: [{s.SourceLabel}] --({FormatOp(s.Operation)})--> [{s.TargetLabel}]");
+            if (!string.IsNullOrEmpty(s.Expression)) sb.AppendLine($"  Logic: {s.Expression}");
+        }
+
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", sb.ToString());
+        Snackbar.Add("Lineage path chain copied to clipboard!", Severity.Success);
+    }
+
+    private async Task CopyStepDetail(TraceStep step)
+    {
+        var text = $"Step [{step.SourceLabel}] -> [{step.TargetLabel}]\nOperation: {FormatOp(step.Operation)}\nPackage: {step.PackageName}\nExpression: {step.Expression ?? "N/A"}";
+        await JS.InvokeVoidAsync("navigator.clipboard.writeText", text);
+        Snackbar.Add("Step logic copied to clipboard!", Severity.Success);
     }
 
     private async Task ExportCsv()
@@ -252,25 +422,33 @@
             {
                 _lastRenderedToken = renderToken;
                 _lastRenderedDark = IsDarkMode;
-                await Task.Delay(200); // allow DOM reconciliation
+                await Task.Delay(200);
                 await JS.InvokeVoidAsync("cyLineage.render", "trace-diagram",
                     _trace.SubGraph,
                     new { focus = _selected?.Display ?? "", focusScope = _selected?.Scope == SearchScope.Column ? "column" : "table" },
                     null, IsDarkMode, "column");
             }
         }
-        catch (Exception) { /* JS console captures details */ }
+        catch (Exception) { }
     }
 
-    // Strip the SQL_PROC_ prefix and humanise underscores for the operation cell.
     private static string FormatOp(string op)
     {
-        if (string.IsNullOrEmpty(op)) return "";
+        if (string.IsNullOrEmpty(op)) return "Direct Mapping";
         var s = op.StartsWith("SQL_PROC_", StringComparison.OrdinalIgnoreCase)
             ? op["SQL_PROC_".Length..]
             : op;
         return s.Replace('_', ' ');
     }
 
+    private static string GetOpIcon(string op) => op?.ToUpperInvariant() switch
+    {
+        var x when x.Contains("LOOKUP") => Icons.Material.Filled.Search,
+        var x when x.Contains("DERIVED") => Icons.Material.Filled.Functions,
+        var x when x.Contains("SPLIT") => Icons.Material.Filled.CallSplit,
+        _ => Icons.Material.Filled.Transform
+    };
+
     public void Dispose() { }
 }
+
