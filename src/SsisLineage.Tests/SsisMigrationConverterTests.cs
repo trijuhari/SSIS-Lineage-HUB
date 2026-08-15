@@ -355,23 +355,18 @@ public class SsisMigrationConverterTests
     [Fact]
     public void SingleDtsxProject_ScansAndConvertsSuccessfully()
     {
-        var sampleDir = Path.Combine(Directory.GetCurrentDirectory(), "sample-ssis-project-single");
-        if (!Directory.Exists(sampleDir))
-        {
-            sampleDir = "/home/hirazone/Documents/ssis-lineage-hub/sample-ssis-project-single";
-        }
-
+        var sampleDir = "/home/hirazone/Documents/ssis-lineage-hub/sample-ssis-project-demo";
         var service = new LineageScanService();
         var report = service.Scan(new LineageScanOptions
         {
             ProjectPath = sampleDir,
-            StartPackage = "Pkg_Single_Customer_ETL.dtsx",
+            StartPackage = "Pkg_SalesOrder_ETL.dtsx",
             UseCache = false
         });
 
         Assert.NotNull(report);
         Assert.Single(report.Graph.Packages);
-        Assert.Equal("Pkg_Single_Customer_ETL", report.Graph.Packages[0].Name);
+        Assert.Equal("Pkg_SalesOrder_ETL", report.Graph.Packages[0].Name);
 
         var dbtResult = SsisMigrationConverter.ConvertProject(report.Graph, MigrationTarget.DbtSql);
         Assert.True(dbtResult.IsValid);

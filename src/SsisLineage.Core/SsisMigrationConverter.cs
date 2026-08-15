@@ -226,6 +226,18 @@ namespace SsisLineage.Core
                         lkpSql = $"SELECT * FROM {lkpSql}";
                     }
 
+                    if (!string.IsNullOrEmpty(srcDb) && !srcDb.StartsWith("<"))
+                    {
+                        if (lkpSql.Contains("[dbo].", StringComparison.OrdinalIgnoreCase) || lkpSql.Contains("dbo.", StringComparison.OrdinalIgnoreCase))
+                        {
+                            lkpSql = Regex.Replace(lkpSql, @"\bFROM\s+(?:\[?dbo\]?\.)", $"FROM [{srcDb}].[dbo].", RegexOptions.IgnoreCase);
+                        }
+                        else if (Regex.IsMatch(lkpSql, @"\bFROM\s+\[?[\w_]+\]?(?!\.)", RegexOptions.IgnoreCase))
+                        {
+                            lkpSql = Regex.Replace(lkpSql, @"\bFROM\s+(\[?[\w_]+\]?)(?!\.)", $"FROM [{srcDb}].[dbo].$1", RegexOptions.IgnoreCase);
+                        }
+                    }
+
                     sb.AppendLine($",\nlookup_{cteIdx} AS (");
                     sb.AppendLine($"    {lkpSql}");
                     sb.AppendLine(")");
@@ -344,6 +356,10 @@ namespace SsisLineage.Core
                                 if (sqlKeywords.Contains(word)) return m2.Value;
                                 // Skip __LITn__ and __JINJAn__ placeholders
                                 if (word.StartsWith("__LIT") || word.StartsWith("__JINJA")) return m2.Value;
+                                if (lookupColumnIndex.TryGetValue(word, out var lkpIdx))
+                                {
+                                    return $"lookup_{lkpIdx}.{word}";
+                                }
                                 return $"source_data.{word}";
                             });
                             // Restore Jinja blocks
@@ -595,14 +611,19 @@ namespace SsisLineage.Core
 
             // B6 FIX: Auto-generate profiles.yml based on resolved connection metadata
             // so every new project migration gets the correct database without manual edits.
-            var profileTargetDb = graph.ColumnMappings
-                .Where(m => !string.IsNullOrEmpty(m.TargetDatabase))
-                .Select(m => m.TargetDatabase)
-                .FirstOrDefault() ?? "SsisDemoDB";
-            var profileTargetServer = graph.ColumnMappings
-                .Where(m => !string.IsNullOrEmpty(m.TargetServer))
-                .Select(m => NormalizeServer(m.TargetServer))
-                .FirstOrDefault() ?? "172.17.0.1";
+            var firstPkgForProfile = packages.FirstOrDefault();
+            var pkgCompsForProfile = firstPkgForProfile != null
+                ? graph.Components.Where(c => c.PackageId == firstPkgForProfile.Id).ToList()
+                : new List<ComponentNode>();
+            var dstCompForProfile = pkgCompsForProfile.FirstOrDefault(c => c.Type.Contains("Destination", StringComparison.OrdinalIgnoreCase));
+            var (targetServerRaw, resolvedTargetDb) = firstPkgForProfile != null
+                ? ResolveDatabaseAndServer(graph, firstPkgForProfile, dstCompForProfile, true)
+                : ("172.17.0.1", "SalesWarehouseDB");
+
+            var profileTargetDb = !string.IsNullOrEmpty(resolvedTargetDb) && !resolvedTargetDb.StartsWith("<")
+                ? resolvedTargetDb
+                : "SalesWarehouseDB";
+            var profileTargetServer = NormalizeServer(targetServerRaw);
             var profilePort = profileTargetServer.Contains(",")
                 ? profileTargetServer.Split(',')[1] : "1433";
             var profileHost = profileTargetServer.Contains(",")
@@ -615,9 +636,9 @@ namespace SsisLineage.Core
             profilesYaml.AppendLine("    dev:");
             profilesYaml.AppendLine("      type: sqlserver");
             profilesYaml.AppendLine("      driver: 'ODBC Driver 18 for SQL Server'");
-            profilesYaml.AppendLine($"      server: '{profileHost}'");
+            profilesYaml.AppendLine($"      server: \"{{{{ env_var('MSSQL_HOST', '{profileHost}') }}}}\"");
             profilesYaml.AppendLine($"      port: {profilePort}");
-            profilesYaml.AppendLine($"      database: {profileTargetDb}");
+            profilesYaml.AppendLine($"      database: \"{{{{ env_var('MSSQL_TARGET_DB', '{profileTargetDb}') }}}}\"");
             profilesYaml.AppendLine("      schema: dbo");
             profilesYaml.AppendLine($"      user: \"{{{{ env_var('MSSQL_USER', 'sa') }}}}\"");
             profilesYaml.AppendLine($"      password: \"{{{{ env_var('MSSQL_PASSWORD', 'YourPassword123!') }}}}\"");
@@ -1662,8 +1683,16 @@ namespace SsisLineage.Core
             // Inequality operator != to <>
             ssisExpr = ssisExpr.Replace("!=", "<>");
             
-            // 5. SSIS Variables @[User::VarName] or @[$Package::VarName] -> {{ var('VarName') }}
-            ssisExpr = Regex.Replace(ssisExpr, @"@\[(?:User|\$Package)::([^\]]+)\]", "{{ var('$1') }}");
+            // 5. SSIS Variables @[User::VarName], @[System::VarName], @[$Package::VarName], @[$Project::VarName] -> {{ var('VarName', fallback) }}
+            ssisExpr = Regex.Replace(ssisExpr, @"@\[(?:User|\$Package|\$Project|System)::([^\]]+)\]", m => {
+                var varName = m.Groups[1].Value;
+                var lower = varName.ToLowerInvariant();
+                if (lower.Contains("date") || lower.Contains("time") || lower.Contains("timestamp"))
+                {
+                    return $"'{{{{ var('{varName}', run_started_at.strftime('%Y-%m-%d %H:%M:%S')) }}}}'";
+                }
+                return $"{{{{ var('{varName}', '') }}}}";
+            });
 
             // 6. SSIS functions → SQL equivalents
             // GETDATE() already maps directly to SQL Server GETDATE()
@@ -1684,6 +1713,14 @@ namespace SsisLineage.Core
             
             // 8. Logical NOT: ! prefix → NOT (must run AFTER ISNULL handling to avoid corrupting !ISNULL)
             ssisExpr = Regex.Replace(ssisExpr, @"!\s*(?=[A-Za-z_\[])", "NOT ");
+
+            // 9. Convert standalone boolean comparison expressions (e.g. Quantity < ReorderLevel) to T-SQL CASE WHEN
+            if (!ssisExpr.TrimStart().StartsWith("CASE WHEN", StringComparison.OrdinalIgnoreCase) &&
+                !ssisExpr.Contains(" THEN ") &&
+                Regex.IsMatch(ssisExpr, @"(?:<=|>=|<|>|=|<>|\bAND\b|\bOR\b)"))
+            {
+                ssisExpr = $"CASE WHEN {ssisExpr} THEN 1 ELSE 0 END";
+            }
             
             return ssisExpr;
         }
