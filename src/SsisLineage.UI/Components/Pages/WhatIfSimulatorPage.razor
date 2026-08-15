@@ -6,58 +6,139 @@
 @inject LineageService LineageService
 @inject IJSRuntime JS
 @inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
 
-<PageTitle>What-If Simulator — SSIS Lineage Hub</PageTitle>
+<PageTitle>What-If Impact Simulator — SSIS Lineage Hub</PageTitle>
 
-<MudStack Spacing="4" Class="pa-4">
+<style>
+    .simulator-panel {
+        background: rgba(15, 23, 42, 0.6);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 20px;
+    }
 
-    <!-- ── Header ─────────────────────────────────────────────────────────── -->
-    <div class="d-flex justify-space-between align-center flex-wrap gap-4">
+    .preset-chip {
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border: 1px solid rgba(251, 191, 36, 0.3) !important;
+        background: rgba(251, 191, 36, 0.05) !important;
+    }
+
+    .preset-chip:hover {
+        background: rgba(251, 191, 36, 0.15) !important;
+        transform: translateY(-2px);
+    }
+
+    .checklist-step {
+        background: rgba(15, 23, 42, 0.4);
+        border-radius: 12px;
+        padding: 14px 16px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        transition: all 0.2s ease;
+    }
+
+    .checklist-step:hover {
+        border-color: rgba(255, 255, 255, 0.15);
+        background: rgba(15, 23, 42, 0.7);
+    }
+
+    .impact-stat-card {
+        background: rgba(15, 23, 42, 0.5);
+        border-radius: 14px;
+        padding: 16px;
+        border: 1px solid rgba(255, 255, 255, 0.06);
+        text-align: center;
+    }
+</style>
+
+<MudStack Spacing="5" Class="pa-4">
+
+    <!-- ── Header & Action Toolbar ── -->
+    <div class="d-flex justify-space-between align-center flex-wrap gap-3">
         <div>
-            <MudText Typo="Typo.overline" Color="Color.Warning" Style="letter-spacing:1px;">Impact Analysis</MudText>
-            <MudText Typo="Typo.h4" Style="font-weight:700;">What-If Simulator</MudText>
+            <div class="d-flex align-center gap-2 mb-1">
+                <MudChip T="string" Color="Color.Warning" Size="Size.Small" Variant="Variant.Filled" Style="font-weight: 700;">
+                    IMPACT SIMULATOR
+                </MudChip>
+                <MudChip T="string" Color="Color.Default" Size="Size.Small" Variant="Variant.Outlined">
+                    100% Offline • Graph Traversal
+                </MudChip>
+            </div>
+            <MudText Typo="Typo.h4" Style="font-weight:800; letter-spacing: -0.02em;">What-If Blast-Radius Simulator</MudText>
             <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1">
-                Simulate schema changes — rename/drop columns or tables — and instantly see which packages, mappings, and procedures break. 100% offline, no database touched.
+                Simulate schema refactoring (renaming/dropping tables or columns) and predict broken SSIS packages, mapping failures, and downstream impact before touching database DDL.
             </MudText>
         </div>
+
         @if (_result != null)
         {
-            <MudButton Variant="Variant.Outlined" Color="Color.Success"
+            <MudButton Variant="Variant.Filled" Color="Color.Success"
                        StartIcon="@Icons.Material.Filled.Download"
-                       OnClick="ExportMarkdown">Export Checklist (.md)</MudButton>
+                       OnClick="ExportMarkdown">Export Migration Checklist (.md)</MudButton>
         }
     </div>
 
-    <!-- ── No report guard ────────────────────────────────────────────────── -->
+    <!-- ── Guard: No Report Loaded ── -->
     @if (_graph == null)
     {
-        <MudPaper Outlined="true" Elevation="0" Class="pa-8 d-flex flex-column align-center justify-center" Style="border-radius:16px;">
-            <MudIcon Icon="@Icons.Material.Filled.Science" Size="Size.Large" Color="Color.Warning" />
-            <MudText Typo="Typo.subtitle1" Class="mt-2" Style="font-weight:700;">No lineage report loaded</MudText>
-            <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center" Class="mb-3">
-                Generate or load a lineage report first, then return here to simulate schema changes.
+        <MudPaper Outlined="true" Elevation="0" Class="pa-10 d-flex flex-column align-center justify-center simulator-panel">
+            <div class="pa-4 rounded-circle mb-3" style="background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.2);">
+                <MudIcon Icon="@Icons.Material.Filled.Science" Size="Size.Large" Color="Color.Warning" />
+            </div>
+            <MudText Typo="Typo.h6" Style="font-weight:700;">No SSIS Lineage Report Loaded</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center" Class="mb-4" Style="max-width: 480px;">
+                Scan or parse an SSIS package on the Lineage Discovery workspace first to perform interactive schema change simulations.
             </MudText>
             <MudButton Href="/lineage" Variant="Variant.Filled" Color="Color.Warning" StartIcon="@Icons.Material.Filled.Hub">
-                Go to Workspace
+                Open Lineage Workspace
             </MudButton>
         </MudPaper>
     }
     else
     {
+        <!-- ── Quick Preset Scenarios ── -->
+        <MudPaper Class="pa-4 simulator-panel" Elevation="2">
+            <div class="d-flex align-center gap-2 mb-2">
+                <MudIcon Icon="@Icons.Material.Filled.Bolt" Color="Color.Warning" Size="Size.Small" />
+                <MudText Typo="Typo.subtitle2" Class="font-weight-bold" Style="color: #f1f5f9;">
+                    Quick Simulation Presets
+                </MudText>
+            </div>
+            <div class="d-flex align-center gap-2 flex-wrap">
+                <MudChip T="string" Class="preset-chip" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Warning"
+                         Icon="@Icons.Material.Filled.DriveFileRenameOutline" OnClick="ApplyRenamePkPreset">
+                    ⚡ Rename Column (NoPinjaman → LoanID)
+                </MudChip>
+                <MudChip T="string" Class="preset-chip" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Warning"
+                         Icon="@Icons.Material.Filled.DeleteForever" OnClick="ApplyDropFactPreset">
+                    💥 Drop Core Table (dbo.FactSimpanan)
+                </MudChip>
+                <MudChip T="string" Class="preset-chip" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Warning"
+                         Icon="@Icons.Material.Filled.Transform" OnClick="ApplyTypeShiftPreset">
+                    🔄 Type Shift (BranchCode :: INT → NVARCHAR)
+                </MudChip>
+            </div>
+        </MudPaper>
+
         <MudGrid Spacing="4">
 
-            <!-- ── LEFT PANEL: Change Builder ─────────────────────────────── -->
+            <!-- ── LEFT PANEL: Change Builder ── -->
             <MudItem xs="12" md="5">
-                <MudPaper Class="pa-5" Elevation="3"
-                          Style="border-radius:16px; border:1px solid rgba(251,191,36,0.15); height:100%;">
+                <MudPaper Class="pa-5 simulator-panel" Elevation="3" Style="height:100%; border:1px solid rgba(251,191,36,0.2);">
 
-                    <MudText Typo="Typo.h6" Style="font-weight:700;" Class="mb-1">Proposed Changes</MudText>
+                    <div class="d-flex align-center justify-space-between mb-2">
+                        <MudText Typo="Typo.h6" Style="font-weight:700;">Proposed Schema Changes</MudText>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined">
+                            @_pendingChanges.Count Queued
+                        </MudChip>
+                    </div>
                     <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mb-4">
-                        Add one or more schema changes to simulate in batch.
+                        Configure atomic DDL refactoring operations to simulate multi-step blast radius.
                     </MudText>
 
                     <!-- Change type selector -->
-                    <MudSelect @bind-Value="_newChangeType" Label="Change Type" Variant="Variant.Outlined"
+                    <MudSelect @bind-Value="_newChangeType" Label="Refactoring Operation" Variant="Variant.Outlined"
                                Margin="Margin.Dense" Class="mb-3"
                                AdornmentIcon="@Icons.Material.Filled.SwapHoriz" Adornment="Adornment.Start">
                         <MudSelectItem Value="SimulationChangeType.RenameColumn">Rename Column</MudSelectItem>
@@ -68,7 +149,7 @@
                     </MudSelect>
 
                     <!-- Table autocomplete -->
-                    <MudAutocomplete T="string" @bind-Value="_newTable" Label="Table (e.g. dbo.MasterPinjaman)"
+                    <MudAutocomplete T="string" @bind-Value="_newTable" Label="Target Table (e.g. dbo.MasterPinjaman)"
                                      Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-3"
                                      SearchFunc="SearchTables" CoerceValue="true" Clearable="true"
                                      MaxItems="30" ResetValueOnEmptyText="false"
@@ -80,7 +161,7 @@
                                        or SimulationChangeType.DropColumn
                                        or SimulationChangeType.ChangeColumnType)
                     {
-                        <MudAutocomplete T="string" @bind-Value="_newColumn" Label="Column"
+                        <MudAutocomplete T="string" @bind-Value="_newColumn" Label="Target Column"
                                          Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-3"
                                          SearchFunc="SearchColumns" CoerceValue="true" Clearable="true"
                                          MaxItems="30" ResetValueOnEmptyText="false"
@@ -94,13 +175,13 @@
                         <MudTextField @bind-Value="_newName" Label="New Name" Variant="Variant.Outlined"
                                       Margin="Margin.Dense" Class="mb-3"
                                       Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.DriveFileRenameOutline"
-                                      Placeholder="Enter new name..." />
+                                      Placeholder="Enter new identifier..." />
                     }
 
                     <!-- New type (type change operation) -->
                     @if (_newChangeType == SimulationChangeType.ChangeColumnType)
                     {
-                        <MudTextField @bind-Value="_newType" Label="New Type (e.g. NVARCHAR(255))"
+                        <MudTextField @bind-Value="_newType" Label="New Datatype (e.g. NVARCHAR(255))"
                                       Variant="Variant.Outlined" Margin="Margin.Dense" Class="mb-3"
                                       Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Transform"
                                       Placeholder="VARCHAR(100), INT, DATETIME2, ..." />
@@ -112,8 +193,8 @@
                     }
 
                     <MudButton OnClick="AddChange" Variant="Variant.Filled" Color="Color.Warning"
-                               FullWidth="true" StartIcon="@Icons.Material.Filled.Add" Style="border-radius:8px;">
-                        Add Change
+                               FullWidth="true" StartIcon="@Icons.Material.Filled.Add" Style="border-radius:10px; font-weight: 700;">
+                        Add Refactoring Step
                     </MudButton>
 
                     <!-- Queued changes list -->
@@ -121,15 +202,15 @@
                     {
                         <MudDivider Class="my-4" />
                         <MudText Typo="Typo.subtitle2" Class="mb-2" Style="font-weight:700;">
-                            Queued (@_pendingChanges.Count)
+                            Staged Refactoring Queue (@_pendingChanges.Count)
                         </MudText>
                         @foreach (var (change, idx) in _pendingChanges.Select((c, i) => (c, i)))
                         {
                             <div class="d-flex justify-space-between align-center mb-2 px-3 py-2"
-                                 style="background:rgba(251,191,36,0.06); border-radius:8px; border:1px solid rgba(251,191,36,0.15);">
+                                 style="background:rgba(251,191,36,0.08); border-radius:10px; border:1px solid rgba(251,191,36,0.2);">
                                 <div>
-                                    <MudText Typo="Typo.body2" Style="font-weight:600;">@DescribeChange(change)</MudText>
-                                    <MudText Typo="Typo.caption" Color="Color.Secondary">@ChangeTypeLabel(change.ChangeType)</MudText>
+                                    <MudText Typo="Typo.body2" Style="font-weight:700; color: #f8fafc;">@DescribeChange(change)</MudText>
+                                    <MudText Typo="Typo.caption" Color="Color.Warning">@ChangeTypeLabel(change.ChangeType)</MudText>
                                 </div>
                                 <MudIconButton Icon="@Icons.Material.Filled.Delete" Size="Size.Small"
                                                Color="Color.Error" OnClick="@(() => RemoveChange(idx))" />
@@ -137,114 +218,126 @@
                         }
 
                         <MudButton OnClick="RunSimulation" Variant="Variant.Filled" Color="Color.Error"
-                                   FullWidth="true" Class="mt-3" Style="border-radius:8px;"
+                                   FullWidth="true" Class="mt-3" Style="border-radius:10px; font-weight: 800; height: 44px;"
                                    StartIcon="@Icons.Material.Filled.PlayArrow"
                                    Disabled="_isRunning">
-                            @(_isRunning ? "Simulating..." : $"Run Simulation ({_pendingChanges.Count} change(s))")
+                            @(_isRunning ? "Calculating Blast Radius..." : $"Simulate Impact ({_pendingChanges.Count} Step(s))")
                         </MudButton>
                         <MudButton OnClick="ClearAll" Variant="Variant.Text" Color="Color.Default"
                                    FullWidth="true" Class="mt-1" Style="border-radius:8px;">
-                            Clear All
+                            Clear Simulation Queue
                         </MudButton>
                     }
 
                 </MudPaper>
             </MudItem>
 
-            <!-- ── RIGHT PANEL: Results ────────────────────────────────────── -->
+            <!-- ── RIGHT PANEL: Results Workspace ── -->
             <MudItem xs="12" md="7">
                 @if (_result == null && !_isRunning)
                 {
-                    <MudPaper Class="pa-8 d-flex flex-column align-center justify-center"
-                              Elevation="1" Style="border-radius:16px; min-height:320px; border:1px dashed rgba(255,255,255,0.08);">
-                        <MudIcon Icon="@Icons.Material.Filled.BubbleChart" Size="Size.Large"
-                                 Style="color:rgba(251,191,36,0.4);" />
-                        <MudText Typo="Typo.subtitle1" Class="mt-3" Color="Color.Secondary">
-                            Add changes on the left and click <strong>Run Simulation</strong>
-                        </MudText>
-                        <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">
-                            Results appear here instantly — no database connection required.
+                    <MudPaper Class="pa-8 d-flex flex-column align-center justify-center simulator-panel"
+                              Elevation="1" Style="min-height:380px; border:1px dashed rgba(255,255,255,0.15);">
+                        <div class="pa-4 rounded-circle mb-3" style="background: rgba(251, 191, 36, 0.08);">
+                            <MudIcon Icon="@Icons.Material.Filled.BubbleChart" Size="Size.Large" Style="color:rgba(251,191,36,0.6);" />
+                        </div>
+                        <MudText Typo="Typo.h6" Style="font-weight:700;" Class="mt-2">Simulation Engine Ready</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center" Class="mt-1" Style="max-width: 400px;">
+                            Queue proposed DDL changes on the left panel or click a <strong>Quick Simulation Preset</strong> to compute downstream breakages.
                         </MudText>
                     </MudPaper>
                 }
                 else if (_isRunning)
                 {
-                    <MudPaper Class="pa-8 d-flex flex-column align-center justify-center"
-                              Elevation="1" Style="border-radius:16px; min-height:320px;">
-                        <MudProgressCircular Indeterminate="true" Color="Color.Warning" Size="Size.Large" />
-                        <MudText Typo="Typo.subtitle1" Class="mt-4">Simulating impact...</MudText>
+                    <MudPaper Class="pa-8 d-flex flex-column align-center justify-center simulator-panel"
+                              Elevation="1" Style="min-height:380px;">
+                        <MudProgressCircular Indeterminate="true" Color="Color.Warning" Size="Size.Large" Value="75" />
+                        <MudText Typo="Typo.subtitle1" Class="mt-4 font-weight-bold">Traversing Lineage Graph & Calculating Blast Radius...</MudText>
                     </MudPaper>
                 }
                 else if (_result != null)
                 {
-                    <MudStack Spacing="3">
+                    <MudStack Spacing="4">
 
                         <!-- Summary banner -->
-                        <MudPaper Class="pa-4" Elevation="2" Style="@BannerStyle">
-                            <div class="d-flex align-center gap-3 mb-3">
-                                <MudIcon Icon="@(_result.HasCritical ? Icons.Material.Filled.Warning : Icons.Material.Filled.CheckCircle)"
-                                         Color="@(_result.HasCritical ? Color.Error : Color.Success)" Size="Size.Medium" />
-                                <MudText Typo="Typo.h6" Style="font-weight:700;">
-                                    @(_result.HasCritical ? "Breaking Changes Detected" : "No Critical Breaks Found")
-                                </MudText>
+                        <MudPaper Class="pa-4 simulator-panel" Elevation="2" Style="@BannerStyle">
+                            <div class="d-flex align-center justify-space-between mb-3">
+                                <div class="d-flex align-center gap-3">
+                                    <MudIcon Icon="@(_result.HasCritical ? Icons.Material.Filled.Warning : Icons.Material.Filled.CheckCircle)"
+                                             Color="@(_result.HasCritical ? Color.Error : Color.Success)" Size="Size.Medium" />
+                                    <div>
+                                        <MudText Typo="Typo.h6" Style="font-weight:800;">
+                                            @(_result.HasCritical ? "Critical Pipeline Breakages Detected" : "Safe Operation — No Critical Breaks Found")
+                                        </MudText>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                            Blast radius calculated across @_graph.Packages.Count package(s) and @_graph.ColumnMappings.Count mapping(s).
+                                        </MudText>
+                                    </div>
+                                </div>
+                                <MudChip T="string" Color="@(_result.HasCritical ? Color.Error : Color.Success)" Variant="Variant.Filled" Style="font-weight: 700;">
+                                    @(_result.HasCritical ? "HIGH BLAST RADIUS" : "LOW RISK")
+                                </MudChip>
                             </div>
+
                             <MudGrid Spacing="2">
                                 <MudItem xs="6" sm="3">
-                                    <div class="text-center pa-3" style="background:rgba(239,68,68,0.08); border-radius:10px;">
-                                        <MudText Typo="Typo.h5" Style="font-weight:800; color:#ef4444;">@_result.AffectedPackages</MudText>
-                                        <MudText Typo="Typo.caption" Color="Color.Secondary">Packages</MudText>
+                                    <div class="impact-stat-card" style="border-top: 3px solid #ef4444;">
+                                        <MudText Typo="Typo.h4" Style="font-weight:800; color:#ef4444;">@_result.AffectedPackages</MudText>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">Affected Packages</MudText>
                                     </div>
                                 </MudItem>
                                 <MudItem xs="6" sm="3">
-                                    <div class="text-center pa-3" style="background:rgba(239,68,68,0.08); border-radius:10px;">
-                                        <MudText Typo="Typo.h5" Style="font-weight:800; color:#ef4444;">@_result.AffectedMappings</MudText>
+                                    <div class="impact-stat-card" style="border-top: 3px solid #ef4444;">
+                                        <MudText Typo="Typo.h4" Style="font-weight:800; color:#ef4444;">@_result.AffectedMappings</MudText>
                                         <MudText Typo="Typo.caption" Color="Color.Secondary">Broken Mappings</MudText>
                                     </div>
                                 </MudItem>
                                 <MudItem xs="6" sm="3">
-                                    <div class="text-center pa-3" style="background:rgba(251,191,36,0.08); border-radius:10px;">
-                                        <MudText Typo="Typo.h5" Style="font-weight:800; color:#f59e0b;">@_result.AffectedProcedures</MudText>
-                                        <MudText Typo="Typo.caption" Color="Color.Secondary">Procedures</MudText>
+                                    <div class="impact-stat-card" style="border-top: 3px solid #f59e0b;">
+                                        <MudText Typo="Typo.h4" Style="font-weight:800; color:#f59e0b;">@_result.AffectedProcedures</MudText>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">Impacted Procs</MudText>
                                     </div>
                                 </MudItem>
                                 <MudItem xs="6" sm="3">
-                                    <div class="text-center pa-3" style="background:rgba(251,191,36,0.08); border-radius:10px;">
-                                        <MudText Typo="Typo.h5" Style="font-weight:800; color:#f59e0b;">@_result.AffectedTasks</MudText>
-                                        <MudText Typo="Typo.caption" Color="Color.Secondary">Tasks</MudText>
+                                    <div class="impact-stat-card" style="border-top: 3px solid #f59e0b;">
+                                        <MudText Typo="Typo.h4" Style="font-weight:800; color:#f59e0b;">@_result.AffectedTasks</MudText>
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">Impacted Tasks</MudText>
                                     </div>
                                 </MudItem>
                             </MudGrid>
                         </MudPaper>
 
-                        <!-- Findings accordion -->
+                        <!-- Findings grid -->
                         @if (_result.Findings.Any())
                         {
-                            <MudPaper Class="pa-4" Elevation="2" Style="border-radius:16px;">
-                                <MudText Typo="Typo.h6" Style="font-weight:700;" Class="mb-3">
-                                    Findings (@_result.Findings.Count)
-                                </MudText>
-                                <MudDataGrid T="ImpactFinding" Items="_result.Findings" Dense="true" Hover="true"
+                            <MudPaper Class="pa-4 simulator-panel" Elevation="2">
+                                <div class="d-flex align-center justify-space-between mb-3">
+                                    <MudText Typo="Typo.subtitle1" Style="font-weight:800;">
+                                        🔍 Detailed Impact Findings (@_result.Findings.Count)
+                                    </MudText>
+                                </div>
+                                <MudDataGrid T="ImpactFinding" Items="_result.Findings" Dense="true" Hover="true" Striped="true"
                                              FixedHeader="true" Height="280px" SortMode="SortMode.None">
                                     <Columns>
-                                        <TemplateColumn Title="Severity" StickyLeft="true">
+                                        <TemplateColumn Title="Severity">
                                             <CellTemplate>
                                                 @if (context.Item.Severity == ImpactSeverity.Critical)
                                                 {
-                                                    <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Filled">Critical</MudChip>
+                                                    <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Filled" Style="font-size:0.65rem; font-weight:700;">Critical</MudChip>
                                                 }
                                                 else if (context.Item.Severity == ImpactSeverity.Warning)
                                                 {
-                                                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled">Warning</MudChip>
+                                                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled" Style="font-size:0.65rem; font-weight:700;">Warning</MudChip>
                                                 }
                                                 else
                                                 {
-                                                    <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">Info</MudChip>
+                                                    <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined" Style="font-size:0.65rem;">Info</MudChip>
                                                 }
                                             </CellTemplate>
                                         </TemplateColumn>
                                         <PropertyColumn Property="x => x.Category" Title="Category" />
-                                        <PropertyColumn Property="x => x.Location" Title="Location" />
-                                        <PropertyColumn Property="x => x.Description" Title="Description" />
+                                        <PropertyColumn Property="x => x.Location" Title="Location / Component" />
+                                        <PropertyColumn Property="x => x.Description" Title="Impact Details" />
                                     </Columns>
                                 </MudDataGrid>
                             </MudPaper>
@@ -253,42 +346,45 @@
                         <!-- Migration checklist -->
                         @if (_result.Checklist.Any())
                         {
-                            <MudPaper Class="pa-4" Elevation="2" Style="border-radius:16px;">
-                                <MudText Typo="Typo.h6" Style="font-weight:700;" Class="mb-3">
-                                    Migration Checklist (@_result.Checklist.Count steps)
-                                </MudText>
-                                @foreach (var (item, i) in _result.Checklist.Select((x, i) => (x, i + 1)))
-                                {
-                                    <div class="d-flex align-start gap-3 mb-3 px-3 py-3"
-                                         style="@ChecklistItemStyle(item)">
-                                        <MudAvatar Size="Size.Small" Color="@(item.IsRequired ? Color.Error : Color.Warning)"
-                                                   Variant="Variant.Filled" Style="min-width:28px; width:28px; height:28px; font-size:0.75rem;">
-                                            @i
-                                        </MudAvatar>
-                                        <div style="min-width:0;">
-                                            <div class="d-flex align-center gap-2 flex-wrap">
-                                                <MudText Typo="Typo.body2" Style="font-weight:700;">@item.Action</MudText>
-                                                @if (item.IsRequired)
-                                                {
-                                                    <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined" Style="height:18px;">Required</MudChip>
-                                                }
-                                                else
-                                                {
-                                                    <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined" Style="height:18px;">Recommended</MudChip>
-                                                }
+                            <MudPaper Class="pa-4 simulator-panel" Elevation="2">
+                                <div class="d-flex align-center justify-space-between mb-3">
+                                    <MudText Typo="Typo.subtitle1" Style="font-weight:800;">
+                                        📋 Recommended Action Checklist (@_result.Checklist.Count Steps)
+                                    </MudText>
+                                </div>
+                                <MudStack Spacing="2">
+                                    @foreach (var (item, i) in _result.Checklist.Select((x, i) => (x, i + 1)))
+                                    {
+                                        <div class="checklist-step d-flex align-start gap-3">
+                                            <MudAvatar Size="Size.Small" Color="@(item.IsRequired ? Color.Error : Color.Warning)"
+                                                       Variant="Variant.Filled" Style="min-width:28px; width:28px; height:28px; font-weight:800; font-size:0.75rem;">
+                                                @i
+                                            </MudAvatar>
+                                            <div style="min-width:0; flex:1;">
+                                                <div class="d-flex align-center justify-space-between gap-2 flex-wrap mb-1">
+                                                    <MudText Typo="Typo.body2" Style="font-weight:700; color:#f8fafc;">@item.Action</MudText>
+                                                    @if (item.IsRequired)
+                                                    {
+                                                        <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Outlined" Style="height:20px; font-size:0.65rem;">Required</MudChip>
+                                                    }
+                                                    else
+                                                    {
+                                                        <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Outlined" Style="height:20px; font-size:0.65rem;">Recommended</MudChip>
+                                                    }
+                                                </div>
+                                                <MudText Typo="Typo.caption" Style="color:#60a5fa; font-family:monospace; word-break:break-all;">@item.Target</MudText>
+                                                <MudText Typo="Typo.caption" Color="Color.Secondary" Class="d-block mt-1">@item.Reason</MudText>
                                             </div>
-                                            <MudText Typo="Typo.caption" Style="color:#60a5fa; font-family:monospace; word-break:break-all;">@item.Target</MudText>
-                                            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-1">@item.Reason</MudText>
                                         </div>
-                                    </div>
-                                }
+                                    }
+                                </MudStack>
                             </MudPaper>
                         }
 
                         @if (!_result.Findings.Any())
                         {
-                            <MudAlert Severity="Severity.Success" Variant="Variant.Filled" Style="border-radius:12px;">
-                                <strong>No impact detected!</strong> The proposed change(s) do not break any column mappings, tasks, or stored procedures in the current lineage graph.
+                            <MudAlert Severity="Severity.Success" Variant="Variant.Filled" Style="border-radius:14px;">
+                                <strong>Zero Blast Radius Detected!</strong> The proposed changes do not disrupt any existing column mappings, tasks, or SQL procedures in this lineage graph.
                             </MudAlert>
                         }
 
@@ -301,9 +397,6 @@
 </MudStack>
 
 @code {
-    [CascadingParameter(Name = "IsDarkMode")] private bool IsDarkMode { get; set; }
-
-    // ── State ──────────────────────────────────────────────────────────────────
     private LineageGraph? _graph;
 
     // Form fields
@@ -323,7 +416,6 @@
     private List<string> _allTables  = new();
     private List<string> _allColumns = new();
 
-    // ── Init ───────────────────────────────────────────────────────────────────
     protected override void OnInitialized()
     {
         var report = LineageService.GetPublishedReport();
@@ -360,7 +452,6 @@
         _allColumns = columns.OrderBy(c => c, StringComparer.OrdinalIgnoreCase).ToList();
     }
 
-    // ── Autocomplete ───────────────────────────────────────────────────────────
     private Task<IEnumerable<string>> SearchTables(string? v, CancellationToken _)
     {
         if (string.IsNullOrWhiteSpace(v))
@@ -371,7 +462,6 @@
 
     private Task<IEnumerable<string>> SearchColumns(string? v, CancellationToken _)
     {
-        // If a table is already selected, filter columns that appear with that table
         IEnumerable<string> candidates = _allColumns;
         if (!string.IsNullOrEmpty(_newTable) && _graph != null)
         {
@@ -407,37 +497,76 @@
         return false;
     }
 
-    // ── Change management ──────────────────────────────────────────────────────
+    private void ApplyRenamePkPreset()
+    {
+        _pendingChanges.Clear();
+        var targetTable = _allTables.FirstOrDefault(t => t.Contains("Pinjaman", StringComparison.OrdinalIgnoreCase)) ?? _allTables.FirstOrDefault() ?? "dbo.MasterPinjaman";
+        _pendingChanges.Add(new SchemaChange
+        {
+            ChangeType = SimulationChangeType.RenameColumn,
+            Table = targetTable,
+            Column = "NoPinjaman",
+            NewName = "LoanID"
+        });
+        _ = RunSimulation();
+    }
+
+    private void ApplyDropFactPreset()
+    {
+        _pendingChanges.Clear();
+        var targetTable = _allTables.FirstOrDefault(t => t.Contains("Simpanan", StringComparison.OrdinalIgnoreCase)) ?? _allTables.FirstOrDefault() ?? "dbo.FactSimpanan";
+        _pendingChanges.Add(new SchemaChange
+        {
+            ChangeType = SimulationChangeType.DropTable,
+            Table = targetTable
+        });
+        _ = RunSimulation();
+    }
+
+    private void ApplyTypeShiftPreset()
+    {
+        _pendingChanges.Clear();
+        var targetTable = _allTables.FirstOrDefault(t => t.Contains("Branch", StringComparison.OrdinalIgnoreCase)) ?? _allTables.FirstOrDefault() ?? "dbo.RefBranch";
+        _pendingChanges.Add(new SchemaChange
+        {
+            ChangeType = SimulationChangeType.ChangeColumnType,
+            Table = targetTable,
+            Column = "BranchCode",
+            NewType = "NVARCHAR(50)"
+        });
+        _ = RunSimulation();
+    }
+
     private void AddChange()
     {
         _addError = "";
 
         if (string.IsNullOrWhiteSpace(_newTable))
         {
-            _addError = "Please specify a table.";
+            _addError = "Please specify a target table.";
             return;
         }
 
         bool needsColumn = _newChangeType is SimulationChangeType.RenameColumn
-                                          or SimulationChangeType.DropColumn
-                                          or SimulationChangeType.ChangeColumnType;
+                                           or SimulationChangeType.DropColumn
+                                           or SimulationChangeType.ChangeColumnType;
         if (needsColumn && string.IsNullOrWhiteSpace(_newColumn))
         {
-            _addError = "Please specify a column for this change type.";
+            _addError = "Please specify a column for this operation.";
             return;
         }
 
         bool needsNewName = _newChangeType is SimulationChangeType.RenameColumn
-                                           or SimulationChangeType.RenameTable;
+                                            or SimulationChangeType.RenameTable;
         if (needsNewName && string.IsNullOrWhiteSpace(_newName))
         {
-            _addError = "Please enter the new name.";
+            _addError = "Please enter the new identifier name.";
             return;
         }
 
         if (_newChangeType == SimulationChangeType.ChangeColumnType && string.IsNullOrWhiteSpace(_newType))
         {
-            _addError = "Please specify the new column type.";
+            _addError = "Please specify the target data type.";
             return;
         }
 
@@ -450,7 +579,6 @@
             NewType    = _newType.Trim()
         });
 
-        // Reset form fields
         _newTable  = "";
         _newColumn = "";
         _newName   = "";
@@ -473,19 +601,17 @@
         _result = null;
     }
 
-    // ── Simulation ─────────────────────────────────────────────────────────────
     private async Task RunSimulation()
     {
         if (_graph == null || !_pendingChanges.Any()) return;
         _isRunning = true;
         StateHasChanged();
 
-        await Task.Delay(80); // let UI repaint with loading state
+        await Task.Delay(100);
         _result = ImpactSimulator.Simulate(_graph, _pendingChanges);
         _isRunning = false;
     }
 
-    // ── Export ─────────────────────────────────────────────────────────────────
     private async Task ExportMarkdown()
     {
         if (_result == null) return;
@@ -493,17 +619,12 @@
         var bytes  = System.Text.Encoding.UTF8.GetBytes(md);
         var base64 = Convert.ToBase64String(bytes);
         await JS.InvokeVoidAsync("downloadFileFromBase64", "migration-checklist.md", base64);
+        Snackbar.Add("Exported Migration Checklist (.md) successfully!", Severity.Success);
     }
 
-    // ── Style helpers (avoid RZ9986 — no ternary strings in component Style= attrs) ──
     private string BannerStyle => _result?.HasCritical == true
-        ? "border-radius:16px; border:1px solid rgba(239,68,68,0.3);"
-        : "border-radius:16px; border:1px solid rgba(251,191,36,0.3);";
-
-    private static string ChecklistItemStyle(ChecklistItem item) =>
-        item.IsRequired
-            ? "background:rgba(255,255,255,0.02); border-radius:10px; border-left:3px solid #ef4444;"
-            : "background:rgba(255,255,255,0.02); border-radius:10px; border-left:3px solid #f59e0b;";
+        ? "border-radius:16px; border:1px solid rgba(239,68,68,0.4); background: linear-gradient(145deg, rgba(239,68,68,0.1) 0%, rgba(15,23,42,0.7) 100%);"
+        : "border-radius:16px; border:1px solid rgba(16,185,129,0.4); background: linear-gradient(145deg, rgba(16,185,129,0.1) 0%, rgba(15,23,42,0.7) 100%);";
 
     // ── Helpers ────────────────────────────────────────────────────────────────
     private static string DescribeChange(SchemaChange c) => c.ChangeType switch

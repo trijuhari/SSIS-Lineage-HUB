@@ -3,73 +3,134 @@
 @using SsisLineage.Core.Models
 @inject LineageService LineageService
 @inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
 @implements IDisposable
 
-<PageTitle>NL Query Engine — SSIS Lineage Hub</PageTitle>
+<PageTitle>Natural Language Lineage Query — SSIS Lineage Hub</PageTitle>
 
-<MudStack Spacing="4" Class="pa-4">
+<style>
+    .nl-hero-panel {
+        background: linear-gradient(135deg, rgba(30, 58, 138, 0.4) 0%, rgba(15, 23, 42, 0.8) 100%);
+        backdrop-filter: blur(16px);
+        border: 1px solid rgba(96, 165, 250, 0.25);
+        border-radius: 24px;
+        position: relative;
+        overflow: hidden;
+    }
+
+    .nl-hero-panel::before {
+        content: '';
+        position: absolute;
+        top: -50%;
+        left: -50%;
+        width: 200%;
+        height: 200%;
+        background: radial-gradient(circle, rgba(59, 130, 246, 0.1) 0%, transparent 60%);
+        pointer-events: none;
+    }
+
+    .nl-search-input {
+        background: rgba(15, 23, 42, 0.6) !important;
+        border-radius: 16px !important;
+    }
+
+    .suggestion-chip {
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border: 1px solid rgba(96, 165, 250, 0.3) !important;
+        background: rgba(96, 165, 250, 0.06) !important;
+    }
+
+    .suggestion-chip:hover {
+        background: rgba(96, 165, 250, 0.2) !important;
+        transform: translateY(-2px);
+    }
+
+    .nl-result-card {
+        background: rgba(15, 23, 42, 0.6);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 20px;
+    }
+</style>
+
+<MudStack Spacing="5" Class="pa-4">
 
     <!-- ── Header ── -->
-    <div>
-        <MudText Typo="Typo.overline" Color="Color.Info" Style="letter-spacing:1px;">Natural Language</MudText>
-        <MudText Typo="Typo.h4" Style="font-weight:700;">Query Engine</MudText>
-        <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1">
-            Ask anything about your data lineage — in English or Indonesian.
-            100% offline, berbasis graph traversal.
-        </MudText>
+    <div class="d-flex justify-space-between align-center flex-wrap gap-3">
+        <div>
+            <div class="d-flex align-center gap-2 mb-1">
+                <MudChip T="string" Color="Color.Info" Size="Size.Small" Variant="Variant.Filled" Style="font-weight: 700;">
+                    GRAPH AI QUERY
+                </MudChip>
+                <MudChip T="string" Color="Color.Default" Size="Size.Small" Variant="Variant.Outlined">
+                    100% Offline • Graph Traversal Engine
+                </MudChip>
+            </div>
+            <MudText Typo="Typo.h4" Style="font-weight:800; letter-spacing: -0.02em;">Natural Language Query Engine</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1">
+                Query your SSIS enterprise lineage using plain English or Indonesian — instantly resolve column origins, package dependencies, and orphan tables.
+            </MudText>
+        </div>
     </div>
 
-    <!-- ── No report guard ── -->
+    <!-- ── No Report Guard ── -->
     @if (_graph == null)
     {
-        <MudPaper Outlined="true" Elevation="0" Class="pa-8 d-flex flex-column align-center justify-center" Style="border-radius:16px;">
-            <MudIcon Icon="@Icons.Material.Filled.Psychology" Size="Size.Large" Color="Color.Info" />
-            <MudText Typo="Typo.subtitle1" Class="mt-2" Style="font-weight:700;">No lineage report loaded</MudText>
-            <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center" Class="mb-3">
-                Generate or load a lineage report first, then return here to start querying.
+        <MudPaper Outlined="true" Elevation="0" Class="pa-10 d-flex flex-column align-center justify-center nl-result-card">
+            <div class="pa-4 rounded-circle mb-3" style="background: rgba(59, 130, 246, 0.1); border: 1px solid rgba(59, 130, 246, 0.2);">
+                <MudIcon Icon="@Icons.Material.Filled.Psychology" Size="Size.Large" Color="Color.Info" />
+            </div>
+            <MudText Typo="Typo.h6" Style="font-weight:700;">No Lineage Report Loaded</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center" Class="mb-4" Style="max-width: 480px;">
+                Scan or parse an SSIS package in the Lineage Discovery workspace first to unlock natural language graph querying.
             </MudText>
             <MudButton Href="/lineage" Variant="Variant.Filled" Color="Color.Info" StartIcon="@Icons.Material.Filled.Hub">
-                Go to Workspace
+                Open Lineage Workspace
             </MudButton>
         </MudPaper>
     }
     else
     {
-        <!-- ── Search bar ── -->
-        <MudPaper Class="pa-5" Elevation="4"
-                  Style="border-radius:20px; border:1px solid rgba(96,165,250,0.2); background:rgba(96,165,250,0.04);">
+        <!-- ── AI Search Hero Banner ── -->
+        <MudPaper Class="pa-6 nl-hero-panel" Elevation="4">
+            <div class="d-flex align-center gap-2 mb-3">
+                <MudIcon Icon="@Icons.Material.Filled.AutoAwesome" Color="Color.Info" Size="Size.Small" />
+                <MudText Typo="Typo.overline" Style="letter-spacing:1.5px; font-weight: 800; color: #60a5fa;">
+                    INTELLIGENT GRAPH TRAVERSAL QUERY
+                </MudText>
+            </div>
 
-            <div class="d-flex align-end gap-3">
+            <div class="d-flex align-center gap-3 flex-wrap flex-sm-nowrap">
                 <MudTextField @bind-Value="_query"
-                              Label='Ask something about your lineage…'
-                              Placeholder='e.g., "Where does OsPokok come from?" or "Which package writes to FactSimpanan?"'
-                              Variant="Variant.Outlined" Margin="Margin.None" Style="flex:1"
-                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Psychology"
+                              Placeholder='Ask anything... e.g. "Where does OsPokok come from?" or "Which package writes to FactSimpanan?"'
+                              Variant="Variant.Outlined" Margin="Margin.None" Class="nl-search-input flex-grow-1"
+                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
                               AdornmentColor="Color.Info"
                               OnKeyDown="HandleKeyDown"
                               Immediate="false" />
                 <MudButton OnClick="RunQuery"
                            Variant="Variant.Filled" Color="Color.Info"
-                           StartIcon="@Icons.Material.Filled.Search"
-                           Style="height:56px; min-width:110px; border-radius:12px; font-weight:700;"
+                           StartIcon="@Icons.Material.Filled.Send"
+                           Style="height:56px; min-width:130px; border-radius:14px; font-weight:800; font-size:1rem;"
                            Disabled="_isRunning">
-                    @(_isRunning ? "..." : "Ask")
+                    @(_isRunning ? "Querying..." : "Ask AI")
                 </MudButton>
             </div>
 
             <!-- Intent badge (shown after parsing) -->
             @if (_parsed != null && _parsed.Intent != NlQueryIntent.Unknown)
             {
-                <div class="d-flex align-center gap-2 mt-3 flex-wrap">
-                    <MudText Typo="Typo.caption" Color="Color.Secondary">Detected intent:</MudText>
+                <div class="d-flex align-center gap-2 mt-4 flex-wrap">
+                    <MudText Typo="Typo.caption" Style="color: #94a3b8; font-weight: 600;">Detected Intent:</MudText>
                     <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Filled"
-                             Icon="@Icons.Material.Filled.AutoAwesome">
+                             Icon="@Icons.Material.Filled.CheckCircleOutline" Style="font-weight: 700;">
                         @_parsed.IntentLabel
                     </MudChip>
                     @if (!string.IsNullOrEmpty(_parsed.Entity))
                     {
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">Entity:</MudText>
-                        <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined">
+                        <MudText Typo="Typo.caption" Style="color: #94a3b8; font-weight: 600;">Target Entity:</MudText>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined" Style="color: #60a5fa; border-color: rgba(96,165,250,0.4);">
                             @_parsed.Entity
                         </MudChip>
                     }
@@ -77,64 +138,73 @@
             }
         </MudPaper>
 
-        <!-- ── Suggested questions ── -->
+        <!-- ── Prompt Suggestions ── -->
         @if (_result == null && !_isRunning)
         {
-            <div>
-                <MudText Typo="Typo.subtitle2" Color="Color.Secondary" Class="mb-2">
-                    Frequently asked questions:
-                </MudText>
+            <MudPaper Class="pa-5 nl-result-card" Elevation="2">
+                <div class="d-flex align-center gap-2 mb-3">
+                    <MudIcon Icon="@Icons.Material.Filled.Lightbulb" Color="Color.Warning" Size="Size.Small" />
+                    <MudText Typo="Typo.subtitle2" Style="font-weight:700; color:#f8fafc;">
+                        Suggested Sample Prompts:
+                    </MudText>
+                </div>
                 <div class="d-flex flex-wrap gap-2">
                     @foreach (var q in _suggestions)
                     {
-                        <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info"
-                                 OnClick="@(() => AskSuggestion(q))"
-                                 Style="cursor:pointer;">
-                            @q
+                        <MudChip T="string" Class="suggestion-chip" Size="Size.Medium" Variant="Variant.Outlined" Color="Color.Info"
+                                 OnClick="@(() => AskSuggestion(q))">
+                            💬 @q
                         </MudChip>
                     }
                 </div>
-            </div>
-        }
-
-        <!-- ── Loading ── -->
-        @if (_isRunning)
-        {
-            <MudPaper Class="pa-6 d-flex flex-column align-center justify-center" Elevation="1"
-                      Style="border-radius:16px; min-height:200px;">
-                <MudProgressCircular Indeterminate="true" Color="Color.Info" Size="Size.Large" />
-                <MudText Typo="Typo.subtitle1" Class="mt-4" Color="Color.Secondary">Traversing lineage graph…</MudText>
             </MudPaper>
         }
 
-        <!-- ── Results ── -->
+        <!-- ── Loading State ── -->
+        @if (_isRunning)
+        {
+            <MudPaper Class="pa-10 d-flex flex-column align-center justify-center nl-result-card" Elevation="1" Style="min-height:260px;">
+                <MudProgressCircular Indeterminate="true" Color="Color.Info" Size="Size.Large" Value="60" />
+                <MudText Typo="Typo.h6" Class="mt-4 font-weight-bold" Style="color:#94a3b8;">Traversing Lineage AST Graph Nodes...</MudText>
+            </MudPaper>
+        }
+
+        <!-- ── Results Workspace ── -->
         @if (_result != null && !_isRunning)
         {
-            <MudStack Spacing="3">
+            <MudStack Spacing="4">
 
-                <!-- Summary card -->
-                <MudPaper Class="pa-4" Elevation="2" Style="border-radius:16px; border:1px solid rgba(96,165,250,0.2);">
-                    <div class="d-flex align-center gap-3">
-                        <MudIcon Icon="@(_result.HasResults ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Info)"
-                                 Color="@(_result.HasResults ? Color.Success : Color.Warning)" Size="Size.Medium" />
-                        <div>
-                            <MudText Typo="Typo.subtitle1" Style="font-weight:700;">@_result.Summary</MudText>
-                            @if (_result.HasResults)
-                            {
-                                <MudText Typo="Typo.caption" Color="Color.Secondary">
-                                    @_result.Rows.Count result(s) · intent: @_result.Query.IntentLabel
-                                </MudText>
-                            }
+                <!-- Summary Card -->
+                <MudPaper Class="pa-5 nl-result-card" Elevation="2" Style="border: 1px solid rgba(96,165,250,0.3); background: linear-gradient(145deg, rgba(30,58,138,0.2) 0%, rgba(15,23,42,0.6) 100%);">
+                    <div class="d-flex align-center justify-space-between flex-wrap gap-3">
+                        <div class="d-flex align-center gap-3">
+                            <div class="pa-3 rounded-circle" style="background: @_result.HasResults ? "rgba(16,185,129,0.15)" : "rgba(245,158,11,0.15)";">
+                                <MudIcon Icon="@(_result.HasResults ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Info)"
+                                         Color="@(_result.HasResults ? Color.Success : Color.Warning)" Size="Size.Medium" />
+                            </div>
+                            <div>
+                                <MudText Typo="Typo.h6" Style="font-weight:800;">@_result.Summary</MudText>
+                                @if (_result.HasResults)
+                                {
+                                    <MudText Typo="Typo.caption" Color="Color.Secondary">
+                                        Matched @_result.Rows.Count graph node record(s) · Intent: @_result.Query.IntentLabel
+                                    </MudText>
+                                }
+                            </div>
                         </div>
+
+                        <MudChip T="string" Color="@(_result.HasResults ? Color.Success : Color.Warning)" Variant="Variant.Filled" Style="font-weight: 700;">
+                            @(_result.HasResults ? $"{_result.Rows.Count} Results Found" : "0 Results")
+                        </MudChip>
                     </div>
                 </MudPaper>
 
-                <!-- Results grid -->
+                <!-- Results DataGrid -->
                 @if (_result.HasResults)
                 {
-                    <MudPaper Class="pa-4" Elevation="2" Style="border-radius:16px;">
-                        <MudDataGrid T="NlResultRow" Items="_result.Rows" Dense="true" Hover="true"
-                                     FixedHeader="true" Height="350px" SortMode="SortMode.Single">
+                    <MudPaper Class="pa-4 nl-result-card" Elevation="2">
+                        <MudDataGrid T="NlResultRow" Items="_result.Rows" Dense="true" Hover="true" Striped="true"
+                                     FixedHeader="true" Height="360px" SortMode="SortMode.Single">
                             <Columns>
                                 <TemplateColumn Title="Category" InitialDirection="SortDirection.None">
                                     <CellTemplate>
@@ -150,19 +220,19 @@
                                             };
                                         }
                                         <MudChip T="string" Size="Size.Small" Color="@color" Variant="Variant.Filled"
-                                                 Style="height:20px; font-size:0.65rem;">@cat</MudChip>
+                                                 Style="height:22px; font-size:0.7rem; font-weight:700;">@cat</MudChip>
                                     </CellTemplate>
                                 </TemplateColumn>
                                 <PropertyColumn Property="x => x.Primary" Title="@PrimaryColumnTitle()" />
                                 <PropertyColumn Property="x => x.Secondary" Title="@SecondaryColumnTitle()" />
                                 @if (_result.Rows.Any(r => r.Count > 0))
                                 {
-                                    <TemplateColumn Title="Count">
+                                    <TemplateColumn Title="Graph Weight / Count">
                                         <CellTemplate>
                                             @if (context.Item.Count > 0)
                                             {
                                                 <MudChip T="string" Size="Size.Small" Color="Color.Default"
-                                                         Variant="Variant.Outlined">@context.Item.Count</MudChip>
+                                                         Variant="Variant.Outlined" Style="font-weight: 700;">@context.Item.Count</MudChip>
                                             }
                                         </CellTemplate>
                                     </TemplateColumn>
@@ -172,24 +242,23 @@
                     </MudPaper>
                 }
 
-                <!-- Follow-up questions -->
+                <!-- Follow-up Questions -->
                 @if (_result.FollowUps.Any())
                 {
-                    <div>
-                        <MudText Typo="Typo.subtitle2" Color="Color.Secondary" Class="mb-2">
-                            🔄 Follow-up questions:
+                    <MudPaper Class="pa-4 nl-result-card" Elevation="2">
+                        <MudText Typo="Typo.subtitle2" Class="mb-3" Style="font-weight:700; color:#f8fafc;">
+                            🔄 Suggested Follow-Up Queries:
                         </MudText>
                         <div class="d-flex flex-wrap gap-2">
                             @foreach (var fu in _result.FollowUps)
                             {
-                                <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Primary"
-                                         OnClick="@(() => AskSuggestion(fu))"
-                                         Style="cursor:pointer;">
-                                    @fu
+                                <MudChip T="string" Class="suggestion-chip" Size="Size.Small" Variant="Variant.Outlined" Color="Color.Info"
+                                         OnClick="@(() => AskSuggestion(fu))">
+                                    👉 @fu
                                 </MudChip>
                             }
                         </div>
-                    </div>
+                    </MudPaper>
                 }
 
             </MudStack>
@@ -199,8 +268,6 @@
 </MudStack>
 
 @code {
-    [CascadingParameter(Name = "IsDarkMode")] private bool IsDarkMode { get; set; }
-
     private LineageGraph? _graph;
     private string _query = "";
     private bool _isRunning;
@@ -211,7 +278,7 @@
 
     protected override void OnInitialized()
     {
-                var report = LineageService.GetPublishedReport();
+        var report = LineageService.GetPublishedReport();
         if (report != null)
         {
             _graph = report.Graph;
@@ -231,7 +298,7 @@
         _result = null;
         StateHasChanged();
 
-        await Task.Delay(60); // yield to re-render with spinner
+        await Task.Delay(80);
 
         _parsed = NlQueryParser.Parse(_query);
         _result = NlQueryEngine.Execute(_parsed, _graph);
@@ -251,29 +318,30 @@
 
     private string PrimaryColumnTitle() => _result?.Query.Intent switch
     {
-        NlQueryIntent.FindPackagesWritingToTable    => "Package",
-        NlQueryIntent.FindPackagesReadingFromTable  => "Package",
-        NlQueryIntent.FindAllPackages               => "Package",
-        NlQueryIntent.FindPackageForColumn          => "Package",
-        NlQueryIntent.FindOrphanTables              => "Table",
-        NlQueryIntent.FindHighFanoutColumns         => "Column",
-        _                                           => "Source / Target"
+        NlQueryIntent.FindPackagesWritingToTable    => "Package Identifier",
+        NlQueryIntent.FindPackagesReadingFromTable  => "Package Identifier",
+        NlQueryIntent.FindAllPackages               => "Package Identifier",
+        NlQueryIntent.FindPackageForColumn          => "Package Identifier",
+        NlQueryIntent.FindOrphanTables              => "Table Entity",
+        NlQueryIntent.FindHighFanoutColumns         => "Column Identifier",
+        _                                           => "Source / Target Node"
     };
 
     private string SecondaryColumnTitle() => _result?.Query.Intent switch
     {
-        NlQueryIntent.FindPackagesWritingToTable    => "Tasks",
-        NlQueryIntent.FindPackagesReadingFromTable  => "Tasks",
-        NlQueryIntent.FindAllPackages               => "Stats",
-        NlQueryIntent.FindPackageForColumn          => "Tasks",
-        NlQueryIntent.FindOrphanTables              => "Status",
-        NlQueryIntent.FindHighFanoutColumns         => "Usage",
+        NlQueryIntent.FindPackagesWritingToTable    => "Execution Tasks",
+        NlQueryIntent.FindPackagesReadingFromTable  => "Execution Tasks",
+        NlQueryIntent.FindAllPackages               => "Statistics",
+        NlQueryIntent.FindPackageForColumn          => "Execution Tasks",
+        NlQueryIntent.FindOrphanTables              => "Orphan Status",
+        NlQueryIntent.FindHighFanoutColumns         => "Fanout Usage",
         NlQueryIntent.FindColumnSource              => "Via Package / Task",
         NlQueryIntent.FindColumnTarget              => "Via Package / Task",
-        _                                           => "Details"
+        _                                           => "Details / Pathway"
     };
 
     public void Dispose()
     {
-            }
+    }
 }
+

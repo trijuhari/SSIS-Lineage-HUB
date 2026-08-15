@@ -420,13 +420,14 @@ else if (_reportData == null)
         foreach (var c in compList)
         {
             sb.AppendLine($"• Component ID : {c.Id}");
-            sb.AppendLine($"  Type         : {c.ComponentType}");
+            sb.AppendLine($"  Type         : {c.Type}");
             sb.AppendLine($"  Name         : {c.Name}");
-            if (!string.IsNullOrWhiteSpace(c.SourceTable)) sb.AppendLine($"  Source Table : {c.SourceTable}");
-            if (!string.IsNullOrWhiteSpace(c.TargetTable)) sb.AppendLine($"  Target Table : {c.TargetTable}");
-            if (c.ColumnMappings != null && c.ColumnMappings.Any())
+            if (!string.IsNullOrWhiteSpace(c.SqlQueryOrTable)) sb.AppendLine($"  Query/Table  : {c.SqlQueryOrTable}");
+            
+            var mapCount = _reportData.Graph.ColumnMappings.Count(m => m.SourceComponentId == c.Id || m.TargetComponentId == c.Id);
+            if (mapCount > 0)
             {
-                sb.AppendLine($"  Mappings     : {c.ColumnMappings.Count} Column(s) transformed");
+                sb.AppendLine($"  Mappings     : {mapCount} Column(s) transformed");
             }
             sb.AppendLine();
         }

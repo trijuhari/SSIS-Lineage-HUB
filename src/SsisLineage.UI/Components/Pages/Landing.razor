@@ -21,14 +21,54 @@
 
     .landing-page {
         background-color: var(--bg-color);
-        background-image: 
-            radial-gradient(circle at 15% 50%, rgba(56, 189, 248, 0.08), transparent 25%),
-            radial-gradient(circle at 85% 30%, rgba(139, 92, 246, 0.08), transparent 25%);
         color: var(--text-primary);
         min-height: 100vh;
         display: flex;
         flex-direction: column;
         font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+        position: relative;
+        overflow: hidden;
+    }
+
+    /* ── Animated Ambient Orbs ── */
+    .ambient-orb-1 {
+        position: absolute;
+        top: 5%;
+        left: 10%;
+        width: 480px;
+        height: 480px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(56, 189, 248, 0.15) 0%, rgba(56, 189, 248, 0) 70%);
+        filter: blur(40px);
+        pointer-events: none;
+        z-index: 0;
+        animation: floatOrb1 18s ease-in-out infinite alternate;
+    }
+
+    .ambient-orb-2 {
+        position: absolute;
+        top: 35%;
+        right: 8%;
+        width: 550px;
+        height: 550px;
+        border-radius: 50%;
+        background: radial-gradient(circle, rgba(139, 92, 246, 0.16) 0%, rgba(139, 92, 246, 0) 70%);
+        filter: blur(50px);
+        pointer-events: none;
+        z-index: 0;
+        animation: floatOrb2 22s ease-in-out infinite alternate;
+    }
+
+    @@keyframes floatOrb1 {
+        0% { transform: translate(0, 0) scale(1); }
+        50% { transform: translate(60px, 40px) scale(1.1); }
+        100% { transform: translate(-40px, 80px) scale(0.95); }
+    }
+
+    @@keyframes floatOrb2 {
+        0% { transform: translate(0, 0) scale(1); }
+        50% { transform: translate(-80px, -50px) scale(1.15); }
+        100% { transform: translate(40px, -90px) scale(0.9); }
     }
     
     .grid-background {
@@ -41,6 +81,12 @@
         -webkit-mask-image: linear-gradient(to bottom, white 5%, transparent 80%);
         pointer-events: none;
         z-index: 0;
+        animation: gridSlide 30s linear infinite;
+    }
+
+    @@keyframes gridSlide {
+        0% { background-position: 0 0; }
+        100% { background-position: 4rem 4rem; }
     }
 
     .nav-header {
@@ -51,6 +97,23 @@
         z-index: 50;
         position: sticky;
         top: 0;
+    }
+
+    /* ── Pulsing Beacon Dot ── */
+    .pulse-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background-color: #38bdf8;
+        box-shadow: 0 0 10px #38bdf8;
+        display: inline-block;
+        animation: pulseBeacon 2s infinite;
+    }
+
+    @@keyframes pulseBeacon {
+        0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(56, 189, 248, 0.7); }
+        70% { transform: scale(1.2); box-shadow: 0 0 0 8px rgba(56, 189, 248, 0); }
+        100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(56, 189, 248, 0); }
     }
 
     .tag-badge {
@@ -78,9 +141,16 @@
     }
     
     .hero-heading-highlight {
-        background: linear-gradient(135deg, var(--secondary-accent) 0%, var(--primary-accent) 100%);
+        background: linear-gradient(135deg, #38bdf8 0%, #8b5cf6 50%, #ec4899 100%);
+        background-size: 200% auto;
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
+        animation: gradientShift 6s ease infinite alternate;
+    }
+
+    @@keyframes gradientShift {
+        0% { background-position: 0% 50%; }
+        100% { background-position: 100% 50%; }
     }
     
     .hero-desc {
@@ -143,13 +213,19 @@
         display: flex;
         flex-direction: column;
         box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        animation: floatCard 6s ease-in-out infinite alternate;
+    }
+
+    @@keyframes floatCard {
+        0% { transform: translateY(0px); }
+        100% { transform: translateY(-6px); }
     }
     
     .bento-card:hover {
-        border-color: rgba(139, 92, 246, 0.3);
+        border-color: rgba(139, 92, 246, 0.5);
         background: var(--card-bg-hover);
-        transform: translateY(-4px);
-        box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3), 0 0 20px rgba(139, 92, 246, 0.1);
+        transform: translateY(-8px) scale(1.02) !important;
+        box-shadow: 0 12px 30px -5px rgba(0, 0, 0, 0.4), 0 0 25px rgba(139, 92, 246, 0.25);
     }
 
     .bento-icon {
@@ -168,8 +244,8 @@
     }
     
     .bento-card:hover .bento-icon {
-        transform: scale(1.1);
-        box-shadow: 0 4px 20px rgba(139, 92, 246, 0.3);
+        transform: scale(1.15) rotate(4deg);
+        box-shadow: 0 4px 20px rgba(139, 92, 246, 0.4);
     }
     
     .section-title {
@@ -256,11 +332,11 @@
         position: relative;
         z-index: 2;
         box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.3);
-        transition: transform 0.2s;
+        transition: transform 0.3s;
     }
     
     .flow-node:hover {
-        transform: translateY(-2px);
+        transform: translateY(-4px) scale(1.03);
     }
     
     .flow-node.source { border-top: 3px solid #38bdf8; }
@@ -278,6 +354,7 @@
     .flow-node.transform .flow-node-label { color: #a78bfa; }
     .flow-node.target .flow-node-label { color: #34d399; }
 
+    /* ── Animated Stream Beam ── */
     .flow-arrow {
         color: var(--text-tertiary);
         display: flex;
@@ -285,6 +362,26 @@
         gap: 8px;
         font-size: 0.85rem;
         font-weight: 500;
+        position: relative;
+        padding: 0 8px;
+    }
+
+    .flow-arrow-beam {
+        width: 32px;
+        height: 2px;
+        background: linear-gradient(90deg, rgba(56, 189, 248, 0) 0%, #38bdf8 50%, rgba(56, 189, 248, 0) 100%);
+        position: absolute;
+        top: 50%;
+        left: -10px;
+        transform: translateY(-50%);
+        animation: beamStream 1.8s linear infinite;
+    }
+
+    @@keyframes beamStream {
+        0% { left: -20px; opacity: 0; }
+        30% { opacity: 1; }
+        80% { opacity: 1; }
+        100% { left: 40px; opacity: 0; }
     }
     
     .footer-link {
@@ -301,6 +398,9 @@
 </style>
 
 <div class="landing-page relative">
+    <!-- Ambient Animated Glow Background -->
+    <div class="ambient-orb-1"></div>
+    <div class="ambient-orb-2"></div>
     <div class="grid-background"></div>
     
     <!-- Header -->
@@ -327,7 +427,6 @@
         </div>
 
         <div class="d-flex align-center gap-3">
-
             <a href="/lineage?demo=true" class="btn-outline" style="padding: 6px 14px; font-size: 0.875rem;">
                 Demo
             </a>
@@ -343,6 +442,7 @@
         <!-- Hero Section -->
         <div class="text-center w-100 mb-20" style="max-width: 860px;">
             <div class="tag-badge mb-8 mx-auto">
+                <span class="pulse-dot"></span>
                 <MudIcon Icon="@Icons.Material.Filled.Lock" Size="Size.Small" Style="font-size: 0.9rem;" />
                 <span>100% Offline & Local Execution</span>
             </div>
@@ -372,7 +472,7 @@
         <div class="w-100 mb-20" id="features">
             <MudGrid Spacing="4">
                 <MudItem xs="12" sm="6" md="3">
-                    <div class="bento-card">
+                    <div class="bento-card" style="animation-delay: 0s;">
                         <div class="bento-icon">
                             <MudIcon Icon="@Icons.Material.Filled.Shield" Size="Size.Small" />
                         </div>
@@ -381,7 +481,7 @@
                     </div>
                 </MudItem>
                 <MudItem xs="12" sm="6" md="3">
-                    <div class="bento-card">
+                    <div class="bento-card" style="animation-delay: 0.4s;">
                         <div class="bento-icon">
                             <MudIcon Icon="@Icons.Material.Filled.AccountTree" Size="Size.Small" />
                         </div>
@@ -390,7 +490,7 @@
                     </div>
                 </MudItem>
                 <MudItem xs="12" sm="6" md="3">
-                    <div class="bento-card">
+                    <div class="bento-card" style="animation-delay: 0.8s;">
                         <div class="bento-icon">
                             <MudIcon Icon="@Icons.Material.Filled.Terminal" Size="Size.Small" />
                         </div>
@@ -399,7 +499,7 @@
                     </div>
                 </MudItem>
                 <MudItem xs="12" sm="6" md="3">
-                    <div class="bento-card">
+                    <div class="bento-card" style="animation-delay: 1.2s;">
                         <div class="bento-icon">
                             <MudIcon Icon="@Icons.Material.Filled.FileDownload" Size="Size.Small" />
                         </div>
@@ -420,9 +520,9 @@
             <div class="preview-window">
                 <div class="preview-header">
                     <div class="d-flex align-center gap-2">
-                        <div style="width: 12px; height: 12px; border-radius: 50%; background: #3f3f46;"></div>
-                        <div style="width: 12px; height: 12px; border-radius: 50%; background: #3f3f46;"></div>
-                        <div style="width: 12px; height: 12px; border-radius: 50%; background: #3f3f46;"></div>
+                        <div style="width: 12px; height: 12px; border-radius: 50%; background: #ef4444;"></div>
+                        <div style="width: 12px; height: 12px; border-radius: 50%; background: #f59e0b;"></div>
+                        <div style="width: 12px; height: 12px; border-radius: 50%; background: #10b981;"></div>
                         <span class="ml-4" style="font-size: 0.8rem; color: var(--text-secondary); font-family: 'JetBrains Mono', monospace;">Pkg_03_Load_FactSales_DW.dtsx</span>
                     </div>
 
@@ -446,8 +546,9 @@
                                 <div style="font-size: 0.75rem; color: var(--text-secondary);">LineTotal, UnitPrice</div>
                             </div>
 
-                            <!-- Arrow -->
+                            <!-- Animated Flow Beam Arrow 1 -->
                             <div class="flow-arrow">
+                                <span class="flow-arrow-beam"></span>
                                 <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small" />
                             </div>
 
@@ -458,8 +559,9 @@
                                 <div style="font-size: 0.75rem; color: var(--text-secondary);">NetTotal = LineTotal * (1 - Discount)</div>
                             </div>
 
-                            <!-- Arrow -->
+                            <!-- Animated Flow Beam Arrow 2 -->
                             <div class="flow-arrow">
+                                <span class="flow-arrow-beam"></span>
                                 <MudIcon Icon="@Icons.Material.Filled.ArrowForward" Size="Size.Small" />
                             </div>
 
@@ -495,19 +597,19 @@
                             </div>
                             <MudGrid Spacing="2">
                                 <MudItem xs="12" sm="4">
-                                    <div class="bento-card" style="padding: 16px;">
+                                    <div class="bento-card" style="padding: 16px; animation: none;">
                                         <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px;">Source Field</div>
                                         <div style="font-weight: 600; color: #60a5fa; font-size: 0.875rem;">UnitPrice (Decimal 18,4)</div>
                                     </div>
                                 </MudItem>
                                 <MudItem xs="12" sm="4">
-                                    <div class="bento-card" style="padding: 16px;">
+                                    <div class="bento-card" style="padding: 16px; animation: none;">
                                         <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px;">Transformation</div>
                                         <div style="font-weight: 600; color: var(--text-primary); font-size: 0.875rem;">Pass-through Direct</div>
                                     </div>
                                 </MudItem>
                                 <MudItem xs="12" sm="4">
-                                    <div class="bento-card" style="padding: 16px;">
+                                    <div class="bento-card" style="padding: 16px; animation: none;">
                                         <div style="font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 4px;">Target Field</div>
                                         <div style="font-weight: 600; color: #34d399; font-size: 0.875rem;">UnitPrice (Decimal 18,4)</div>
                                     </div>
@@ -580,7 +682,7 @@
                 {
                     <MudItem xs="12" md="6" lg="4">
                         <a href="@mod.Link" style="text-decoration: none; display: block; height: 100%;">
-                            <div class="bento-card">
+                            <div class="bento-card" style="animation: none;">
                                 <div class="d-flex align-center gap-3 mb-4">
                                     <div class="bento-icon" style="margin-bottom: 0;">
                                         <MudIcon Icon="@mod.Icon" Size="Size.Small" />
@@ -602,7 +704,7 @@
 
         <!-- CLI Export Section -->
         <div class="w-100 mb-10" id="export">
-            <div class="bento-card" style="padding: 40px; background: rgba(9, 9, 11, 0.5);">
+            <div class="bento-card" style="padding: 40px; background: rgba(9, 9, 11, 0.5); animation: none;">
                 <MudGrid Spacing="6" Class="align-center">
                     <MudItem xs="12" md="6">
                         <div class="section-title">Open Standards</div>
@@ -649,9 +751,10 @@ $ dotnet ssis-lineage parse ./samples \
 
     protected override void OnInitialized()
     {
-            }
+    }
 
     public void Dispose()
     {
-            }
+    }
 }
+

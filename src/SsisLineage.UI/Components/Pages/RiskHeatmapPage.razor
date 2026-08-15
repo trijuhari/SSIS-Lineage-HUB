@@ -4,167 +4,533 @@
 @using SsisLineage.UI.Services
 @inject LineageService LineageService
 @inject IJSRuntime JS
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
 
 <PageTitle>Lineage Risk Scorer & Heatmap — SSIS Lineage Hub</PageTitle>
 
-<MudStack Spacing="4" Class="pa-4">
+<style>
+    .risk-card-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+        gap: 20px;
+    }
 
-    <!-- ── Header ── -->
-    <div class="d-flex justify-space-between align-center flex-wrap gap-2">
+    .risk-tile {
+        background: rgba(15, 23, 42, 0.6);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 16px;
+        padding: 20px;
+        transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+        position: relative;
+        overflow: hidden;
+        cursor: pointer;
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+    }
+
+    .risk-tile:hover {
+        transform: translateY(-4px);
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+    }
+
+    .risk-tile-critical {
+        border-color: rgba(239, 68, 68, 0.4);
+        background: linear-gradient(145deg, rgba(239, 68, 68, 0.08) 0%, rgba(15, 23, 42, 0.7) 100%);
+    }
+
+    .risk-tile-critical:hover {
+        border-color: rgba(239, 68, 68, 0.8);
+        box-shadow: 0 0 25px rgba(239, 68, 68, 0.25);
+    }
+
+    .risk-tile-high {
+        border-color: rgba(245, 158, 11, 0.4);
+        background: linear-gradient(145deg, rgba(245, 158, 11, 0.08) 0%, rgba(15, 23, 42, 0.7) 100%);
+    }
+
+    .risk-tile-high:hover {
+        border-color: rgba(245, 158, 11, 0.8);
+        box-shadow: 0 0 25px rgba(245, 158, 11, 0.25);
+    }
+
+    .risk-tile-medium {
+        border-color: rgba(234, 179, 8, 0.3);
+        background: linear-gradient(145deg, rgba(234, 179, 8, 0.05) 0%, rgba(15, 23, 42, 0.7) 100%);
+    }
+
+    .risk-tile-medium:hover {
+        border-color: rgba(234, 179, 8, 0.7);
+        box-shadow: 0 0 20px rgba(234, 179, 8, 0.2);
+    }
+
+    .risk-tile-low {
+        border-color: rgba(16, 185, 129, 0.3);
+        background: linear-gradient(145deg, rgba(16, 185, 129, 0.05) 0%, rgba(15, 23, 42, 0.7) 100%);
+    }
+
+    .risk-tile-low:hover {
+        border-color: rgba(16, 185, 129, 0.7);
+        box-shadow: 0 0 20px rgba(16, 185, 129, 0.2);
+    }
+
+    .score-circle {
+        width: 54px;
+        height: 54px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 800;
+        font-size: 1.15rem;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    }
+
+    .kpi-interactive-card {
+        cursor: pointer;
+        transition: transform 0.2s, border-color 0.2s, box-shadow 0.2s;
+    }
+
+    .kpi-interactive-card:hover {
+        transform: translateY(-3px);
+    }
+
+    .metric-badge {
+        background: rgba(255, 255, 255, 0.04);
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 8px;
+        padding: 6px 10px;
+        font-size: 0.75rem;
+        color: #94a3b8;
+    }
+</style>
+
+<MudStack Spacing="5" Class="pa-4">
+
+    <!-- ── Header & Action Toolbar ── -->
+    <div class="d-flex justify-space-between align-center flex-wrap gap-3">
         <div>
-            <MudText Typo="Typo.overline" Color="Color.Error" Style="letter-spacing:1px;">Governance & Risk</MudText>
-            <MudText Typo="Typo.h4" Style="font-weight:700;">Lineage Risk Scorer & Heatmap</MudText>
+            <div class="d-flex align-center gap-2 mb-1">
+                <MudChip T="string" Color="Color.Error" Size="Size.Small" Variant="Variant.Filled" Style="font-weight: 700;">
+                    GOVERNANCE & RISK SCORER
+                </MudChip>
+                @if (_report != null)
+                {
+                    <MudChip T="string" Color="Color.Default" Size="Size.Small" Variant="Variant.Outlined">
+                        @_report.TableCount Tables Audited
+                    </MudChip>
+                }
+            </div>
+            <MudText Typo="Typo.h4" Style="font-weight:800; letter-spacing: -0.02em;">Lineage Risk Scorer & Heatmap</MudText>
             <MudText Typo="Typo.body2" Color="Color.Secondary" Class="mt-1">
-                Risk analysis per table (0-100) based on downstream fan-out, transformation depth, and cross-package consumption.
+                Graph-based vulnerability scoring (0–100) based on downstream fan-out, transformation depth, shared readers, and column mappings.
             </MudText>
         </div>
 
         @if (_report != null && _report.Scores.Count > 0)
         {
-            <MudButton OnClick="ExportMarkdown" Variant="Variant.Outlined" Color="Color.Primary"
-                       StartIcon="@Icons.Material.Filled.Download">
-                Export Risk Report (.md)
-            </MudButton>
+            <div class="d-flex align-center gap-2 flex-wrap">
+                <MudToggleGroup T="string" @bind-Value="_viewMode" Size="Size.Small" Color="Color.Primary" CheckMark="false">
+                    <MudToggleItem Value="@("grid")">Visual Heatmap</MudToggleItem>
+                    <MudToggleItem Value="@("table")">Data Table</MudToggleItem>
+                </MudToggleGroup>
+
+                <MudMenu Label="Export Report" Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small" StartIcon="@Icons.Material.Filled.Download" EndIcon="@Icons.Material.Filled.KeyboardArrowDown">
+                    <MudMenuItem OnClick="ExportMarkdown" Icon="@Icons.Material.Filled.Description">Markdown Summary (.md)</MudMenuItem>
+                    <MudMenuItem OnClick="ExportCsv" Icon="@Icons.Material.Filled.TableChart">CSV Data Export (.csv)</MudMenuItem>
+                </MudMenu>
+            </div>
         }
     </div>
 
-    <!-- ── No report guard ── -->
+    <!-- ── Guard: No Report Loaded ── -->
     @if (_graph == null)
     {
-        <MudPaper Outlined="true" Elevation="0" Class="pa-8 d-flex flex-column align-center justify-center" Style="border-radius:16px;">
-            <MudIcon Icon="@Icons.Material.Filled.LocalFireDepartment" Size="Size.Large" Color="Color.Error" />
-            <MudText Typo="Typo.subtitle1" Class="mt-2" Style="font-weight:700;">No lineage report loaded</MudText>
-            <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center" Class="mb-3">
-                Generate or load a lineage report first to calculate table risk scores.
+        <MudPaper Outlined="true" Elevation="0" Class="pa-10 d-flex flex-column align-center justify-center" Style="border-radius:20px; background: rgba(15, 23, 42, 0.4); backdrop-filter: blur(12px);">
+            <div class="pa-4 rounded-circle mb-3" style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2);">
+                <MudIcon Icon="@Icons.Material.Filled.LocalFireDepartment" Size="Size.Large" Color="Color.Error" />
+            </div>
+            <MudText Typo="Typo.h6" Style="font-weight:700;">No SSIS Lineage Report Loaded</MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary" Align="Align.Center" Class="mb-4" Style="max-width: 480px;">
+                Please scan or parse an SSIS package on the Lineage Discovery page first to enable interactive table risk scoring and heatmap analytics.
             </MudText>
             <MudButton Href="/lineage" Variant="Variant.Filled" Color="Color.Error" StartIcon="@Icons.Material.Filled.Hub">
-                Go to Workspace
+                Open Lineage Discovery Workspace
             </MudButton>
         </MudPaper>
     }
     else if (_report != null)
     {
-        <!-- ── Summary KPI Cards ── -->
-        <MudGrid>
+        <!-- ── Interactive KPI Summary Cards ── -->
+        <MudGrid Spacing="3">
+            <!-- Critical Risk KPI -->
             <MudItem xs="12" sm="6" md="3">
-                <MudPaper Class="pa-4 d-flex align-center justify-space-between" Elevation="2" Style="border-radius:16px; border-left:6px solid #ef4444;">
-                    <div>
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">Critical Risk (≥75)</MudText>
-                        <MudText Typo="Typo.h4" Style="font-weight:700; color:#ef4444;">@_report.CriticalCount</MudText>
+                <div class="pa-4 kpi-interactive-card mud-elevation-3"
+                     style="@($"border-radius:16px; background: rgba(15, 23, 42, 0.6); border: 1px solid {(_levelFilter == RiskLevel.Critical ? "#ef4444" : "rgba(239, 68, 68, 0.3)")}; border-left:6px solid #ef4444;")"
+                     @onclick="() => ToggleLevelFilter(RiskLevel.Critical)">
+                    <div class="d-flex align-center justify-space-between mb-2">
+                        <MudText Typo="Typo.caption" Class="font-weight-bold" Style="color:#ef4444; letter-spacing:0.05em;">CRITICAL RISK (≥75)</MudText>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Error" Variant="Variant.Filled">
+                            @GetPercentage(_report.CriticalCount)%
+                        </MudChip>
                     </div>
-                    <MudIcon Icon="@Icons.Material.Filled.Warning" Style="color:#ef4444;" Size="Size.Large" />
-                </MudPaper>
+                    <div class="d-flex align-center justify-space-between">
+                        <MudText Typo="Typo.h3" Style="font-weight:800; color:#ef4444;">@_report.CriticalCount</MudText>
+                        <MudIcon Icon="@Icons.Material.Filled.Warning" Style="color:#ef4444; opacity: 0.8;" Size="Size.Large" />
+                    </div>
+                    <MudProgressLinear Color="Color.Error" Value="@GetPercentage(_report.CriticalCount)" Class="mt-3" Style="height: 4px; border-radius: 2px;" />
+                </div>
             </MudItem>
 
+            <!-- High Risk KPI -->
             <MudItem xs="12" sm="6" md="3">
-                <MudPaper Class="pa-4 d-flex align-center justify-space-between" Elevation="2" Style="border-radius:16px; border-left:6px solid #f59e0b;">
-                    <div>
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">High Risk (50–74)</MudText>
-                        <MudText Typo="Typo.h4" Style="font-weight:700; color:#f59e0b;">@_report.HighCount</MudText>
+                <div class="pa-4 kpi-interactive-card mud-elevation-3"
+                     style="@($"border-radius:16px; background: rgba(15, 23, 42, 0.6); border: 1px solid {(_levelFilter == RiskLevel.High ? "#f59e0b" : "rgba(245, 158, 11, 0.3)")}; border-left:6px solid #f59e0b;")"
+                     @onclick="() => ToggleLevelFilter(RiskLevel.High)">
+                    <div class="d-flex align-center justify-space-between mb-2">
+                        <MudText Typo="Typo.caption" Class="font-weight-bold" Style="color:#f59e0b; letter-spacing:0.05em;">HIGH RISK (50–74)</MudText>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Warning" Variant="Variant.Filled">
+                            @GetPercentage(_report.HighCount)%
+                        </MudChip>
                     </div>
-                    <MudIcon Icon="@Icons.Material.Filled.ErrorOutline" Style="color:#f59e0b;" Size="Size.Large" />
-                </MudPaper>
+                    <div class="d-flex align-center justify-space-between">
+                        <MudText Typo="Typo.h3" Style="font-weight:800; color:#f59e0b;">@_report.HighCount</MudText>
+                        <MudIcon Icon="@Icons.Material.Filled.ErrorOutline" Style="color:#f59e0b; opacity: 0.8;" Size="Size.Large" />
+                    </div>
+                    <MudProgressLinear Color="Color.Warning" Value="@GetPercentage(_report.HighCount)" Class="mt-3" Style="height: 4px; border-radius: 2px;" />
+                </div>
             </MudItem>
 
+            <!-- Medium Risk KPI -->
             <MudItem xs="12" sm="6" md="3">
-                <MudPaper Class="pa-4 d-flex align-center justify-space-between" Elevation="2" Style="border-radius:16px; border-left:6px solid #eab308;">
-                    <div>
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">Medium Risk (25–49)</MudText>
-                        <MudText Typo="Typo.h4" Style="font-weight:700; color:#eab308;">@_report.MediumCount</MudText>
+                <div class="pa-4 kpi-interactive-card mud-elevation-3"
+                     style="@($"border-radius:16px; background: rgba(15, 23, 42, 0.6); border: 1px solid {(_levelFilter == RiskLevel.Medium ? "#eab308" : "rgba(234, 179, 8, 0.3)")}; border-left:6px solid #eab308;")"
+                     @onclick="() => ToggleLevelFilter(RiskLevel.Medium)">
+                    <div class="d-flex align-center justify-space-between mb-2">
+                        <MudText Typo="Typo.caption" Class="font-weight-bold" Style="color:#eab308; letter-spacing:0.05em;">MEDIUM RISK (25–49)</MudText>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Filled">
+                            @GetPercentage(_report.MediumCount)%
+                        </MudChip>
                     </div>
-                    <MudIcon Icon="@Icons.Material.Filled.Info" Style="color:#eab308;" Size="Size.Large" />
-                </MudPaper>
+                    <div class="d-flex align-center justify-space-between">
+                        <MudText Typo="Typo.h3" Style="font-weight:800; color:#eab308;">@_report.MediumCount</MudText>
+                        <MudIcon Icon="@Icons.Material.Filled.Info" Style="color:#eab308; opacity: 0.8;" Size="Size.Large" />
+                    </div>
+                    <MudProgressLinear Color="Color.Info" Value="@GetPercentage(_report.MediumCount)" Class="mt-3" Style="height: 4px; border-radius: 2px;" />
+                </div>
             </MudItem>
 
+            <!-- Low Risk KPI -->
             <MudItem xs="12" sm="6" md="3">
-                <MudPaper Class="pa-4 d-flex align-center justify-space-between" Elevation="2" Style="border-radius:16px; border-left:6px solid #10b981;">
-                    <div>
-                        <MudText Typo="Typo.caption" Color="Color.Secondary">Low Risk (0–24)</MudText>
-                        <MudText Typo="Typo.h4" Style="font-weight:700; color:#10b981;">@_report.LowCount</MudText>
+                <div class="pa-4 kpi-interactive-card mud-elevation-3"
+                     style="@($"border-radius:16px; background: rgba(15, 23, 42, 0.6); border: 1px solid {(_levelFilter == RiskLevel.Low ? "#10b981" : "rgba(16, 185, 129, 0.3)")}; border-left:6px solid #10b981;")"
+                     @onclick="() => ToggleLevelFilter(RiskLevel.Low)">
+                    <div class="d-flex align-center justify-space-between mb-2">
+                        <MudText Typo="Typo.caption" Class="font-weight-bold" Style="color:#10b981; letter-spacing:0.05em;">LOW RISK (0–24)</MudText>
+                        <MudChip T="string" Size="Size.Small" Color="Color.Success" Variant="Variant.Filled">
+                            @GetPercentage(_report.LowCount)%
+                        </MudChip>
                     </div>
-                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Style="color:#10b981;" Size="Size.Large" />
-                </MudPaper>
+                    <div class="d-flex align-center justify-space-between">
+                        <MudText Typo="Typo.h3" Style="font-weight:800; color:#10b981;">@_report.LowCount</MudText>
+                        <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Style="color:#10b981; opacity: 0.8;" Size="Size.Large" />
+                    </div>
+                    <MudProgressLinear Color="Color.Success" Value="@GetPercentage(_report.LowCount)" Class="mt-3" Style="height: 4px; border-radius: 2px;" />
+                </div>
             </MudItem>
         </MudGrid>
 
-        <!-- ── Filter & Search ── -->
-        <MudPaper Class="pa-4" Elevation="1" Style="border-radius:16px;">
-            <div class="d-flex align-center gap-4 flex-wrap">
-                <MudTextField @bind-Value="_search" Label="Search Table..." Placeholder="dbo.MasterPinjaman"
-                              Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex:1; min-width:200px;"
-                              Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Clearable="true" />
+        <!-- ── Filter Controls & Search Bar ── -->
+        <MudPaper Class="pa-3" Elevation="2" Style="border-radius:16px; background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08);">
+            <div class="d-flex align-center gap-3 flex-wrap justify-space-between">
+                <div class="d-flex align-center gap-3 flex-wrap" style="flex: 1; min-width: 280px;">
+                    <MudTextField @bind-Value="_search" Label="Search Table or Schema..." Placeholder="e.g. dbo.FactSales"
+                                  Variant="Variant.Outlined" Margin="Margin.Dense" Style="flex:1; min-width:200px;"
+                                  Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search" Clearable="true" />
 
-                <MudSelect T="RiskLevel?" @bind-Value="_levelFilter" Label="Filter Level Risk" Variant="Variant.Outlined"
-                           Margin="Margin.Dense" Style="min-width:180px;" Clearable="true">
-                    <MudSelectItem T="RiskLevel?" Value="@(RiskLevel.Critical)">🔴 Critical (≥75)</MudSelectItem>
-                    <MudSelectItem T="RiskLevel?" Value="@(RiskLevel.High)">🟠 High (50–74)</MudSelectItem>
-                    <MudSelectItem T="RiskLevel?" Value="@(RiskLevel.Medium)">🟡 Medium (25–49)</MudSelectItem>
-                    <MudSelectItem T="RiskLevel?" Value="@(RiskLevel.Low)">🟢 Low (0–24)</MudSelectItem>
-                </MudSelect>
+                    <MudSelect T="RiskLevel?" Value="_levelFilter" ValueChanged="OnLevelFilterChanged" Label="Risk Tier" Variant="Variant.Outlined"
+                               Margin="Margin.Dense" Style="min-width:160px;" Clearable="true">
+                        <MudSelectItem T="RiskLevel?" Value="@(RiskLevel.Critical)">🔴 Critical (≥75)</MudSelectItem>
+                        <MudSelectItem T="RiskLevel?" Value="@(RiskLevel.High)">🟠 High (50–74)</MudSelectItem>
+                        <MudSelectItem T="RiskLevel?" Value="@(RiskLevel.Medium)">🟡 Medium (25–49)</MudSelectItem>
+                        <MudSelectItem T="RiskLevel?" Value="@(RiskLevel.Low)">🟢 Low (0–24)</MudSelectItem>
+                    </MudSelect>
+
+                    <MudSelect T="string" @bind-Value="_sortBy" Label="Sort By" Variant="Variant.Outlined"
+                               Margin="Margin.Dense" Style="min-width:160px;">
+                        <MudSelectItem T="string" Value="@("score")">Highest Risk Score</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("fanout")">Max Downstream Fan-Out</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("depth")">Max Hop Depth</MudSelectItem>
+                        <MudSelectItem T="string" Value="@("mappings")">Max Column Mappings</MudSelectItem>
+                    </MudSelect>
+                </div>
+
+                <div class="d-flex align-center gap-2">
+                    @if (_levelFilter.HasValue || !string.IsNullOrEmpty(_search))
+                    {
+                        <MudButton OnClick="ClearFilters" Variant="Variant.Outlined" Color="Color.Inherit" Size="Size.Small"
+                                   StartIcon="@Icons.Material.Filled.FilterAltOff">
+                            Reset Filters
+                        </MudButton>
+                    }
+                    <MudText Typo="Typo.caption" Color="Color.Secondary" Class="font-weight-bold">
+                        Showing @FilteredScores.Count() of @_report.TableCount tables
+                    </MudText>
+                </div>
             </div>
         </MudPaper>
 
-        <!-- ── Data Table ── -->
-        <MudPaper Elevation="2" Style="border-radius:16px; overflow:hidden;">
-            <MudDataGrid T="TableRiskScore" Items="FilteredScores" Dense="true" Hover="true" Striped="true"
-                         SortMode="SortMode.Multiple" FixedHeader="true" Height="480px">
-                <Columns>
-                    <PropertyColumn Property="x => x.TableName" Title="Table Name" Sortable="true" />
-                    
-                    <TemplateColumn Title="Risk Score" Sortable="true" SortBy="x => x.Score">
-                        <CellTemplate>
-                            <div class="d-flex align-center gap-2">
-                                <MudChip T="string" Size="Size.Small" Color="GetLevelColor(context.Item.Level)" Variant="Variant.Filled"
-                                         Style="font-weight:700; width:45px; text-align:center;">
-                                    @context.Item.Score
+        <!-- ── Main Workspace: Visual Grid vs Data Table ── -->
+        @if (_viewMode == "grid")
+        {
+            <div class="risk-card-grid">
+                @foreach (var score in FilteredScores)
+                {
+                    var tileCss = GetTileCssClass(score.Level);
+                    var levelColor = GetLevelColor(score.Level);
+                    var levelHex = GetLevelHexColor(score.Level);
+
+                    <div class="risk-tile @tileCss" @onclick="() => InspectTable(score)">
+                        <div>
+                            <!-- Header: Table Name & Risk Badge -->
+                            <div class="d-flex align-center justify-space-between gap-2 mb-3">
+                                <div class="d-flex align-center gap-2 style-truncated" style="overflow: hidden;" title="@score.TableName">
+                                    <MudIcon Icon="@Icons.Material.Filled.TableChart" Size="Size.Small" Style="@($"color: {levelHex}")" />
+                                    <MudText Typo="Typo.subtitle2" Class="font-weight-bold text-truncate" Style="color: #f8fafc;">
+                                        @score.TableName
+                                    </MudText>
+                                </div>
+                                <MudChip T="string" Size="Size.Small" Color="levelColor" Variant="Variant.Filled" Style="font-size: 0.7rem; font-weight: 700;">
+                                    @score.Level.ToString().ToUpper()
                                 </MudChip>
-                                <MudProgressLinear Color="GetLevelColor(context.Item.Level)" Value="context.Item.Score"
-                                                   Class="my-1" Style="width:80px; height:8px; border-radius:4px;" />
                             </div>
-                        </CellTemplate>
-                    </TemplateColumn>
 
-                    <TemplateColumn Title="Risk Level" Sortable="true" SortBy="x => x.Level">
-                        <CellTemplate>
-                            <MudChip T="string" Size="Size.Small" Color="GetLevelColor(context.Item.Level)" Variant="Variant.Outlined">
-                                @context.Item.Level
-                            </MudChip>
-                        </CellTemplate>
-                    </TemplateColumn>
+                            <!-- Middle: Composite Score Indicator -->
+                            <div class="d-flex align-center gap-3 my-3">
+                                <div class="score-circle" style="@($"background: rgba({GetRgbHex(score.Level)}, 0.15); border: 2px solid {levelHex}; color: {levelHex};")">
+                                    @score.Score
+                                </div>
+                                <div style="flex: 1;">
+                                    <div class="d-flex justify-space-between align-center mb-1">
+                                        <MudText Typo="Typo.caption" Color="Color.Secondary">Composite Risk Score</MudText>
+                                        <MudText Typo="Typo.caption" Class="font-weight-bold" Style="@($"color: {levelHex}")">@score.Score / 100</MudText>
+                                    </div>
+                                    <MudProgressLinear Color="levelColor" Value="score.Score" Style="height: 6px; border-radius: 3px;" />
+                                </div>
+                            </div>
+                        </div>
 
-                    <PropertyColumn Property="x => x.DownstreamTableCount" Title="Fan-Out (Downstream Tables)" Sortable="true" />
-                    <PropertyColumn Property="x => x.Depth" Title="Depth (Hops)" Sortable="true" />
-                    <PropertyColumn Property="x => x.ReaderPackageCount" Title="Shared Readers (Pkgs)" Sortable="true" />
-                    <PropertyColumn Property="x => x.MappingCount" Title="Column Mappings" Sortable="true" />
+                        <!-- Footer: Micro Metrics Grid -->
+                        <div Class="mt-3 pt-3" style="border-top: 1px solid rgba(255, 255, 255, 0.08);">
+                            <div class="d-flex align-center justify-space-between flex-wrap gap-2">
+                                <div class="d-flex align-center gap-1 metric-badge">
+                                    <MudIcon Icon="@Icons.Material.Filled.AccountTree" Size="Size.Small" Style="font-size: 0.9rem;" />
+                                    <span>Fan-Out: <strong>@score.DownstreamTableCount</strong></span>
+                                </div>
+                                <div class="d-flex align-center gap-1 metric-badge">
+                                    <MudIcon Icon="@Icons.Material.Filled.Timeline" Size="Size.Small" Style="font-size: 0.9rem;" />
+                                    <span>Depth: <strong>@score.Depth hops</strong></span>
+                                </div>
+                                <div class="d-flex align-center gap-1 metric-badge">
+                                    <MudIcon Icon="@Icons.Material.Filled.FolderShared" Size="Size.Small" Style="font-size: 0.9rem;" />
+                                    <span>Shared: <strong>@score.ReaderPackageCount pkgs</strong></span>
+                                </div>
+                                <div class="d-flex align-center gap-1 metric-badge">
+                                    <MudIcon Icon="@Icons.Material.Filled.SwapHoriz" Size="Size.Small" Style="font-size: 0.9rem;" />
+                                    <span>Mappings: <strong>@score.MappingCount</strong></span>
+                                </div>
+                            </div>
 
-                    <TemplateColumn Title="Role">
-                        <CellTemplate>
-                            @if (context.Item.IsFinalTarget)
-                            {
-                                <MudChip T="string" Size="Size.Small" Color="Color.Secondary" Variant="Variant.Text">Final Target</MudChip>
-                            }
-                            else if (context.Item.IsShared)
-                            {
-                                <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Text">Shared Source</MudChip>
-                            }
-                            else
-                            {
-                                <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Text">Intermediate</MudChip>
-                            }
-                        </CellTemplate>
-                    </TemplateColumn>
-                </Columns>
-            </MudDataGrid>
-        </MudPaper>
+                            <div class="d-flex align-center justify-space-between mt-3">
+                                <div>
+                                    @if (score.IsFinalTarget)
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Secondary" Variant="Variant.Outlined" Style="font-size:0.65rem;">Final Target</MudChip>
+                                    }
+                                    else if (score.IsShared)
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Outlined" Style="font-size:0.65rem;">Shared Source</MudChip>
+                                    }
+                                    else
+                                    {
+                                        <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Outlined" Style="font-size:0.65rem;">Intermediate</MudChip>
+                                    }
+                                </div>
+                                <span style="font-size: 0.75rem; color: var(--mud-palette-primary); font-weight: 600;">Inspect Risk &rarr;</span>
+                            </div>
+                        </div>
+                    </div>
+                }
+            </div>
+        }
+        else
+        {
+            <!-- Data Grid View -->
+            <MudPaper Elevation="3" Style="border-radius:16px; overflow:hidden; background: rgba(15, 23, 42, 0.6); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.08);">
+                <MudDataGrid T="TableRiskScore" Items="FilteredScores" Dense="true" Hover="true" Striped="true"
+                             SortMode="SortMode.Multiple" FixedHeader="true" Height="520px">
+                    <Columns>
+                        <TemplateColumn Title="Table Name" Sortable="true" SortBy="x => x.TableName">
+                            <CellTemplate>
+                                <div class="d-flex align-center gap-2">
+                                    <MudIcon Icon="@Icons.Material.Filled.TableChart" Size="Size.Small" Color="GetLevelColor(context.Item.Level)" />
+                                    <MudText Typo="Typo.body2" Class="font-weight-bold">@context.Item.TableName</MudText>
+                                </div>
+                            </CellTemplate>
+                        </TemplateColumn>
+                        
+                        <TemplateColumn Title="Risk Score" Sortable="true" SortBy="x => x.Score">
+                            <CellTemplate>
+                                <div class="d-flex align-center gap-2" style="min-width: 140px;">
+                                    <MudChip T="string" Size="Size.Small" Color="GetLevelColor(context.Item.Level)" Variant="Variant.Filled"
+                                             Style="font-weight:800; min-width:42px; text-align:center;">
+                                        @context.Item.Score
+                                    </MudChip>
+                                    <MudProgressLinear Color="GetLevelColor(context.Item.Level)" Value="context.Item.Score"
+                                                       Class="my-1" Style="flex: 1; height:6px; border-radius:3px;" />
+                                </div>
+                            </CellTemplate>
+                        </TemplateColumn>
+
+                        <TemplateColumn Title="Risk Tier" Sortable="true" SortBy="x => x.Level">
+                            <CellTemplate>
+                                <MudChip T="string" Size="Size.Small" Color="GetLevelColor(context.Item.Level)" Variant="Variant.Outlined">
+                                    @context.Item.Level.ToString().ToUpper()
+                                </MudChip>
+                            </CellTemplate>
+                        </TemplateColumn>
+
+                        <PropertyColumn Property="x => x.DownstreamTableCount" Title="Fan-Out (Downstream)" Sortable="true" />
+                        <PropertyColumn Property="x => x.Depth" Title="Depth (Hops)" Sortable="true" />
+                        <PropertyColumn Property="x => x.ReaderPackageCount" Title="Shared Readers" Sortable="true" />
+                        <PropertyColumn Property="x => x.MappingCount" Title="Column Mappings" Sortable="true" />
+
+                        <TemplateColumn Title="Role">
+                            <CellTemplate>
+                                @if (context.Item.IsFinalTarget)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Secondary" Variant="Variant.Text">Final Target</MudChip>
+                                }
+                                else if (context.Item.IsShared)
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Info" Variant="Variant.Text">Shared Source</MudChip>
+                                }
+                                else
+                                {
+                                    <MudChip T="string" Size="Size.Small" Color="Color.Default" Variant="Variant.Text">Intermediate</MudChip>
+                                }
+                            </CellTemplate>
+                        </TemplateColumn>
+
+                        <TemplateColumn Title="Action">
+                            <CellTemplate>
+                                <MudButton Variant="Variant.Outlined" Color="Color.Primary" Size="Size.Small"
+                                           OnClick="() => InspectTable(context.Item)">
+                                    Audit Risk
+                                </MudButton>
+                            </CellTemplate>
+                        </TemplateColumn>
+                    </Columns>
+                </MudDataGrid>
+            </MudPaper>
+        }
     }
 
 </MudStack>
+
+<!-- ── Risk Inspector Audit Dialog ── -->
+<MudDialog @bind-Visible="_showInspectDialog" Options="new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true }">
+    <TitleContent>
+        @if (_inspectedTable != null)
+        {
+            <div class="d-flex align-center gap-2">
+                <MudIcon Icon="@Icons.Material.Filled.Security" Color="GetLevelColor(_inspectedTable.Level)" />
+                <MudText Typo="Typo.h6" Class="font-weight-bold">Risk Audit: @_inspectedTable.TableName</MudText>
+                <MudChip T="string" Size="Size.Small" Color="GetLevelColor(_inspectedTable.Level)" Variant="Variant.Filled">
+                    @_inspectedTable.Level.ToString().ToUpper() (@_inspectedTable.Score / 100)
+                </MudChip>
+            </div>
+        }
+    </TitleContent>
+    <DialogContent>
+        @if (_inspectedTable != null)
+        {
+            <MudStack Spacing="4" Class="mt-2">
+                <!-- Score Factor Breakdown -->
+                <MudPaper Class="pa-4" Elevation="2" Style="background: rgba(15, 23, 42, 0.5); border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.08);">
+                    <MudText Typo="Typo.subtitle2" Class="font-weight-bold mb-3 color-primary">
+                        📊 4-Factor Vulnerability Decomposition (0–25 pts each)
+                    </MudText>
+
+                    <MudGrid Spacing="3">
+                        <MudItem xs="12" sm="6">
+                            <div class="d-flex justify-space-between align-center mb-1">
+                                <MudText Typo="Typo.caption">Downstream Fan-Out Impact</MudText>
+                                <MudText Typo="Typo.caption" Class="font-weight-bold">@_inspectedTable.FanOutScore / 25 pts (@_inspectedTable.DownstreamTableCount downstream tables)</MudText>
+                            </div>
+                            <MudProgressLinear Color="Color.Error" Value="@((double)_inspectedTable.FanOutScore / 25 * 100)" Style="height:6px; border-radius:3px;" />
+                        </MudItem>
+
+                        <MudItem xs="12" sm="6">
+                            <div class="d-flex justify-space-between align-center mb-1">
+                                <MudText Typo="Typo.caption">Transformation Depth</MudText>
+                                <MudText Typo="Typo.caption" Class="font-weight-bold">@_inspectedTable.DepthScore / 25 pts (@_inspectedTable.Depth hop steps)</MudText>
+                            </div>
+                            <MudProgressLinear Color="Color.Warning" Value="@((double)_inspectedTable.DepthScore / 25 * 100)" Style="height:6px; border-radius:3px;" />
+                        </MudItem>
+
+                        <MudItem xs="12" sm="6">
+                            <div class="d-flex justify-space-between align-center mb-1">
+                                <MudText Typo="Typo.caption">Shared Cross-Package Readers</MudText>
+                                <MudText Typo="Typo.caption" Class="font-weight-bold">@_inspectedTable.SharedScore / 25 pts (@_inspectedTable.ReaderPackageCount package readers)</MudText>
+                            </div>
+                            <MudProgressLinear Color="Color.Info" Value="@((double)_inspectedTable.SharedScore / 25 * 100)" Style="height:6px; border-radius:3px;" />
+                        </MudItem>
+
+                        <MudItem xs="12" sm="6">
+                            <div class="d-flex justify-space-between align-center mb-1">
+                                <MudText Typo="Typo.caption">Direct Column Mappings</MudText>
+                                <MudText Typo="Typo.caption" Class="font-weight-bold">@_inspectedTable.MappingScore / 25 pts (@_inspectedTable.MappingCount mappings)</MudText>
+                            </div>
+                            <MudProgressLinear Color="Color.Success" Value="@((double)_inspectedTable.MappingScore / 25 * 100)" Style="height:6px; border-radius:3px;" />
+                        </MudItem>
+                    </MudGrid>
+                </MudPaper>
+
+                <!-- Architectural Role & Governance Recommendations -->
+                <MudPaper Class="pa-4" Elevation="2" Style="background: rgba(15, 23, 42, 0.5); border-radius: 12px; border: 1px solid rgba(255, 255, 255, 0.08);">
+                    <MudText Typo="Typo.subtitle2" Class="font-weight-bold mb-2 text-warning">
+                        💡 Automated Migration & Modernization Recommendation
+                    </MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary" Style="line-height: 1.6;">
+                        @GetRecommendationText(_inspectedTable)
+                    </MudText>
+                </MudPaper>
+            </MudStack>
+        }
+    </DialogContent>
+    <DialogActions>
+        @if (_inspectedTable != null)
+        {
+            <MudButton Variant="Variant.Outlined" Color="Color.Primary" OnClick="NavigateToLineageTrace">
+                Trace Lineage in Inspector
+            </MudButton>
+        }
+        <MudButton Variant="Variant.Filled" Color="Color.Default" OnClick="() => _showInspectDialog = false">Close</MudButton>
+    </DialogActions>
+</MudDialog>
 
 @code {
     private LineageGraph? _graph;
     private RiskReport? _report;
     private string _search = "";
     private RiskLevel? _levelFilter;
+    private string _viewMode = "grid";
+    private string _sortBy = "score";
+    private bool _showInspectDialog;
+    private TableRiskScore? _inspectedTable;
 
     protected override void OnInitialized()
     {
@@ -201,9 +567,48 @@
                 query = query.Where(s => s != null && s.TableName != null && s.TableName.Contains(_search, StringComparison.OrdinalIgnoreCase));
             }
 
-            return query;
+            return _sortBy switch
+            {
+                "fanout"   => query.OrderByDescending(s => s.DownstreamTableCount),
+                "depth"    => query.OrderByDescending(s => s.Depth),
+                "mappings" => query.OrderByDescending(s => s.MappingCount),
+                _          => query.OrderByDescending(s => s.Score)
+            };
         }
     }
+
+    private int GetPercentage(int count)
+    {
+        if (_report == null || _report.TableCount == 0) return 0;
+        return (int)Math.Round((double)count / _report.TableCount * 100);
+    }
+
+    private void ToggleLevelFilter(RiskLevel level)
+    {
+        if (_levelFilter == level)
+            _levelFilter = null;
+        else
+            _levelFilter = level;
+    }
+
+    private void OnLevelFilterChanged(RiskLevel? level)
+    {
+        _levelFilter = level;
+    }
+
+    private void ClearFilters()
+    {
+        _levelFilter = null;
+        _search = "";
+    }
+
+    private string GetTileCssClass(RiskLevel level) => level switch
+    {
+        RiskLevel.Critical => "risk-tile-critical",
+        RiskLevel.High     => "risk-tile-high",
+        RiskLevel.Medium   => "risk-tile-medium",
+        _                  => "risk-tile-low"
+    };
 
     private Color GetLevelColor(RiskLevel level) => level switch
     {
@@ -212,6 +617,69 @@
         RiskLevel.Medium   => Color.Info,
         _                  => Color.Success
     };
+
+    private string GetLevelHexColor(RiskLevel level) => level switch
+    {
+        RiskLevel.Critical => "#ef4444",
+        RiskLevel.High     => "#f59e0b",
+        RiskLevel.Medium   => "#eab308",
+        _                  => "#10b981"
+    };
+
+    private string GetRgbHex(RiskLevel level) => level switch
+    {
+        RiskLevel.Critical => "239, 68, 68",
+        RiskLevel.High     => "245, 158, 11",
+        RiskLevel.Medium   => "234, 179, 8",
+        _                  => "16, 185, 129"
+    };
+
+    private void InspectTable(TableRiskScore score)
+    {
+        _inspectedTable = score;
+        _showInspectDialog = true;
+    }
+
+    private void NavigateToLineageTrace()
+    {
+        _showInspectDialog = false;
+        NavigationManager.NavigateTo("/lineage-trace");
+    }
+
+    private string GetRecommendationText(TableRiskScore table)
+    {
+        var sb = new System.Text.StringBuilder();
+        if (table.Level == RiskLevel.Critical)
+        {
+            sb.Append($"🚨 CRITICAL RISK (Score {table.Score}): ");
+            sb.Append($"Modifying '{table.TableName}' carries severe blast radius risk. ");
+            if (table.DownstreamTableCount > 0)
+                sb.Append($"It feeds into {table.DownstreamTableCount} downstream table(s). ");
+            if (table.ReaderPackageCount > 1)
+                sb.Append($"It is shared across {table.ReaderPackageCount} distinct SSIS packages. ");
+            sb.Append("Recommendation: Create an abstraction view layer or dbt staging CTE to decouple downstream models before executing schema changes.");
+        }
+        else if (table.Level == RiskLevel.High)
+        {
+            sb.Append($"⚠️ HIGH RISK (Score {table.Score}): ");
+            sb.Append($"'{table.TableName}' has significant pipeline reliance. ");
+            if (table.Depth > 2)
+                sb.Append($"It sits at depth {table.Depth} in the ETL pipeline. ");
+            sb.Append("Recommendation: Run a What-If simulation before altering column data types to prevent breaking downstream data contracts.");
+        }
+        else if (table.Level == RiskLevel.Medium)
+        {
+            sb.Append($"🟡 MEDIUM RISK (Score {table.Score}): ");
+            sb.Append($"'{table.TableName}' is an intermediate transformation table with moderate connectivity ({table.MappingCount} column mappings). ");
+            sb.Append("Recommendation: Verify dbt model references during SSIS package modernization.");
+        }
+        else
+        {
+            sb.Append($"🟢 LOW RISK (Score {table.Score}): ");
+            sb.Append($"'{table.TableName}' has localized pipeline exposure. Schema updates can be applied with low risk to external systems.");
+        }
+        return sb.ToString();
+    }
 
     private async Task ExportMarkdown()
     {
@@ -222,18 +690,38 @@
             var bytes = System.Text.Encoding.UTF8.GetBytes(markdown);
             var base64 = Convert.ToBase64String(bytes);
 
-            await JS.InvokeVoidAsync("eval", $@"
-                const link = document.createElement('a');
-                link.download = 'Lineage_Risk_Report_{DateTime.Now:yyyyMMdd}.md';
-                link.href = 'data:text/markdown;base64,{base64}';
-                document.body.appendChild(link);
-                link.click();
-                document.body.removeChild(link);
-            ");
+            await JS.InvokeVoidAsync("downloadFileFromBase64", $"Lineage_Risk_Report_{DateTime.Now:yyyyMMdd}.md", base64);
+            Snackbar.Add("Exported Risk Report (.md) successfully!", Severity.Success);
         }
-        catch
+        catch (Exception ex)
         {
-            // Ignore export failure
+            Snackbar.Add($"Export failed: {ex.Message}", Severity.Error);
+        }
+    }
+
+    private async Task ExportCsv()
+    {
+        try
+        {
+            if (_report == null || _report.Scores == null) return;
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine("TableName,RiskScore,RiskLevel,DownstreamTables,DepthHops,SharedReaderPackages,ColumnMappings,IsFinalTarget,IsShared");
+            foreach (var s in _report.Scores)
+            {
+                sb.AppendLine($"\"{s.TableName}\",{s.Score},{s.Level},{s.DownstreamTableCount},{s.Depth},{s.ReaderPackageCount},{s.MappingCount},{s.IsFinalTarget},{s.IsShared}");
+            }
+
+            var bytes = System.Text.Encoding.UTF8.GetBytes(sb.ToString());
+            var base64 = Convert.ToBase64String(bytes);
+
+            await JS.InvokeVoidAsync("downloadFileFromBase64", $"Lineage_Risk_Scores_{DateTime.Now:yyyyMMdd}.csv", base64);
+            Snackbar.Add("Exported Risk CSV (.csv) successfully!", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Export failed: {ex.Message}", Severity.Error);
         }
     }
 }
+
