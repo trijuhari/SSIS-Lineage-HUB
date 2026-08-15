@@ -98,13 +98,15 @@ namespace SsisLineage.Core
             schemaYaml.AppendLine();
             schemaYaml.AppendLine("models:");
 
-            // sources block will be appended after all model entries are added
+            // sources block will be appended after all model entries are added.
+            // resolvedTargetDb is determined after package loop (profiles section); store a ref to patch it later.
             var schemaYamlSources = new StringBuilder();
             schemaYamlSources.AppendLine();
             schemaYamlSources.AppendLine("sources:");
             schemaYamlSources.AppendLine("  - name: landing");
             schemaYamlSources.AppendLine("    description: \"Physical SQL Server tables populated by Python extraction scripts\"");
             schemaYamlSources.AppendLine("    schema: dbo");
+            // NOTE: 'database' will be appended just before writing to result (after target DB is resolved).
             schemaYamlSources.AppendLine("    tables:");
 
             foreach (var pkg in packages)
@@ -210,6 +212,8 @@ namespace SsisLineage.Core
                 int cteIdx = 0;
                 foreach (var lkp in lookups)
                 {
+                    var (_, srcDb) = ResolveDatabaseAndServer(graph, pkg, lkp, false);
+
                     // Bug #6 fix: sanitize multi-line SQL in lookup CTE to single-line with consistent indent
                     var lkpSqlRaw = string.IsNullOrEmpty(lkp.SqlQueryOrTable)
                         ? $"SELECT * FROM ref_{Regex.Replace(lkp.Name ?? "Lookup", @"[^\w]", "_")}"
@@ -455,7 +459,7 @@ namespace SsisLineage.Core
                             expr = $"{srcPrefix}.{sourceCol}";
 
                             // Apply type heuristics
-                            var targetNameLower = m.TargetColumnName.ToLowerInvariant();
+                            var targetNameLower = (m.TargetColumnName ?? "").ToLowerInvariant();
                             if ((targetNameLower.Contains("quantity") || targetNameLower.EndsWith("_count") || targetNameLower.StartsWith("count_") || targetNameLower == "count" || targetNameLower.Contains("rowcount") || targetNameLower.Contains("itemcount")) && !targetNameLower.Contains("account") && !targetNameLower.Contains("number"))
                                 expr = $"CAST({expr} AS INT)";
                             else if (targetNameLower.Contains("amount") || targetNameLower.Contains("price") || targetNameLower.Contains("total"))
@@ -598,16 +602,6 @@ namespace SsisLineage.Core
                 result.MappingsConverted += pkgMappings.Count;
             }
 
-            // Append the sources: block to schema.yml after all model entries
-            schemaYaml.Append(schemaYamlSources.ToString());
-
-            result.Files.Insert(0, new GeneratedFile
-            {
-                FileName = "schema.yml",
-                Content = schemaYaml.ToString(),
-                Language = "yaml",
-                TargetFramework = "dbt"
-            });
 
             // B6 FIX: Auto-generate profiles.yml based on resolved connection metadata
             // so every new project migration gets the correct database without manual edits.
@@ -622,7 +616,24 @@ namespace SsisLineage.Core
 
             var profileTargetDb = !string.IsNullOrEmpty(resolvedTargetDb) && !resolvedTargetDb.StartsWith("<")
                 ? resolvedTargetDb
-                : "SalesWarehouseDB";
+                : "TargetWarehouseDB";
+
+            // Patch the sources block in schemaYamlSources to include the resolved target database.
+            // This ensures dbt source() references resolve to the correct landing DB regardless of
+            // what database the connection's default database is.
+            var schemaSourcesStr = schemaYamlSources.ToString()
+                .Replace("    schema: dbo\n    tables:", $"    database: {profileTargetDb}\n    schema: dbo\n    tables:");
+            schemaYaml.Append(schemaSourcesStr);
+
+            // Insert schema.yml as first file (after sources block has been patched with correct database)
+            result.Files.Insert(0, new GeneratedFile
+            {
+                FileName = "schema.yml",
+                Content = schemaYaml.ToString(),
+                Language = "yaml",
+                TargetFramework = "dbt"
+            });
+
             var profileTargetServer = NormalizeServer(targetServerRaw);
             var profilePort = profileTargetServer.Contains(",")
                 ? profileTargetServer.Split(',')[1] : "1433";
