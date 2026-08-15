@@ -72,6 +72,10 @@ namespace SsisLineage.Core
                     break;
                 case MigrationTarget.AirflowDag:
                     GenerateAirflowDags(graph, packagesToConvert, result);
+                    // AUTO-GENERATE .env file so docker-compose picks up the correct
+                    // MSSQL_DB / MSSQL_TARGET_DB / AIRFLOW_CONN_SQL_DEFAULT without
+                    // any manual editing. Drop the file next to docker-compose.yml.
+                    GenerateDotEnvFile(graph, packagesToConvert, result);
                     break;
                 case MigrationTarget.PythonPandas:
                     GeneratePythonPandasScripts(graph, packagesToConvert, result);
@@ -322,6 +326,15 @@ namespace SsisLineage.Core
                                 literals.Add(lit.Value);
                                 return $"__LIT{literals.Count - 1}__";
                             });
+                            // B4 FIX: Mask Jinja {{ ... }} blocks BEFORE qualifier loop so
+                            // translated SSIS variables like {{ var('X') }} are not corrupted
+                            // into source_data.{{ source_data.var('X') }}.
+                            var jinjaBlocks = new List<string>();
+                            masked = Regex.Replace(masked, @"\{\{[^}]+\}\}", jinja =>
+                            {
+                                jinjaBlocks.Add(jinja.Value);
+                                return $"__JINJA{jinjaBlocks.Count - 1}__";
+                            });
                             // Strip SSIS column brackets [ColName] -> ColName before prefixing
                             masked = Regex.Replace(masked, @"\[([a-zA-Z_]\w*)\]", "$1");
                             // Now qualify bare identifiers (not keywords, not already qualified)
@@ -329,10 +342,13 @@ namespace SsisLineage.Core
                             {
                                 var word = m2.Groups[1].Value;
                                 if (sqlKeywords.Contains(word)) return m2.Value;
-                                // Skip __LITn__ placeholders
-                                if (word.StartsWith("__LIT")) return m2.Value;
+                                // Skip __LITn__ and __JINJAn__ placeholders
+                                if (word.StartsWith("__LIT") || word.StartsWith("__JINJA")) return m2.Value;
                                 return $"source_data.{word}";
                             });
+                            // Restore Jinja blocks
+                            for (int ji = 0; ji < jinjaBlocks.Count; ji++)
+                                masked = masked.Replace($"__JINJA{ji}__", jinjaBlocks[ji]);
                             // Restore string literals
                             for (int li = 0; li < literals.Count; li++)
                                 masked = masked.Replace($"__LIT{li}__", literals[li]);
@@ -535,10 +551,20 @@ namespace SsisLineage.Core
                     if (string.IsNullOrEmpty(joinKey))
                     {
                         joinKey = pkgMappings.Select(m => m.SourceColumnName)
-                                             .FirstOrDefault(c => !string.IsNullOrEmpty(c) && !c.Contains("Name", StringComparison.OrdinalIgnoreCase) && !c.Contains("Segment", StringComparison.OrdinalIgnoreCase) && (c.EndsWith("Code", StringComparison.OrdinalIgnoreCase) || c.EndsWith("Key", StringComparison.OrdinalIgnoreCase) || c.EndsWith("Id", StringComparison.OrdinalIgnoreCase) || c.EndsWith("Date", StringComparison.OrdinalIgnoreCase)))
-                                  ?? "CustomerId";
+                                             .FirstOrDefault(c => !string.IsNullOrEmpty(c) && !c.Contains("Name", StringComparison.OrdinalIgnoreCase) && !c.Contains("Segment", StringComparison.OrdinalIgnoreCase) && (c.EndsWith("Code", StringComparison.OrdinalIgnoreCase) || c.EndsWith("Key", StringComparison.OrdinalIgnoreCase) || c.EndsWith("Id", StringComparison.OrdinalIgnoreCase) || c.EndsWith("Date", StringComparison.OrdinalIgnoreCase)));
                     }
-                    sb.AppendLine($"    LEFT JOIN lookup_{i} ON source_data.{joinKey} = lookup_{i}.{joinKey}");
+                    // B8 FIX: If no join key could be determined, emit a placeholder with a warning
+                    // instead of silently using the wrong hardcoded 'CustomerId'.
+                    if (string.IsNullOrEmpty(joinKey))
+                    {
+                        result.Warnings.Add($"[WARN-JOIN] lookup_{i} in package '{pkg.Name}': Cannot determine join key automatically. 'ON 1=0' placeholder inserted — update the JOIN condition manually.");
+                        sb.AppendLine($"    -- TODO: Specify correct join key for lookup_{i} (auto-detection failed)");
+                        sb.AppendLine($"    LEFT JOIN lookup_{i} ON 1=0");
+                    }
+                    else
+                    {
+                        sb.AppendLine($"    LEFT JOIN lookup_{i} ON source_data.{joinKey} = lookup_{i}.{joinKey}");
+                    }
                 }
                 sb.AppendLine(")");
                 sb.AppendLine();
@@ -566,7 +592,46 @@ namespace SsisLineage.Core
                 TargetFramework = "dbt"
             });
 
-            result.Summary = $"Generated {result.Files.Count - 1} dbt SQL models and 1 schema.yml spec from SSIS metadata.";
+            // B6 FIX: Auto-generate profiles.yml based on resolved connection metadata
+            // so every new project migration gets the correct database without manual edits.
+            var profileTargetDb = graph.ColumnMappings
+                .Where(m => !string.IsNullOrEmpty(m.TargetDatabase))
+                .Select(m => m.TargetDatabase)
+                .FirstOrDefault() ?? "SsisDemoDB";
+            var profileTargetServer = graph.ColumnMappings
+                .Where(m => !string.IsNullOrEmpty(m.TargetServer))
+                .Select(m => NormalizeServer(m.TargetServer))
+                .FirstOrDefault() ?? "172.17.0.1";
+            var profilePort = profileTargetServer.Contains(",")
+                ? profileTargetServer.Split(',')[1] : "1433";
+            var profileHost = profileTargetServer.Contains(",")
+                ? profileTargetServer.Split(',')[0] : profileTargetServer;
+
+            var profilesYaml = new StringBuilder();
+            profilesYaml.AppendLine("ssis_migration_dbt:");
+            profilesYaml.AppendLine("  target: dev");
+            profilesYaml.AppendLine("  outputs:");
+            profilesYaml.AppendLine("    dev:");
+            profilesYaml.AppendLine("      type: sqlserver");
+            profilesYaml.AppendLine("      driver: 'ODBC Driver 18 for SQL Server'");
+            profilesYaml.AppendLine($"      server: '{profileHost}'");
+            profilesYaml.AppendLine($"      port: {profilePort}");
+            profilesYaml.AppendLine($"      database: {profileTargetDb}");
+            profilesYaml.AppendLine("      schema: dbo");
+            profilesYaml.AppendLine($"      user: \"{{{{ env_var('MSSQL_USER', 'sa') }}}}\"");
+            profilesYaml.AppendLine($"      password: \"{{{{ env_var('MSSQL_PASSWORD', 'YourPassword123!') }}}}\"");
+            profilesYaml.AppendLine("      encrypt: false");
+            profilesYaml.AppendLine("      trust_cert: true");
+
+            result.Files.Add(new GeneratedFile
+            {
+                FileName = "profiles.yml",
+                Content = profilesYaml.ToString(),
+                Language = "yaml",
+                TargetFramework = "dbt"
+            });
+
+            result.Summary = $"Generated {result.Files.Count - 2} dbt SQL models, schema.yml, and profiles.yml from SSIS metadata.";
         }
 
         // ── 2. PySpark DataFrames Generator ─────────────────────────────────────
@@ -860,15 +925,16 @@ namespace SsisLineage.Core
                 sb.AppendLine("def extract_and_load():");
                 sb.AppendLine($"    print(f\"[{{datetime.now()}}] Starting extraction for {pkg.Name}...\")");
                 sb.AppendLine();
-                sb.AppendLine("    # Dynamic connection string derived from SSIS Connection Manager");
+                sb.AppendLine("    # Dynamic connection string — override defaults via env vars:");
+                sb.AppendLine("    # MSSQL_HOST, MSSQL_DB, MSSQL_USER, MSSQL_PASSWORD");
                 sb.AppendLine("    conn_str = (");
-                sb.AppendLine("        r'DRIVER={ODBC Driver 18 for SQL Server};'");
-                sb.AppendLine($"        r'SERVER={srcServer};'");
-                sb.AppendLine($"        r'DATABASE={srcDb};'");
-                sb.AppendLine("        r'UID=sa;'");
-                sb.AppendLine("        r'PWD=YourPassword123!;'");
-                sb.AppendLine("        r'TrustServerCertificate=yes;'");
-                sb.AppendLine("    )");
+                sb.AppendLine("        'DRIVER={ODBC Driver 18 for SQL Server};'");
+                sb.AppendLine($"        f'SERVER={{os.environ.get(\"MSSQL_HOST\", \"{srcServer}\")}};'");
+                sb.AppendLine($"        f'DATABASE={{os.environ.get(\"MSSQL_DB\", \"{srcDb}\")}};'");
+                sb.AppendLine("        f'UID={os.environ.get(\"MSSQL_USER\", \"sa\")};'");
+                sb.AppendLine("        f'PWD={os.environ.get(\"MSSQL_PASSWORD\", \"YourPassword123!\")};'");
+                sb.AppendLine("        'TrustServerCertificate=yes;'");
+                sb.AppendLine("    )");;
                 sb.AppendLine();
                 sb.AppendLine("    try:");
                 sb.AppendLine("        conn = pyodbc.connect(conn_str)");
@@ -971,13 +1037,13 @@ namespace SsisLineage.Core
                 sb.AppendLine("    # ---------------------------------------------------------");
                 sb.AppendLine("    try:");
                 sb.AppendLine("        target_conn_str = (");
-                sb.AppendLine("            r'DRIVER={ODBC Driver 18 for SQL Server};'");
-                sb.AppendLine($"            r'SERVER={tgtServer};'");
-                sb.AppendLine($"            r'DATABASE={tgtDb};'");
-                sb.AppendLine("            r'UID=sa;'");
-                sb.AppendLine("            r'PWD=YourPassword123!;'");
-                sb.AppendLine("            r'TrustServerCertificate=yes;'");
-                sb.AppendLine("        )");
+                sb.AppendLine("            'DRIVER={ODBC Driver 18 for SQL Server};'");
+                sb.AppendLine($"            f'SERVER={{os.environ.get(\"MSSQL_HOST\", \"{tgtServer}\")}};'");
+                sb.AppendLine($"            f'DATABASE={{os.environ.get(\"MSSQL_TARGET_DB\", \"{tgtDb}\")}};'");
+                sb.AppendLine("            f'UID={os.environ.get(\"MSSQL_USER\", \"sa\")};'");
+                sb.AppendLine("            f'PWD={os.environ.get(\"MSSQL_PASSWORD\", \"YourPassword123!\")};'");
+                sb.AppendLine("            'TrustServerCertificate=yes;'");
+                sb.AppendLine("        )");;
                 sb.AppendLine("        target_conn = pyodbc.connect(target_conn_str)");
                 sb.AppendLine("        cursor = target_conn.cursor()");
                 sb.AppendLine();
@@ -1046,6 +1112,109 @@ namespace SsisLineage.Core
             }
 
             result.Summary = $"Generated {result.Files.Count} Python Extraction Scripts.";
+        }
+
+        // ── 5b. docker-compose .env + .env.credentials File Generator ────────────
+        // Splits configuration into two files:
+        //   .env             → DB names + Airflow URL  (auto-overwritten each migration)
+        //   .env.credentials → SQL Server user/password (generated ONCE with placeholders,
+        //                       never overwritten — user edits this once per environment)
+        // docker-compose.yml reads both via env_file directive.
+        private static void GenerateDotEnvFile(LineageGraph graph, List<PackageNode> packages, MigrationResult result)
+        {
+            var firstPkg = packages.FirstOrDefault();
+            if (firstPkg == null) return;
+
+            var pkgComps = graph.Components.Where(c => c.PackageId == firstPkg.Id).ToList();
+            var srcComp  = pkgComps.FirstOrDefault(c => c.Type.Contains("Source",      StringComparison.OrdinalIgnoreCase));
+            var dstComp  = pkgComps.FirstOrDefault(c => c.Type.Contains("Destination", StringComparison.OrdinalIgnoreCase));
+
+            var (srcServerRaw, srcDb) = ResolveDatabaseAndServer(graph, firstPkg, srcComp, false);
+            var (tgtServerRaw, tgtDb) = ResolveDatabaseAndServer(graph, firstPkg, dstComp, true);
+
+            var srcServer = NormalizeServer(srcServerRaw);
+            var tgtServer = NormalizeServer(tgtServerRaw);
+
+            if (string.IsNullOrEmpty(srcDb) || srcDb.StartsWith("<")) srcDb = tgtDb;
+            if (string.IsNullOrEmpty(tgtDb) || tgtDb.StartsWith("<")) tgtDb = srcDb;
+
+            // ── Credentials: read from env, fall back to placeholder (NOT a real default) ──
+            var user     = System.Environment.GetEnvironmentVariable("MSSQL_USER")     ?? "";
+            var password = System.Environment.GetEnvironmentVariable("MSSQL_PASSWORD") ?? "";
+
+            // Detect unconfigured credentials and emit a structured warning so the UI
+            // can surface a notification banner prompting the user to fill .env.credentials.
+            bool credsMissing = string.IsNullOrEmpty(user) || string.IsNullOrEmpty(password)
+                                || user == "sa" && password == "YourPassword123!";
+            if (credsMissing)
+            {
+                result.Warnings.Add(
+                    "[ACTION REQUIRED] SQL Server credentials are not configured. " +
+                    "Edit the generated '.env.credentials' file and set MSSQL_USER and MSSQL_PASSWORD " +
+                    "before running 'docker compose up -d'. " +
+                    "This file is never overwritten by the migration engine — set it once per environment.");
+            }
+
+            // Use placeholder values in generated files when real creds are absent
+            if (string.IsNullOrEmpty(user))     user     = "<YOUR_SQL_USER>";
+            if (string.IsNullOrEmpty(password)) password = "<YOUR_SQL_PASSWORD>";
+
+            var urlPassword = Uri.EscapeDataString(password);
+            var hostForUrl  = tgtServer.Contains(",") ? tgtServer.Split(',')[0] : tgtServer;
+            var portForUrl  = tgtServer.Contains(",") ? tgtServer.Split(',')[1] : "1433";
+            var airflowConn = $"mssql://{user}:{urlPassword}@{hostForUrl}:{portForUrl}/{tgtDb}?TrustServerCertificate=yes";
+            var pkgNames    = string.Join(", ", packages.Select(p => p.Name));
+
+            // ── File 1: .env — DB config (overwritten every migration) ───────────────
+            var env = new StringBuilder();
+            env.AppendLine("# ================================================================");
+            env.AppendLine("# AUTO-GENERATED — overwritten on every migration. Do NOT store");
+            env.AppendLine("# credentials here. Put them in .env.credentials instead.");
+            env.AppendLine($"# Package(s): {pkgNames}");
+            env.AppendLine($"# Generated : {DateTime.UtcNow:yyyy-MM-dd HH:mm:ss} UTC");
+            env.AppendLine("# ================================================================");
+            env.AppendLine();
+            env.AppendLine("# ── Project-specific DB config (resolved from DTSX Connection Managers) ──");
+            env.AppendLine($"MSSQL_HOST={srcServer}");
+            env.AppendLine($"MSSQL_DB={srcDb}");
+            env.AppendLine($"MSSQL_TARGET_DB={tgtDb}");
+            env.AppendLine($"AIRFLOW_CONN_SQL_DEFAULT={airflowConn}");
+            if (credsMissing)
+            {
+                env.AppendLine();
+                env.AppendLine("# ⚠️  CREDENTIALS NOT SET — edit .env.credentials before running docker compose up -d");
+            }
+
+            result.Files.Add(new GeneratedFile
+            {
+                FileName        = ".env",
+                Content         = env.ToString(),
+                Language        = "dotenv",
+                TargetFramework = "docker-compose"
+            });
+
+            // ── File 2: .env.credentials — one-time setup, never overwritten ─────────
+            var creds = new StringBuilder();
+            creds.AppendLine("# ================================================================");
+            creds.AppendLine("# CREDENTIALS — edit this file ONCE per environment.");
+            creds.AppendLine("# This file is NOT auto-generated on subsequent migrations.");
+            creds.AppendLine("# Add to .gitignore to avoid committing secrets.");
+            creds.AppendLine("# ================================================================");
+            creds.AppendLine();
+            creds.AppendLine("# SQL Server authentication");
+            creds.AppendLine("MSSQL_USER=sa");
+            creds.AppendLine("MSSQL_PASSWORD=<YOUR_SQL_PASSWORD_HERE>");
+            creds.AppendLine();
+            creds.AppendLine("# Optional: override host if different from auto-detected");
+            creds.AppendLine($"# MSSQL_HOST={srcServer}");
+
+            result.Files.Add(new GeneratedFile
+            {
+                FileName        = ".env.credentials",
+                Content         = creds.ToString(),
+                Language        = "dotenv",
+                TargetFramework = "docker-compose"
+            });
         }
 
         private static void GenerateAirflowDags(LineageGraph graph, List<PackageNode> packages, MigrationResult result)
@@ -1118,11 +1287,20 @@ namespace SsisLineage.Core
                         rawSql = Regex.Replace(rawSql, @"(?<!\[)\bRowCount\b(?!\])", "[RowCount]", RegexOptions.IgnoreCase);
 
                         // FIX #2: Normalize non-dbo schema table references to dbo.stg_ flat naming
-                        // so SQL prep task is consistent with the Python extraction script output
-                        // e.g. "stg.RawCustomers" -> "stg_RawCustomers" (dbo assumed by connection default)
                         rawSql = Regex.Replace(rawSql,
                             @"(\[?)(stg|staging)(\]?)\.(\[?)([\w]+)(\]?)",
                             m => $"stg_{m.Groups[5].Value}",
+                            RegexOptions.IgnoreCase);
+
+                        // B2 FIX: Wrap bare TRUNCATE TABLE with IF OBJECT_ID guard so the task
+                        // succeeds on first run when the landing table has not yet been created.
+                        rawSql = Regex.Replace(rawSql,
+                            @"(?<!IF OBJECT_ID[^;]{0,200})TRUNCATE\s+TABLE\s+((?:\[?\w+\]?\.){0,2}\[?\w+\]?)",
+                            m =>
+                            {
+                                var tbl = m.Groups[1].Value.Replace("[", "").Replace("]", "").Trim();
+                                return $"IF OBJECT_ID(N'{tbl}', N'U') IS NOT NULL TRUNCATE TABLE {m.Groups[1].Value}";
+                            },
                             RegexOptions.IgnoreCase);
 
                         // FIX #3: Detect non-dbo schemas used in CREATE TABLE and prepend a
@@ -1707,13 +1885,19 @@ namespace SsisLineage.Core
                 if (map != null) return (map.TargetServer, map.TargetDatabase);
             }
 
-            // FIX #1: Unified fallback database. When connection manager metadata cannot be
-            // resolved from the .dtsx (e.g. AI-generated samples using bare GUIDs without
-            // a <DTS:ConnectionManagers> block), always fall back to "SsisDemoDB" for both
-            // source AND destination. This keeps the Python extraction script, the SQL prep
-            // task, and the dbt profile all pointing at the same database, matching the
-            // sql_default Airflow connection defined in docker-compose.yml.
-            return ("", "SsisDemoDB");
+            // B1 FIX (final): Read env vars MSSQL_TARGET_DB / MSSQL_DB at runtime so the
+            // generated artefacts can be configured per-project via docker-compose.yml without
+            // touching any generated code. "SsisDemoDB" is completely removed as a default;
+            // we use an explicit placeholder that fails fast instead of silently using a wrong DB.
+            var envDb = isDestination
+                ? (System.Environment.GetEnvironmentVariable("MSSQL_TARGET_DB")
+                   ?? System.Environment.GetEnvironmentVariable("MSSQL_DB")
+                   ?? "<SET_MSSQL_TARGET_DB_ENV_VAR>")
+                : (System.Environment.GetEnvironmentVariable("MSSQL_DB")
+                   ?? System.Environment.GetEnvironmentVariable("MSSQL_TARGET_DB")
+                   ?? "<SET_MSSQL_DB_ENV_VAR>");
+            var envHost = System.Environment.GetEnvironmentVariable("MSSQL_HOST") ?? "172.17.0.1,1433";
+            return (envHost, envDb);
         }
 
         private static string NormalizeServer(string server)
