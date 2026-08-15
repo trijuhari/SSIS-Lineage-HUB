@@ -48,16 +48,8 @@ until $DOCKER_CMD exec ssis-demo-sqlserver /opt/mssql-tools18/bin/sqlcmd -S loca
     sleep 2
 done
 
-echo "🌱 Seeding demo database (SsisDemoDB)..."
-if $DOCKER_CMD exec -i ssis-demo-sqlserver test -f /opt/mssql-tools18/bin/sqlcmd; then
-    $DOCKER_CMD exec -i ssis-demo-sqlserver /opt/mssql-tools18/bin/sqlcmd -S localhost -U sa -P 'YourPassword123!' -C < scripts/init-demo-db.sql
-else
-    $DOCKER_CMD exec -i ssis-demo-sqlserver /opt/mssql-tools/bin/sqlcmd -S localhost -U sa -P 'YourPassword123!' < scripts/init-demo-db.sql
-fi
-
 echo "========================================================"
-echo "✅ SQL Server Demo DB is READY!"
+echo "✅ SQL Server Container is READY!"
 echo ""
-echo "Connection String for SSIS Lineage Hub:"
-echo "Server=localhost,1433;Database=SsisDemoDB;User Id=sa;Password=YourPassword123!;TrustServerCertificate=True"
+echo "Host: localhost,1433 | User: sa"
 echo "========================================================"

@@ -16,7 +16,7 @@ echo -e "${BLUE}==============================================${NC}"
 
 # ── 1. Start SQL Server Demo Database Container (if Docker available) ────────
 if [ -f "./setup-sqlserver-demo.sh" ]; then
-    echo -e "${YELLOW}Checking SQL Server Demo DB container...${NC}"
+    echo -e "${YELLOW}Checking SQL Server container...${NC}"
     # Run setup-sqlserver-demo.sh non-destructively
     ./setup-sqlserver-demo.sh || echo -e "${YELLOW}⚠️ Could not start SQL Server Docker automatically. You can start it manually with: sudo ./setup-sqlserver-demo.sh${NC}"
 fi
